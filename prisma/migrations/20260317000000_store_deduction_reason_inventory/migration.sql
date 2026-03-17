@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StoreDeductionReason" ADD VALUE 'INVENTORY_REGISTRATION';

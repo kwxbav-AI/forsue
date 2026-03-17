@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "AdjustmentType" ADD VALUE 'MANAGER_MEETING';
+ALTER TYPE "AdjustmentType" ADD VALUE 'PROMOTION_REVIEW';

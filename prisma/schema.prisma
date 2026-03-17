@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id               String             @id @default(cuid())
+  code             String?            @unique
+  name             String             @unique
+  department       String?
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  employees        Employee[]
+  revenues         RevenueRecord[]
+  performanceDailies PerformanceDaily[]
+  aliases              StoreAlias[]
+  storeHourDeductions  StoreHourDeduction[]
+}
+
+enum StoreDeductionReason {
+  EXPIRY                // 效期
+  CLEANING              // 清掃
+  INVENTORY_REGISTRATION // 現貨文登記
+  OTHER                 // 其他
+}
+
+model StoreHourDeduction {
+  id        String               @id @default(cuid())
+  workDate  DateTime
+  storeId   String
+  reason    StoreDeductionReason
+  hours     Decimal               @db.Decimal(10, 2)
+  note      String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  store     Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  @@index([workDate])
+  @@index([storeId, workDate])
+}
+
+model StoreAlias {
+  id        String   @id @default(cuid())
+  storeId   String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  @@index([storeId])
+}
+
+model Employee {
+  id               String               @id @default(cuid())
+  employeeCode     String               @unique
+  name             String
+  defaultStoreId   String?
+  position         String?
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  defaultStore     Store?               @relation(fields: [defaultStoreId], references: [id])
+  attendances      AttendanceRecord[]
+  dispatches       DispatchRecord[]
+  adjustments      WorkhourAdjustment[]
+}
+
+enum UploadFileType {
+  ATTENDANCE
+  DISPATCH
+  INVENTORY_REFERENCE
+  EMPLOYEE_MASTER
+  DAILY_REVENUE
+}
+
+enum UploadStatus {
+  SUCCESS
+  FAILED
+}
+
+model UploadBatch {
+  id            String         @id @default(cuid())
+  fileType      UploadFileType
+  originalName  String
+  storedName    String
+  uploadedAt    DateTime       @default(now())
+  uploadedBy    String?
+  recordCount   Int            @default(0)
+  status        UploadStatus   @default(SUCCESS)
+  errorMessage  String?
+  effectiveDate DateTime?
+  versionLabel  String?
+}
+
+model AttendanceRecord {
+  id              String     @id @default(cuid())
+  workDate        DateTime
+  employeeId      String
+  originalStoreId String?
+  workHours       Decimal    @db.Decimal(10, 2)
+  shiftType       String?
+  uploadBatchId   String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  employee        Employee   @relation(fields: [employeeId], references: [id])
+  @@index([workDate])
+  @@index([employeeId, workDate])
+}
+
+model DispatchRecord {
+  id              String     @id @default(cuid())
+  workDate        DateTime
+  employeeId      String
+  fromStoreId     String?
+  toStoreId       String
+  dispatchHours   Decimal    @db.Decimal(10, 2)  // 預申請時數
+  actualHours     Decimal?   @db.Decimal(10, 2) // 實際時數（事後確認填寫，績效計算優先使用）
+  confirmStatus   String?   // 待確認 | 已確認
+  startTime       String?
+  endTime         String?
+  remark          String?
+  uploadBatchId   String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  employee        Employee   @relation(fields: [employeeId], references: [id])
+  @@index([workDate])
+  @@index([employeeId, workDate])
+}
+
+model RevenueRecord {
+  id            String   @id @default(cuid())
+  revenueDate   DateTime
+  storeId       String
+  revenueAmount Decimal  @db.Decimal(12, 2)
+  cashIncome    Decimal  @db.Decimal(12, 2) @default(0)
+  linePayAmount Decimal  @db.Decimal(12, 2) @default(0)
+  expenseAmount Decimal  @db.Decimal(12, 2) @default(0)
+  uploadBatchId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  store         Store    @relation(fields: [storeId], references: [id])
+  @@unique([revenueDate, storeId])
+  @@index([revenueDate])
+}
+
+enum AdjustmentType {
+  STAFF_SHORTAGE    // 人力不足
+  MEETING_REVIEW    // 會議/考核
+  RESERVE_STAFF     // 儲備人力
+  TRIAL             // 試作
+  MANAGER_MEETING   // 店長會議
+  PROMOTION_REVIEW  // 晉升考核
+  OTHER             // 其他
+}
+
+model WorkhourAdjustment {
+  id              String         @id @default(cuid())
+  workDate        DateTime
+  employeeId      String
+  storeId         String?
+  adjustmentType  AdjustmentType
+  adjustmentHours Decimal        @db.Decimal(10, 2)
+  reason          String?
+  note            String?
+  createdBy       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  @@index([workDate])
+  @@index([employeeId, workDate])
+}
+
+model PerformanceTargetSetting {
+  id                  String    @id @default(cuid())
+  targetValue         Decimal   @db.Decimal(10, 2)
+  effectiveStartDate  DateTime
+  effectiveEndDate    DateTime?
+  isActive            Boolean   @default(true)
+  updatedBy           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  @@index([effectiveStartDate, effectiveEndDate])
+}
+
+model PerformanceDaily {
+  id              String   @id @default(cuid())
+  workDate        DateTime
+  storeId         String
+  revenueAmount   Decimal  @db.Decimal(12, 2)
+  totalWorkHours  Decimal  @db.Decimal(10, 2)
+  efficiencyRatio Decimal  @db.Decimal(12, 2)
+  targetValue     Decimal  @db.Decimal(10, 2)
+  isTargetMet     Boolean
+  calculatedAt    DateTime @default(now())
+  versionNo       Int      @default(1)
+  store           Store    @relation(fields: [storeId], references: [id])
+  @@unique([workDate, storeId, versionNo])
+  @@index([workDate])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  module     String
+  action     String
+  targetType String
+  targetId   String?
+  beforeJson Json?
+  afterJson  Json?
+  operator   String?
+  createdAt  DateTime @default(now())
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([date])
+}
+
+model ContentEntry {
+  id              String   @id @default(cuid())
+  workDate        DateTime
+  branch          String
+  totalArticles   Int?
+  contentDesc1    String?
+  articleUrl1     String?
+  productCount1   Int?
+  commentCount1   Int?
+  contentDesc2    String?
+  articleUrl2     String?
+  productCount2   Int?
+  commentCount2   Int?
+  contentDesc3    String?
+  articleUrl3     String?
+  productCount3   Int?
+  commentCount3   Int?
+  deductedMinutes Int?     // 扣工時（分鐘），依規則計算後儲存
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workDate])
+  @@index([workDate, branch])
+}
