@@ -140,12 +140,12 @@ export default function ContentEntriesPage() {
       commentCount1: String(row.commentCount1 ?? ""),
       contentDesc2: row.contentDesc2 ?? "",
       articleUrl2: row.articleUrl2 ?? "",
-      productCount2: row.productCount2 ?? "",
-      commentCount2: row.commentCount2 ?? "",
+      productCount2: String(row.productCount2 ?? ""),
+      commentCount2: String(row.commentCount2 ?? ""),
       contentDesc3: row.contentDesc3 ?? "",
       articleUrl3: row.articleUrl3 ?? "",
-      productCount3: row.productCount3 ?? "",
-      commentCount3: row.commentCount3 ?? "",
+      productCount3: String(row.productCount3 ?? ""),
+      commentCount3: String(row.commentCount3 ?? ""),
     });
     setModal("edit");
     setEditingId(row.id);
