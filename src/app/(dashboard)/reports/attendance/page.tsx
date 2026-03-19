@@ -197,15 +197,19 @@ export default function AttendanceReportPage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const isSubRow =
-                  r.type === "adjustment" || r.type === "dispatch_out" || r.type === "subtotal";
+                const isChangeRow =
+                  r.type === "adjustment" || r.type === "dispatch_out" || r.type === "dispatch_in";
+                const isSubRow = isChangeRow || r.type === "subtotal";
                 const isSubtotal = r.type === "subtotal";
+                const isNegative = Number.isFinite(r.workHours) && r.workHours < 0;
                 return (
                   <tr
                     key={r.id}
                     className={`border-b border-slate-100 ${
                       isSubtotal ? "bg-slate-50 font-medium" : ""
-                    } ${isSubRow ? "text-slate-600" : ""}`}
+                    } ${isChangeRow ? "bg-amber-50 text-slate-700" : ""} ${
+                      !isSubtotal && !isChangeRow && isSubRow ? "text-slate-600" : ""
+                    }`}
                   >
                     <td className="px-4 py-2">
                       {isSubtotal ? "小計" : isSubRow ? "" : r.employeeCode}
@@ -214,7 +218,9 @@ export default function AttendanceReportPage() {
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.department || "—")}</td>
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.position || "—")}</td>
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : r.workDate}</td>
-                    <td className="px-4 py-2 text-right">{r.workHours}</td>
+                    <td className={`px-4 py-2 text-right ${isNegative ? "font-medium text-red-700" : ""}`}>
+                      {r.workHours}
+                    </td>
                     <td className="px-4 py-2">{r.adjustmentReason ?? "—"}</td>
                   </tr>
                 );

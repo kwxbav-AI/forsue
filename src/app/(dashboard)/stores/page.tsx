@@ -118,7 +118,7 @@ export default function StoresPage() {
     const res = await fetch(`/api/stores/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(data.error || "刪除失敗");
+      setMessage(data.error || "停用失敗");
       return;
     }
     setMessage("已停用門市");
@@ -237,7 +237,7 @@ export default function StoresPage() {
                         onClick={() => deleteStore(s.id, s.name)}
                         className="text-red-600 hover:underline"
                       >
-                        刪除
+                        停用
                       </button>
                     </td>
                   </tr>

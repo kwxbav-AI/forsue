@@ -154,6 +154,23 @@ export async function POST(request: NextRequest) {
     const createdIds: string[] = [];
     const touchedDates: Date[] = [];
 
+    // 若未指定 fromStoreId，則以「出勤原門市」為準（同一員工同一日可能多筆上傳，只取最新一筆）
+    const fromStoreByDate = new Map<string, string | null>();
+    if (!fromStoreId) {
+      const attendances = await prisma.attendanceRecord.findMany({
+        where: {
+          employeeId,
+          workDate: { gte: startD, lte: endD },
+        },
+        select: { workDate: true, originalStoreId: true },
+        orderBy: { createdAt: "desc" },
+      });
+      for (const a of attendances) {
+        const key = formatDateOnly(a.workDate);
+        if (!fromStoreByDate.has(key)) fromStoreByDate.set(key, a.originalStoreId ?? null);
+      }
+    }
+
     let cursor = startD;
     while (cursor <= endD) {
       const workDate = toStartOfDay(cursor);
@@ -161,7 +178,7 @@ export async function POST(request: NextRequest) {
         data: {
           workDate,
           employeeId,
-          fromStoreId: fromStoreId ?? null,
+          fromStoreId: fromStoreId ?? fromStoreByDate.get(formatDateOnly(workDate)) ?? null,
           toStoreId,
           dispatchHours: hours,
           startTime,

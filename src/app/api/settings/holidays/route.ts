@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseDateOnlyUTC } from "@/lib/date";
 
 export async function GET() {
   const list = await prisma.holiday.findMany({
@@ -23,7 +24,8 @@ export async function POST(request: NextRequest) {
     if (!dateStr) {
       return NextResponse.json({ error: "請提供 date (YYYY-MM-DD)" }, { status: 400 });
     }
-    const date = new Date(dateStr + "T00:00:00");
+    // 以 UTC 0 點儲存，避免因伺服器時區/ISO 轉換造成日期少一天
+    const date = parseDateOnlyUTC(dateStr);
 
     const holiday = await prisma.holiday.upsert({
       where: { date },

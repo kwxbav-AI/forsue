@@ -18,11 +18,8 @@ type Adjustment = {
 };
 
 const ADJUSTMENT_TYPES = [
-  { value: "RESERVE_STAFF", label: "儲備人力" },
-  { value: "TRIAL", label: "試作" },
   { value: "MANAGER_MEETING", label: "店長會議" },
   { value: "PROMOTION_REVIEW", label: "晉升考核" },
-  { value: "OTHER", label: "其他" },
 ];
 
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
@@ -46,10 +43,11 @@ export default function WorkhourAdjustmentsPage() {
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
   const [employeeWorkHours, setEmployeeWorkHours] = useState<number | null>(null);
+  const [employeeClock, setEmployeeClock] = useState<{ startTime: string | null; endTime: string | null; department: string | null } | null>(null);
   const [form, setForm] = useState({
     employeeId: "",
     storeId: "",
-    adjustmentType: "OTHER",
+    adjustmentType: "MANAGER_MEETING",
     adjustmentHours: 0,
     note: "",
   });
@@ -103,6 +101,7 @@ export default function WorkhourAdjustmentsPage() {
   useEffect(() => {
     if (modal !== "add" || !date || !form.employeeId) {
       setEmployeeWorkHours(null);
+      setEmployeeClock(null);
       return;
     }
     let cancelled = false;
@@ -114,6 +113,11 @@ export default function WorkhourAdjustmentsPage() {
       const data = await res.json();
       if (!cancelled) {
         setEmployeeWorkHours(data.workHours ?? 0);
+        setEmployeeClock({
+          startTime: data.startTime ?? null,
+          endTime: data.endTime ?? null,
+          department: data.department ?? null,
+        });
         if (data.storeId) setForm((f) => ({ ...f, storeId: data.storeId }));
       }
     })();
@@ -140,7 +144,7 @@ export default function WorkhourAdjustmentsPage() {
       setModal(null);
       setEmployeeSearch("");
       setEmployeeDropdownOpen(false);
-      setForm({ employeeId: "", storeId: "", adjustmentType: "OTHER", adjustmentHours: 0, note: "" });
+      setForm({ employeeId: "", storeId: "", adjustmentType: "MANAGER_MEETING", adjustmentHours: 0, note: "" });
       fetchAdjustments();
     } else {
       const data = await res.json();
@@ -250,9 +254,29 @@ export default function WorkhourAdjustmentsPage() {
                 </div>
               </label>
               {form.employeeId && (
-                <p className="text-sm text-slate-600">
-                  當天上班時數：<span className="font-medium text-slate-800">{employeeWorkHours != null ? `${employeeWorkHours} 小時` : "載入中…"}</span>
-                </p>
+                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      當天上班時數：
+                      <span className="ml-1 font-medium text-slate-900">
+                        {employeeWorkHours != null ? `${employeeWorkHours} 小時` : "載入中…"}
+                      </span>
+                    </span>
+                    <span className="text-slate-600">
+                      打卡：
+                      <span className="ml-1 font-medium text-slate-900">
+                        {employeeClock
+                          ? `${employeeClock.startTime || "—"} ~ ${employeeClock.endTime || "—"}`
+                          : "載入中…"}
+                      </span>
+                    </span>
+                  </div>
+                  {employeeClock?.department && (
+                    <div className="mt-1 text-slate-600">
+                      出勤部門：<span className="font-medium text-slate-900">{employeeClock.department}</span>（已自動帶入門市）
+                    </div>
+                  )}
+                </div>
               )}
               <label className="block">
                 <span className="text-sm text-slate-600">門市（選填）</span>

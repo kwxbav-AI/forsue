@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toStartOfDay } from "@/lib/date";
-import { endOfDay } from "date-fns";
+import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 
 /** 達標次數統計：日期區間內各門市達標天數、未達標天數、達標率、平均工效比 */
 export async function GET(request: NextRequest) {
@@ -15,8 +14,8 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
-  const start = toStartOfDay(startDate);
-  const end = endOfDay(new Date(endDate));
+  const start = parseDateOnlyUTC(startDate);
+  const end = endOfDayUTC(endDate);
 
   const [list, holidays] = await Promise.all([
     prisma.performanceDaily.findMany({

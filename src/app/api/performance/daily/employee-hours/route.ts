@@ -25,10 +25,29 @@ export async function GET(request: NextRequest) {
     where: { workDate, employeeId },
     include: { employee: { select: { defaultStoreId: true } } },
   });
-  const storeId =
-    attendance?.originalStoreId ??
-    attendance?.employee?.defaultStoreId ??
-    null;
+  let storeId =
+    attendance?.originalStoreId ?? attendance?.employee?.defaultStoreId ?? null;
 
-  return NextResponse.json({ date, employeeId, workHours, storeId });
+  // 若出勤表有部門，優先用「門市管理.department」對應門市
+  const dept = (attendance?.department || "").trim();
+  if (dept) {
+    const stores = await prisma.store.findMany({
+      where: { isActive: true },
+      select: { id: true, department: true, name: true },
+    });
+    const match =
+      stores.find((s) => (s.department || "").trim() === dept) ??
+      stores.find((s) => (s.name || "").trim() === dept);
+    if (match) storeId = match.id;
+  }
+
+  return NextResponse.json({
+    date,
+    employeeId,
+    workHours,
+    storeId,
+    department: dept || null,
+    startTime: attendance?.startTime ?? null,
+    endTime: attendance?.endTime ?? null,
+  });
 }

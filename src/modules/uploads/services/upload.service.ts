@@ -6,7 +6,18 @@ import { parseDispatchSheet, type DispatchRow } from "../parsers/dispatch.parser
 import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/employee-master.parser";
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
-import { toStartOfDay } from "@/lib/date";
+import { toStartOfDay, formatDateOnly } from "@/lib/date";
+
+/** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
+function uniqueCalendarDates(dates: Date[]): Date[] {
+  const map = new Map<string, Date>();
+  for (const raw of dates) {
+    const d = toStartOfDay(raw);
+    const key = formatDateOnly(d);
+    if (!map.has(key)) map.set(key, d);
+  }
+  return [...map.values()];
+}
 import type { UploadResult } from "../types";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
@@ -23,6 +34,25 @@ async function getStoreIdByCode(code: string): Promise<string | null> {
     select: { storeId: true },
   });
   return alias?.storeId ?? null;
+}
+
+/** 一次載入門市代碼／名稱／別名 → storeId，營收上傳每列只查 Map、不打 DB */
+async function buildStoreCodeLookup(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const stores = await prisma.store.findMany({
+    select: { id: true, code: true, name: true },
+  });
+  for (const s of stores) {
+    if (s.code?.trim()) map.set(s.code.trim(), s.id);
+    map.set(s.name.trim(), s.id);
+  }
+  const aliases = await prisma.storeAlias.findMany({
+    select: { code: true, storeId: true },
+  });
+  for (const a of aliases) {
+    map.set(a.code.trim(), a.storeId);
+  }
+  return map;
 }
 
 /** 依部門名稱查門市 id（出勤表若部門與門市欄不一致時使用） */
@@ -174,7 +204,10 @@ export async function uploadAttendance(
         workDate: toStartOfDay(row.workDate),
         employeeId,
         originalStoreId,
+        department: row.department,
         workHours: row.workHours.toNumber(),
+        startTime: row.startTime,
+        endTime: row.endTime,
         shiftType: row.shiftType,
         uploadBatchId: batch.id,
       },
@@ -187,8 +220,7 @@ export async function uploadAttendance(
     data: { recordCount: imported },
   });
 
-  const recalcDates = [...new Set(parsed.data.map((r) => r.workDate))];
-  for (const d of recalcDates) {
+  for (const d of uniqueCalendarDates(parsed.data.map((r) => r.workDate))) {
     await performanceEngineService.recalculateDailyPerformance(d);
   }
 
@@ -269,8 +301,7 @@ export async function uploadDispatch(
     data: { recordCount: imported },
   });
 
-  const recalcDates = [...new Set(parsed.data.map((r) => r.workDate))];
-  for (const d of recalcDates) {
+  for (const d of uniqueCalendarDates(parsed.data.map((r) => r.workDate))) {
     await performanceEngineService.recalculateDailyPerformance(d);
   }
 
@@ -368,6 +399,8 @@ export async function uploadDailyRevenue(
   const errors: ParseError[] = [...parsed.errors];
   let imported = 0;
 
+  const storeLookup = await buildStoreCodeLookup();
+
   // 先依 (日期, 門市) 彙總各 POS (A/B/C...) 的金額，再寫入資料庫
   const aggregated = new Map<
     string,
@@ -382,7 +415,7 @@ export async function uploadDailyRevenue(
   >();
 
   for (const row of parsed.data) {
-    const storeId = await getStoreIdByCode(row.storeCode);
+    const storeId = storeLookup.get(row.storeCode.trim()) ?? null;
     if (!storeId) {
       errors.push({ row: 0, field: "storeCode", message: `找不到門市：${row.storeCode}` });
       continue;
@@ -408,32 +441,39 @@ export async function uploadDailyRevenue(
     }
   }
 
-  for (const { revenueDate, storeId, amount, cashIncome, linePayAmount, expenseAmount } of aggregated.values()) {
-    await prisma.revenueRecord.upsert({
-      where: {
-        revenueDate_storeId: {
-          revenueDate,
-          storeId,
-        },
-      },
-      create: {
-        revenueDate,
-        storeId,
-        revenueAmount: amount.toNumber(),
-        cashIncome: cashIncome.toNumber(),
-        linePayAmount: linePayAmount.toNumber(),
-        expenseAmount: expenseAmount.toNumber(),
-        uploadBatchId: batch.id,
-      },
-      update: {
-        revenueAmount: amount.toNumber(),
-        cashIncome: cashIncome.toNumber(),
-        linePayAmount: linePayAmount.toNumber(),
-        expenseAmount: expenseAmount.toNumber(),
-        uploadBatchId: batch.id,
-      },
-    });
-    imported++;
+  const aggList = [...aggregated.values()];
+  const UPSERT_CHUNK = 32;
+  for (let i = 0; i < aggList.length; i += UPSERT_CHUNK) {
+    const chunk = aggList.slice(i, i + UPSERT_CHUNK);
+    await Promise.all(
+      chunk.map(({ revenueDate, storeId, amount, cashIncome, linePayAmount, expenseAmount }) =>
+        prisma.revenueRecord.upsert({
+          where: {
+            revenueDate_storeId: {
+              revenueDate,
+              storeId,
+            },
+          },
+          create: {
+            revenueDate,
+            storeId,
+            revenueAmount: amount.toNumber(),
+            cashIncome: cashIncome.toNumber(),
+            linePayAmount: linePayAmount.toNumber(),
+            expenseAmount: expenseAmount.toNumber(),
+            uploadBatchId: batch.id,
+          },
+          update: {
+            revenueAmount: amount.toNumber(),
+            cashIncome: cashIncome.toNumber(),
+            linePayAmount: linePayAmount.toNumber(),
+            expenseAmount: expenseAmount.toNumber(),
+            uploadBatchId: batch.id,
+          },
+        })
+      )
+    );
+    imported += chunk.length;
   }
 
   await prisma.uploadBatch.update({
@@ -441,8 +481,7 @@ export async function uploadDailyRevenue(
     data: { recordCount: imported },
   });
 
-  const recalcDates = [...new Set(parsed.data.map((r) => r.revenueDate))];
-  for (const d of recalcDates) {
+  for (const d of uniqueCalendarDates(parsed.data.map((r) => r.revenueDate))) {
     await performanceEngineService.recalculateDailyPerformance(d);
   }
 

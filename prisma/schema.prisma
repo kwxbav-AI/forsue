@@ -58,6 +58,8 @@ model Employee {
   name             String
   defaultStoreId   String?
   position         String?
+  isReserveStaff   Boolean              @default(false)
+  reserveWorkPercent Decimal?           @db.Decimal(5, 2) // 0~100，僅儲備人力使用
   isActive         Boolean              @default(true)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
@@ -99,7 +101,10 @@ model AttendanceRecord {
   workDate        DateTime
   employeeId      String
   originalStoreId String?
+  department      String?
   workHours       Decimal    @db.Decimal(10, 2)
+  startTime       String?
+  endTime         String?
   shiftType       String?
   uploadBatchId   String?
   createdAt       DateTime   @default(now())

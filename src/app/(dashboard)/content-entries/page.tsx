@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { totalDeductedMinutes } from "@/lib/content-deduction";
 
 type Store = {
   id: string;
@@ -137,8 +136,8 @@ export default function ContentEntriesPage() {
       totalArticles: row.totalArticles ?? "",
       contentDesc1: row.contentDesc1 ?? "",
       articleUrl1: row.articleUrl1 ?? "",
-      productCount1: row.productCount1 ?? "",
-      commentCount1: row.commentCount1 ?? "",
+      productCount1: String(row.productCount1 ?? ""),
+      commentCount1: String(row.commentCount1 ?? ""),
       contentDesc2: row.contentDesc2 ?? "",
       articleUrl2: row.articleUrl2 ?? "",
       productCount2: row.productCount2 ?? "",
@@ -151,15 +150,6 @@ export default function ContentEntriesPage() {
     setModal("edit");
     setEditingId(row.id);
   };
-
-  const computedDeducted = totalDeductedMinutes(
-    Number(form.productCount1) || 0,
-    Number(form.commentCount1) || 0,
-    Number(form.productCount2) || 0,
-    Number(form.commentCount2) || 0,
-    Number(form.productCount3) || 0,
-    Number(form.commentCount3) || 0
-  );
 
   const submit = async () => {
     const payload = {
@@ -427,9 +417,6 @@ export default function ContentEntriesPage() {
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-slate-600">
-              扣工時（自動）：<strong>{formatDeducted(computedDeducted)}</strong>
-            </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"

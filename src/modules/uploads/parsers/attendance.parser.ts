@@ -60,6 +60,8 @@ export interface AttendanceRow {
   storeCode: string | null;
   department: string | null;
   workHours: Decimal;
+  startTime: string | null;
+  endTime: string | null;
   shiftType: string | null;
 }
 
@@ -225,6 +227,8 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
       storeCode: storeCode || null,
       department: department || null,
       workHours,
+      startTime: startTimeStr || null,
+      endTime: endTimeStr || null,
       shiftType: shiftType || null,
     } as AttendanceRow);
   }

@@ -59,47 +59,37 @@ class PerformanceEngineService {
       where: { workDate: d, versionNo: 1 },
     });
 
-    for (const store of stores) {
+    const weekDay = d.getDay();
+    const rows = stores.map((store) => {
       const rawHours = storeHours[store.id] ?? 0;
       const contentDeduction = contentDeductionHoursByStore[store.id] ?? 0;
       const storeDeduction = storeDeductionHoursByStore[store.id] ?? 0;
       const totalWorkHours = Math.max(0, rawHours - contentDeduction - storeDeduction);
       const revenueRecord = store.revenues[0];
       const revenueAmount = revenueRecord ? Number(revenueRecord.revenueAmount) : 0;
-
-      // 1. 營收 / 總工時 = 工效比
       let efficiencyRatio = 0;
       if (totalWorkHours > 0) {
         efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
       }
-
-      // 2. 達標邏輯：
-      //   - 平日：4000 <= 工效比 < 6000 為達標，>= 6000 為超標（前端仍顯示「達標」）
-      //   - 星期六 (getDay() === 6)：工效比需 >= 5500 才視為達標
-      const weekDay = d.getDay(); // 0=日, 6=六
       let isTargetMet = false;
       if (totalWorkHours > 0) {
-        if (weekDay === 6) {
-          // 星期六：>= 5500
-          isTargetMet = efficiencyRatio >= 5500;
-        } else {
-          // 其他日：>= 4000
-          isTargetMet = efficiencyRatio >= 4000;
-        }
+        isTargetMet =
+          weekDay === 6 ? efficiencyRatio >= 5500 : efficiencyRatio >= 4000;
       }
+      return {
+        workDate: d,
+        storeId: store.id,
+        revenueAmount,
+        totalWorkHours,
+        efficiencyRatio,
+        targetValue,
+        isTargetMet,
+        versionNo: 1,
+      };
+    });
 
-      await prisma.performanceDaily.create({
-        data: {
-          workDate: d,
-          storeId: store.id,
-          revenueAmount,
-          totalWorkHours,
-          efficiencyRatio,
-          targetValue,
-          isTargetMet,
-          versionNo: 1,
-        },
-      });
+    if (rows.length > 0) {
+      await prisma.performanceDaily.createMany({ data: rows });
     }
   }
 

@@ -14,31 +14,19 @@ export default function DashboardLayout({
           </Link>
           <nav className="flex flex-wrap gap-3 text-sm">
             <Link href="/uploads" className="text-slate-600 hover:text-sky-600">
-              上傳
+              資料上傳中心
             </Link>
-            <Link href="/workhour-adjustments" className="text-slate-600 hover:text-sky-600">
-              工時異動
+            <Link href="/workhour-related" className="text-slate-600 hover:text-sky-600">
+              工時異動相關
             </Link>
-            <Link href="/performance/daily" className="text-slate-600 hover:text-sky-600">
-              每日工效
+            <Link href="/reports" className="text-slate-600 hover:text-sky-600">
+              報表區
             </Link>
-            <Link href="/performance/target-summary" className="text-slate-600 hover:text-sky-600">
-              達標統計
+            <Link href="/data" className="text-slate-600 hover:text-sky-600">
+              資料區
             </Link>
-            <Link href="/settings/performance-target" className="text-slate-600 hover:text-sky-600">
-              目標設定
-            </Link>
-            <Link href="/settings/holidays" className="text-slate-600 hover:text-sky-600">
-              假日設定
-            </Link>
-            <Link href="/stores" className="text-slate-600 hover:text-sky-600">
-              門市管理
-            </Link>
-            <Link href="/dispatches" className="text-slate-600 hover:text-sky-600">
-              調度填報
-            </Link>
-            <Link href="/content-entries" className="text-slate-600 hover:text-sky-600">
-              內容篇數填報
+            <Link href="/settings" className="text-slate-600 hover:text-sky-600">
+              設定區
             </Link>
           </nav>
         </div>

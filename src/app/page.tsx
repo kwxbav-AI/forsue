@@ -20,49 +20,35 @@ export default function HomePage() {
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
           <span className="font-medium text-slate-800">資料上傳中心</span>
-          <p className="mt-1 text-sm text-slate-500">上傳出勤、營收、人員名冊（調度與內容篇數請至填報頁面）</p>
+          <p className="mt-1 text-sm text-slate-500">上傳出勤、營收、人員名冊</p>
         </Link>
         <Link
           href="/workhour-related"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
           <span className="font-medium text-slate-800">工時異動相關</span>
-          <p className="mt-1 text-sm text-slate-500">人員調度、工時異動調整、現貨文填報</p>
+          <p className="mt-1 text-sm text-slate-500">人員調度、工時異動調整、內容篇數填報、批次調整、效期/清掃</p>
         </Link>
         <Link
-          href="/performance/daily"
+          href="/reports"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
-          <span className="font-medium text-slate-800">每日工效比</span>
-          <p className="mt-1 text-sm text-slate-500">查看每日各門市營收、工時、工效比、是否達標</p>
+          <span className="font-medium text-slate-800">報表區</span>
+          <p className="mt-1 text-sm text-slate-500">每日工效比、達標次數統計</p>
         </Link>
         <Link
-          href="/performance/target-summary"
+          href="/data"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
-          <span className="font-medium text-slate-800">達標次數統計</span>
-          <p className="mt-1 text-sm text-slate-500">期間內各門市達標天數、達標率、平均工效比</p>
+          <span className="font-medium text-slate-800">資料區</span>
+          <p className="mt-1 text-sm text-slate-500">人員出勤表、每日營收報表</p>
         </Link>
         <Link
-          href="/settings/performance-target"
+          href="/settings"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
-          <span className="font-medium text-slate-800">目標值設定</span>
-          <p className="mt-1 text-sm text-slate-500">設定全門市共用目標工效值與生效日</p>
-        </Link>
-        <Link
-          href="/reports/attendance"
-          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
-        >
-          <span className="font-medium text-slate-800">人員出勤表</span>
-          <p className="mt-1 text-sm text-slate-500">依員工與部門查詢每日出勤工時</p>
-        </Link>
-        <Link
-          href="/reports/revenue"
-          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
-        >
-          <span className="font-medium text-slate-800">每日營收報表</span>
-          <p className="mt-1 text-sm text-slate-500">依門市與部門查詢每日營收與短溢</p>
+          <span className="font-medium text-slate-800">設定區</span>
+          <p className="mt-1 text-sm text-slate-500">門市管理、儲備人力設定、假日設定、目標值設定</p>
         </Link>
       </nav>
       <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-sm text-slate-500">

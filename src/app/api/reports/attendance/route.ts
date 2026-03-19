@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { formatDateOnly, toDateRange } from "@/lib/date";
+import Decimal from "decimal.js";
 
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
   STAFF_SHORTAGE: "人力不足",
@@ -92,6 +93,33 @@ export async function GET(request: Request) {
   }
 
   try {
+    const activeEmployees = await prisma.employee.findMany({
+      where: { isActive: true },
+      select: { id: true, defaultStoreId: true },
+    });
+    const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
+    const fallbackHomeStoreByEmployee = new Map<string, string>();
+    if (noDefaultIds.length > 0) {
+      const attRecords = await prisma.attendanceRecord.findMany({
+        where: { employeeId: { in: noDefaultIds }, originalStoreId: { not: null } },
+        select: { employeeId: true, originalStoreId: true },
+        orderBy: { workDate: "desc" },
+      });
+      for (const a of attRecords) {
+        if (!a.originalStoreId) continue;
+        if (fallbackHomeStoreByEmployee.has(a.employeeId)) continue;
+        fallbackHomeStoreByEmployee.set(a.employeeId, a.originalStoreId);
+      }
+    }
+    const assignedByStore = new Map<string, string[]>();
+    for (const e of activeEmployees) {
+      const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
+      if (!homeStoreId) continue;
+      const list = assignedByStore.get(homeStoreId) ?? [];
+      list.push(e.id);
+      assignedByStore.set(homeStoreId, list);
+    }
+
     const allStores = await prisma.store.findMany({
       where: { isActive: true },
       select: { id: true, name: true, department: true },
@@ -163,6 +191,128 @@ export async function GET(request: Request) {
         orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
       }),
     ]);
+
+    function extractDispatchReason(remark: string | null): string {
+      if (!remark) return "";
+      const s = remark.trim();
+      if (!s) return "";
+      return s.split("/")[0].trim();
+    }
+
+    // 針對「儲備人力」計算：判定「全店到齊」與「加班總時數」必須看整間店的資料，
+    // 不能被姓名/工號搜尋（empWhere）篩到只剩一個人，否則會誤判未到齊。
+    const storeFullByDateStore = new Map<string, boolean>();
+    const overtimeByDateStore = new Map<string, number>();
+
+    const reserveHomeStoreIds = new Set<string>();
+    const reserveEmployeeIds = new Set<string>();
+    for (const r of records) {
+      if (!r.employee.isReserveStaff) continue;
+      reserveEmployeeIds.add(r.employeeId);
+      const homeStoreId =
+        r.employee.defaultStoreId ??
+        fallbackHomeStoreByEmployee.get(r.employeeId) ??
+        r.originalStoreId ??
+        null;
+      if (homeStoreId) reserveHomeStoreIds.add(homeStoreId);
+    }
+
+    if (reserveHomeStoreIds.size > 0) {
+      const datesForCalc = Array.from(
+        new Set(records.map((r) => formatDateOnly(r.workDate)))
+      );
+      const calcEmployeeIds = new Set<string>();
+      for (const sid of reserveHomeStoreIds) {
+        const empIds = assignedByStore.get(sid) ?? [];
+        for (const eid of empIds) calcEmployeeIds.add(eid);
+      }
+      const calcEmployeeIdList = Array.from(calcEmployeeIds);
+
+      const [calcAttendances, calcDispatches] = await Promise.all([
+        calcEmployeeIdList.length > 0
+          ? prisma.attendanceRecord.findMany({
+              where: {
+                workDate: { gte: range.start, lte: range.end },
+                employeeId: { in: calcEmployeeIdList },
+              },
+              select: {
+                workDate: true,
+                employeeId: true,
+                originalStoreId: true,
+                workHours: true,
+                employee: { select: { defaultStoreId: true } },
+              },
+              orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
+            })
+          : [],
+        prisma.dispatchRecord.findMany({
+          where: {
+            workDate: { gte: range.start, lte: range.end },
+            OR: [
+              { fromStoreId: { in: Array.from(reserveHomeStoreIds) } },
+              { toStoreId: { in: Array.from(reserveHomeStoreIds) } },
+            ],
+          },
+          select: { workDate: true, fromStoreId: true, toStoreId: true, remark: true },
+          orderBy: [{ workDate: "asc" }],
+        }),
+      ]);
+
+      const attendanceIdsByDateStore = new Map<string, Set<string>>();
+      for (const a of calcAttendances) {
+        const ds = formatDateOnly(a.workDate);
+        const storeId =
+          a.employee.defaultStoreId ??
+          fallbackHomeStoreByEmployee.get(a.employeeId) ??
+          a.originalStoreId ??
+          null;
+        if (!storeId) continue;
+        const k = `${ds}|${storeId}`;
+        if (!attendanceIdsByDateStore.has(k)) attendanceIdsByDateStore.set(k, new Set());
+        attendanceIdsByDateStore.get(k)!.add(a.employeeId);
+
+        const workH = Number(a.workHours);
+        const overtime = Math.max(0, workH - 8);
+        overtimeByDateStore.set(k, (overtimeByDateStore.get(k) ?? 0) + overtime);
+      }
+
+      const learningOutCountByDateStore = new Map<string, number>();
+      const learningInCountByDateStore = new Map<string, number>();
+      const otherOutCountByDateStore = new Map<string, number>();
+      for (const dr of calcDispatches) {
+        const ds = formatDateOnly(dr.workDate);
+        const reason = extractDispatchReason(dr.remark ?? null);
+        if (dr.fromStoreId) {
+          const k = `${ds}|${dr.fromStoreId}`;
+          if (reason === "跨店學習") {
+            learningOutCountByDateStore.set(k, (learningOutCountByDateStore.get(k) ?? 0) + 1);
+          } else {
+            otherOutCountByDateStore.set(k, (otherOutCountByDateStore.get(k) ?? 0) + 1);
+          }
+        }
+        if (reason === "跨店學習") {
+          const k = `${ds}|${dr.toStoreId}`;
+          learningInCountByDateStore.set(k, (learningInCountByDateStore.get(k) ?? 0) + 1);
+        }
+      }
+
+      for (const ds of datesForCalc) {
+        for (const storeId of reserveHomeStoreIds) {
+          const k = `${ds}|${storeId}`;
+          const empIds = assignedByStore.get(storeId) ?? [];
+          const presentIds = attendanceIdsByDateStore.get(k) ?? new Set<string>();
+          const allPresent = empIds.length > 0 && empIds.every((id) => presentIds.has(id));
+
+          const otherOut = otherOutCountByDateStore.get(k) ?? 0;
+          const learningOut = learningOutCountByDateStore.get(k) ?? 0;
+          const learningIn = learningInCountByDateStore.get(k) ?? 0;
+          const learningPaired = learningOut > 0 && learningIn === learningOut;
+          const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
+
+          storeFullByDateStore.set(k, allPresent && !hasNetDispatchOut);
+        }
+      }
+    }
 
     if (storeIdsForFilter && storeIdsForFilter.length > 0) {
       const dispatchInOnly = await prisma.dispatchRecord.findMany({
@@ -257,6 +407,90 @@ export async function GET(request: Request) {
           workHours: baseHours,
           adjustmentReason: null,
         });
+
+        // 試作規則：員工編號開頭為 A/B（不分大小寫）時，小計固定為 -3
+        // 做法：保留原工時一行，新增一行調整 = -(原工時 + 3)，使 net 變成 -3
+        const codePrefix = (empCode || "").trim().toLowerCase();
+        const isTrial = codePrefix.startsWith("a") || codePrefix.startsWith("b");
+        if (isTrial) {
+          const delta = new Decimal(baseHours).plus(3).mul(-1).toNumber(); // 例如 4.62 -> -7.62
+          net += delta;
+          rows.push({
+            type: "adjustment",
+            id: `trial-${att.id}`,
+            employeeId: emp.id,
+            employeeCode: empCode,
+            name: empName,
+            department: deptForAtt,
+            position,
+            workDate: dateStr,
+            workHours: Math.round(delta * 100) / 100,
+            adjustmentReason: "試作",
+          });
+        }
+
+        // 後勤支援門市（已確認）：出勤工時以 70% 計，顯示「-30%」調整行
+        const hasBackofficeConfirmed = dispList.some((d) => {
+          const reason = extractDispatchReason(d.remark ?? null);
+          return reason === "後勤支援門市" && d.confirmStatus === "已確認";
+        });
+        if (!isTrial && hasBackofficeConfirmed) {
+          const delta = new Decimal(baseHours).mul(-0.3).toNumber();
+          net += delta;
+          rows.push({
+            type: "adjustment",
+            id: `backoffice-${att.id}`,
+            employeeId: emp.id,
+            employeeCode: empCode,
+            name: empName,
+            department: deptForAtt,
+            position,
+            workDate: dateStr,
+            workHours: Math.round(delta * 100) / 100,
+            adjustmentReason: "後勤支援門市以70%工時",
+          });
+        }
+
+        // 儲備人力：保留原工時一行，另新增「儲備人力」調整行（負數），小計才會是折算後工時
+        if (!isTrial && !hasBackofficeConfirmed && emp.isReserveStaff) {
+          const homeStoreId =
+            emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
+          if (homeStoreId) {
+            const k = `${dateStr}|${homeStoreId}`;
+            const storeFull = storeFullByDateStore.get(k) ?? false;
+            const overtimeTotal = overtimeByDateStore.get(k) ?? 0;
+            const percent =
+              emp.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent);
+            if (
+              storeFull &&
+              overtimeTotal <= 3 &&
+              percent != null &&
+              Number.isFinite(percent)
+            ) {
+              const adjusted = new Decimal(baseHours)
+                .mul(new Decimal(percent).div(100))
+                .toNumber();
+              const delta = new Decimal(adjusted).minus(baseHours).toNumber(); // 通常為負數
+              if (Math.abs(delta) > 0) {
+                net += delta;
+                const percentLabel =
+                  Math.round(percent * 100) / 100; // 最多兩位小數
+                rows.push({
+                  type: "adjustment",
+                  id: `reserve-${att.id}`,
+                  employeeId: emp.id,
+                  employeeCode: empCode,
+                  name: empName,
+                  department: deptForAtt,
+                  position,
+                  workDate: dateStr,
+                  workHours: Math.round(delta * 100) / 100,
+                  adjustmentReason: `儲備人力，計${percentLabel}%工時`,
+                });
+              }
+            }
+          }
+        }
 
         for (const a of adjList) {
           const adjStoreId = a.storeId || storeIdForAtt;

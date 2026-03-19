@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
       defaultStoreId: e.defaultStoreId,
       defaultStore: e.defaultStore ?? fallbackStoreByEmployee.get(e.id) ?? null,
       position: e.position,
+      isReserveStaff: e.isReserveStaff,
+      reserveWorkPercent: e.reserveWorkPercent == null ? null : Number(e.reserveWorkPercent),
     }))
   );
 }

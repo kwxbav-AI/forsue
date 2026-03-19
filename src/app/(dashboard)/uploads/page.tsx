@@ -131,6 +131,16 @@ export default function UploadsPage() {
                 }}
               />
             </label>
+            {key === "EMPLOYEE_MASTER" && (
+              <div className="mt-3">
+                <Link
+                  href="/reserve-staff"
+                  className="text-sm text-sky-700 hover:underline"
+                >
+                  前往「儲備人力設定」
+                </Link>
+              </div>
+            )}
             {loading === key && (
               <p className="mt-2 text-sm text-sky-600">上傳中…</p>
             )}

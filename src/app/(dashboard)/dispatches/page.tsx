@@ -63,7 +63,6 @@ export default function DispatchesPage() {
 
   const [form, setForm] = useState({
     employeeId: "",
-    fromStoreId: "",
     toStoreId: "",
     startDate: new Date().toISOString().slice(0, 10),
     endDate: new Date().toISOString().slice(0, 10),
@@ -130,7 +129,6 @@ export default function DispatchesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         employeeId: form.employeeId,
-        fromStoreId: form.fromStoreId || null,
         toStoreId: form.toStoreId,
         startDate: form.startDate,
         endDate: form.endDate,
@@ -278,22 +276,6 @@ export default function DispatchesPage() {
                 </div>
               )}
             </div>
-          </label>
-
-          <label className="block">
-            <span className="text-sm text-slate-600">原門市（調出）</span>
-            <select
-              value={form.fromStoreId}
-              onChange={(e) => setForm((f) => ({ ...f, fromStoreId: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            >
-              <option value="">（可留空，使用出勤原門市）</option>
-              {activeStores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
           </label>
 
           <label className="block">
