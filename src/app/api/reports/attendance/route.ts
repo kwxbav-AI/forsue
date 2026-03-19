@@ -181,7 +181,7 @@ export async function GET(request: Request) {
             include: { employee: true },
             orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
           })
-        : [],
+        : ([] as any[]),
       prisma.dispatchRecord.findMany({
         where: {
           workDate: { gte: range.start, lte: range.end },
@@ -192,12 +192,12 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    function extractDispatchReason(remark: string | null): string {
+    const extractDispatchReason = (remark: string | null): string => {
       if (!remark) return "";
       const s = remark.trim();
       if (!s) return "";
       return s.split("/")[0].trim();
-    }
+    };
 
     // 針對「儲備人力」計算：判定「全店到齊」與「加班總時數」必須看整間店的資料，
     // 不能被姓名/工號搜尋（empWhere）篩到只剩一個人，否則會誤判未到齊。
@@ -222,10 +222,10 @@ export async function GET(request: Request) {
         new Set(records.map((r) => formatDateOnly(r.workDate)))
       );
       const calcEmployeeIds = new Set<string>();
-      for (const sid of reserveHomeStoreIds) {
+      reserveHomeStoreIds.forEach((sid) => {
         const empIds = assignedByStore.get(sid) ?? [];
         for (const eid of empIds) calcEmployeeIds.add(eid);
-      }
+      });
       const calcEmployeeIdList = Array.from(calcEmployeeIds);
 
       const [calcAttendances, calcDispatches] = await Promise.all([
@@ -297,7 +297,7 @@ export async function GET(request: Request) {
       }
 
       for (const ds of datesForCalc) {
-        for (const storeId of reserveHomeStoreIds) {
+        reserveHomeStoreIds.forEach((storeId) => {
           const k = `${ds}|${storeId}`;
           const empIds = assignedByStore.get(storeId) ?? [];
           const presentIds = attendanceIdsByDateStore.get(k) ?? new Set<string>();
@@ -310,7 +310,7 @@ export async function GET(request: Request) {
           const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
 
           storeFullByDateStore.set(k, allPresent && !hasNetDispatchOut);
-        }
+        });
       }
     }
 
@@ -349,14 +349,17 @@ export async function GET(request: Request) {
 
     const rows: AttendanceReportRow[] = [];
 
-    function getDept(storeId: string | null, emp: { defaultStore?: { department: string | null; name: string | null } | null }): string {
+    const getDept = (
+      storeId: string | null,
+      emp: any
+    ): string => {
       if (storeId) {
         const s = storeById.get(storeId);
         if (s) return (s.department || s.name || "").trim() || "—";
       }
       const def = emp.defaultStore;
       return (def?.department || def?.name || "").trim() || "—";
-    }
+    };
 
     const sortedKeys = new Set<string>();
     for (const r of records) {

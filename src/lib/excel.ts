@@ -13,7 +13,7 @@ export function readFirstSheet(buffer: Buffer): SheetRow[] {
     raw: false,
     defval: "",
   });
-  return data as SheetRow[];
+  return data as unknown as SheetRow[];
 }
 
 /** 過濾空白列（整列都空） */

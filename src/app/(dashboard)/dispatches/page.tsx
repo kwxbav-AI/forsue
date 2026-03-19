@@ -61,7 +61,18 @@ export default function DispatchesPage() {
   const [editRemark, setEditRemark] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
-  const [form, setForm] = useState({
+  type DispatchReason = (typeof DISPATCH_REASONS)[number];
+
+  const [form, setForm] = useState<{
+    employeeId: string;
+    toStoreId: string;
+    startDate: string;
+    endDate: string;
+    startTime: string;
+    endTime: string;
+    reason: DispatchReason;
+    note: string;
+  }>({
     employeeId: "",
     toStoreId: "",
     startDate: new Date().toISOString().slice(0, 10),
@@ -341,7 +352,9 @@ export default function DispatchesPage() {
             <span className="text-sm text-slate-600">事由</span>
             <select
               value={form.reason}
-              onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, reason: e.target.value as DispatchReason }))
+              }
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
             >
               {DISPATCH_REASONS.map((r) => (

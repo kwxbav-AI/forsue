@@ -105,7 +105,7 @@ export async function computeStoreHoursByEmployee(
   }
 
   const storeFullByStoreId = new Map<string, boolean>();
-  for (const [storeId, empIds] of assignedByStore) {
+  assignedByStore.forEach((empIds, storeId) => {
     // 全店到齊：該門市名冊上的人都在出勤表有出現，且當天沒有調度調出（fromStoreId=該門市）
     const allPresent = empIds.every((id) => attendanceEmployeeIds.has(id));
     const otherOut = otherOutCountByStoreId.get(storeId) ?? 0;
@@ -115,7 +115,7 @@ export async function computeStoreHoursByEmployee(
     const learningPaired = learningOut > 0 && learningIn === learningOut;
     const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
     storeFullByStoreId.set(storeId, allPresent && !hasNetDispatchOut);
-  }
+  });
 
   const storeOvertimeByStoreId = new Map<string, number>();
   for (const att of attendances) {
@@ -235,12 +235,12 @@ export async function computeTotalWorkHoursByStore(workDate: Date): Promise<Reco
   const byEmployee = await computeStoreHoursByEmployee(workDate);
   const byStore: Record<string, number> = {};
 
-  for (const storeHours of byEmployee.values()) {
+  byEmployee.forEach((storeHours) => {
     for (const [storeId, hours] of Object.entries(storeHours)) {
       if (storeId === "unknown") continue;
       byStore[storeId] = (byStore[storeId] ?? 0) + hours;
     }
-  }
+  });
 
   return byStore;
 }

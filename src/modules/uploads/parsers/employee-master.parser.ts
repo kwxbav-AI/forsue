@@ -32,7 +32,7 @@ function readAllSheets(buffer: Buffer): { sheetName: string; rows: unknown[][] }
       header: 1,
       raw: false,
       defval: "",
-    }) as unknown[][];
+    }) as unknown as unknown[][];
     return { sheetName, rows: skipEmptyRows(rows) };
   });
 }

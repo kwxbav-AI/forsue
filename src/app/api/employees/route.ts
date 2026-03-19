@@ -32,10 +32,11 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true, code: true, department: true },
       });
       const storeById = new Map(stores.map((s) => [s.id, s]));
-      for (const [empId, sid] of employeeToStoreId) {
+      // 用 forEach 避免非 ES2015 target 下對 Map 的迭代展開型別限制
+      employeeToStoreId.forEach((sid, empId) => {
         const store = storeById.get(sid);
         if (store) fallbackStoreByEmployee.set(empId, store);
-      }
+      });
     }
   }
 

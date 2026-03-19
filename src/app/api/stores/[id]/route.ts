@@ -66,7 +66,9 @@ export async function PUT(
       code: updated.code,
       department: updated.department,
       isActive: updated.isActive,
-      aliases: ("aliases" in updated ? updated.aliases : []).map((a: any) => a.code),
+      aliases: Array.isArray((updated as any).aliases)
+        ? (updated as any).aliases.map((a: any) => a.code)
+        : [],
     });
   } catch (e) {
     console.error(e);

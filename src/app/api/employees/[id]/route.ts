@@ -20,12 +20,19 @@ export async function PATCH(
       reserveWorkPercent = Number.isFinite(v) ? v : NaN;
     }
 
-    if (reserveWorkPercent !== undefined) {
+    // reserveWorkPercent 可能是 null（取消儲備人力時會清空），因此只在為數字時做範圍檢查
+    if (reserveWorkPercent != null) {
       if (!Number.isFinite(reserveWorkPercent)) {
-        return NextResponse.json({ error: "工時計算% 必須為數字" }, { status: 400 });
+        return NextResponse.json(
+          { error: "工時計算% 必須為數字" },
+          { status: 400 }
+        );
       }
       if (reserveWorkPercent < 0 || reserveWorkPercent > 100) {
-        return NextResponse.json({ error: "工時計算% 必須介於 0~100" }, { status: 400 });
+        return NextResponse.json(
+          { error: "工時計算% 必須介於 0~100" },
+          { status: 400 }
+        );
       }
     }
 

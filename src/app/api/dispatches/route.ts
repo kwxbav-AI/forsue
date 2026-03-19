@@ -53,7 +53,8 @@ export async function GET(request: NextRequest) {
     take: 500,
   });
 
-  const employeeIds = [...new Set(list.map((d) => d.employeeId))];
+  // 避免 TypeScript 在非 ES2015 目標下對 Set 可迭代展開（...）的限制
+  const employeeIds = Array.from(new Set(list.map((d) => d.employeeId)));
   const attendanceByKey = new Map<string, number>();
   if (where.workDate && employeeIds.length > 0) {
     const attendances = await prisma.attendanceRecord.findMany({

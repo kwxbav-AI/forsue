@@ -24,9 +24,9 @@ export async function GET(request: NextRequest) {
   const employeeMap = new Map(employees.map((e) => [e.id, e]));
 
   const detail: { employeeId: string; employeeCode: string; name: string; workHours: number }[] = [];
-  for (const [empId, storeHours] of byEmployee.entries()) {
+  byEmployee.forEach((storeHours, empId) => {
     const hours = storeHours[storeId];
-    if (hours == null || hours <= 0) continue;
+    if (hours == null || hours <= 0) return;
     const emp = employeeMap.get(empId);
     detail.push({
       employeeId: empId,
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       name: emp?.name ?? "",
       workHours: hours,
     });
-  }
+  });
 
   return NextResponse.json({ workDate: date, storeId, detail });
 }

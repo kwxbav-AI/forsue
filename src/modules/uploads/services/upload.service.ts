@@ -7,6 +7,7 @@ import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/emp
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
 import { toStartOfDay, formatDateOnly } from "@/lib/date";
+import Decimal from "decimal.js";
 
 /** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
 function uniqueCalendarDates(dates: Date[]): Date[] {
@@ -16,7 +17,9 @@ function uniqueCalendarDates(dates: Date[]): Date[] {
     const key = formatDateOnly(d);
     if (!map.has(key)) map.set(key, d);
   }
-  return [...map.values()];
+  const result: Date[] = [];
+  map.forEach((v) => result.push(v));
+  return result;
 }
 import type { UploadResult } from "../types";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
@@ -168,7 +171,10 @@ export async function uploadAttendance(
   });
 
   const dates = parsed.data.map((r) => toStartOfDay(r.workDate));
-  const uniqueDates = [...new Set(dates.map((d) => d.getTime()))].map((t) => new Date(t));
+  const uniqueDates: Date[] = [];
+  const uniqueTimes = new Set<number>();
+  dates.forEach((d) => uniqueTimes.add(d.getTime()));
+  uniqueTimes.forEach((t) => uniqueDates.push(new Date(t)));
   await prisma.attendanceRecord.deleteMany({
     where: { workDate: { in: uniqueDates } },
   });
@@ -259,9 +265,10 @@ export async function uploadDispatch(
     },
   });
 
-  const uniqueDates = [...new Set(parsed.data.map((r) => toStartOfDay(r.workDate).getTime()))].map(
-    (t) => new Date(t)
-  );
+  const uniqueDates: Date[] = [];
+  const uniqueTimes = new Set<number>();
+  parsed.data.forEach((r) => uniqueTimes.add(toStartOfDay(r.workDate).getTime()));
+  uniqueTimes.forEach((t) => uniqueDates.push(new Date(t)));
   await prisma.dispatchRecord.deleteMany({
     where: { workDate: { in: uniqueDates } },
   });
@@ -441,7 +448,8 @@ export async function uploadDailyRevenue(
     }
   }
 
-  const aggList = [...aggregated.values()];
+  const aggList: any[] = [];
+  aggregated.forEach((v) => aggList.push(v));
   const UPSERT_CHUNK = 32;
   for (let i = 0; i < aggList.length; i += UPSERT_CHUNK) {
     const chunk = aggList.slice(i, i + UPSERT_CHUNK);

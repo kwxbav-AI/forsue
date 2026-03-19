@@ -3,7 +3,13 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 
-type Store = { id: string; code: string | null; name: string; department?: string | null };
+type Store = {
+  id: string;
+  code: string | null;
+  name: string;
+  department?: string | null;
+  isActive?: boolean;
+};
 
 type Row = {
   id: string;

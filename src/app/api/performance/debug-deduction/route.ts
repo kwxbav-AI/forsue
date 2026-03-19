@@ -3,13 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { toStartOfDay, formatDateOnly, parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "@/modules/performance/services/attendance-allocation.service";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/performance/debug-deduction?date=2026-02-13
  * 回傳當日內容篇數扣工時與各門市總工時，用來確認扣工時是否有從總工時扣除。
  */
 export async function GET(request: NextRequest) {
   try {
-    const dateStr = request.nextUrl.searchParams.get("date");
+    const url = new URL(request.url);
+    const dateStr = url.searchParams.get("date");
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json(
         { error: "請提供 date 參數，格式 yyyy-MM-dd" },
@@ -54,7 +57,8 @@ export async function GET(request: NextRequest) {
       const rawHours = storeHours[store.id] ?? 0;
       const deductionHours = contentDeductionHoursByStore[store.id] ?? 0;
       const expectedTotal = Math.max(0, rawHours - deductionHours);
-      const actualTotal = perfByStore.get(store.id) ?? null;
+      const actualTotalDecimal = perfByStore.get(store.id) ?? null;
+      const actualTotal = actualTotalDecimal != null ? Number(actualTotalDecimal) : null;
       return {
         storeId: store.id,
         storeName: store.name,
