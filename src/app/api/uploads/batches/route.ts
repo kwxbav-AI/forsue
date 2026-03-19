@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 /** 取得各檔案類型最近一筆上傳紀錄 */
 export async function GET() {
   const types = ["ATTENDANCE", "DISPATCH", "EMPLOYEE_MASTER", "DAILY_REVENUE", "INVENTORY_REFERENCE"] as const;
