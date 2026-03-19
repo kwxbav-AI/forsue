@@ -342,13 +342,15 @@ export default function ContentEntriesPage() {
                     <select
                       value={n === 1 ? form.contentDesc1 : n === 2 ? form.contentDesc2 : form.contentDesc3}
                       onChange={(e) =>
-                        setForm((f) =>
-                          n === 1
-                            ? { ...f, contentDesc1: e.target.value }
-                            : n === 2
-                              ? { ...f, contentDesc2: e.target.value }
-                              : { ...f, contentDesc3: e.target.value }
-                        )
+                        setForm((f) => {
+                          if (n === 1) {
+                            return { ...f, contentDesc1: e.target.value };
+                          }
+                          if (n === 2) {
+                            return { ...f, contentDesc2: e.target.value };
+                          }
+                          return { ...f, contentDesc3: e.target.value };
+                        })
                       }
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
                     >
