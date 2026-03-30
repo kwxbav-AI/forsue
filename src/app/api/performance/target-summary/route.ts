@@ -4,6 +4,25 @@ import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
+/** 選定區間內（含起訖）的「日曆日」，逐日 UTC，排除週日與假日後的天數 — 作為總天數分母 */
+function countWorkingDaysInRangeUTC(
+  startYmd: string,
+  endYmd: string,
+  holidayYmdSet: Set<string>
+): number {
+  const start = parseDateOnlyUTC(startYmd);
+  const end = parseDateOnlyUTC(endYmd);
+  let n = 0;
+  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
+    const d = new Date(t);
+    const ymd = d.toISOString().slice(0, 10);
+    if (d.getUTCDay() === 0) continue;
+    if (holidayYmdSet.has(ymd)) continue;
+    n++;
+  }
+  return n;
+}
+
 /** 達標次數統計：日期區間內各門市達標天數、未達標天數、達標率、平均工效比 */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -48,14 +67,25 @@ export async function GET(request: NextRequest) {
     holidays.map((h) => h.date.toISOString().slice(0, 10))
   );
 
+  const workingDaysInPeriod = countWorkingDaysInRangeUTC(startDate, endDate, holidaySet);
+
   const byStore = new Map<
     string,
-    { storeId: string; storeName: string; storeCode: string | null; totalDays: number; metDays: number; totalRevenue: number; totalHours: number; sumRatio: number }
+    {
+      storeId: string;
+      storeName: string;
+      storeCode: string | null;
+      metDays: number;
+      dataDays: number;
+      totalRevenue: number;
+      totalHours: number;
+      sumRatio: number;
+    }
   >();
 
   for (const p of list) {
     const dateOnly = p.workDate.toISOString().slice(0, 10);
-    const isSunday = p.workDate.getDay() === 0;
+    const isSunday = p.workDate.getUTCDay() === 0;
     const isHoliday = holidaySet.has(dateOnly);
     if (isSunday || isHoliday) continue;
 
@@ -65,15 +95,15 @@ export async function GET(request: NextRequest) {
         storeId: p.storeId,
         storeName: p.store.name,
         storeCode: p.store.code,
-        totalDays: 0,
         metDays: 0,
+        dataDays: 0,
         totalRevenue: 0,
         totalHours: 0,
         sumRatio: 0,
       });
     }
     const s = byStore.get(key)!;
-    s.totalDays += 1;
+    s.dataDays += 1;
     if (p.isTargetMet) s.metDays += 1;
     s.totalRevenue += Number(p.revenueAmount);
     s.totalHours += Number(p.totalWorkHours);
@@ -84,11 +114,11 @@ export async function GET(request: NextRequest) {
     storeId: s.storeId,
     storeName: s.storeName,
     storeCode: s.storeCode,
-    totalDays: s.totalDays,
+    totalDays: workingDaysInPeriod,
     metDays: s.metDays,
-    notMetDays: s.totalDays - s.metDays,
-    metRate: s.totalDays > 0 ? s.metDays / s.totalDays : 0,
-    avgEfficiencyRatio: s.totalDays > 0 ? s.sumRatio / s.totalDays : 0,
+    notMetDays: workingDaysInPeriod - s.metDays,
+    metRate: workingDaysInPeriod > 0 ? s.metDays / workingDaysInPeriod : 0,
+    avgEfficiencyRatio: s.dataDays > 0 ? s.sumRatio / s.dataDays : 0,
   }));
 
   result.sort((a, b) => b.metRate - a.metRate);
