@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Vercel 建置在 Linux；本機 Windows 用 native。兩者都產出可避免建置/執行找不到 query engine。
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
