@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { toStartOfDay } from "@/lib/date";
 import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
 
+export const dynamic = "force-dynamic";
+
 /** 單一員工單日總上班時數與當天上傳門市（含調度與工時異動後） */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

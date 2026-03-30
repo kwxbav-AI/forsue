@@ -4,6 +4,8 @@ import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const bodySchema = z.object({
   workDate: z.string(),
   branch: z.string(),

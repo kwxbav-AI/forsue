@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 
+export const dynamic = "force-dynamic";
+
 /** 達標次數統計：日期區間內各門市達標天數、未達標天數、達標率、平均工效比 */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

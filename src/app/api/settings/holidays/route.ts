@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC } from "@/lib/date";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const list = await prisma.holiday.findMany({
     orderBy: { date: "asc" },

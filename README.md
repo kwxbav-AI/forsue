@@ -83,7 +83,8 @@
 ### 方式二：正式上線（有網址、外網可連）
 
 希望**有固定網址**、不在公司也能用（例如在家、出差），就要把程式與資料庫都放到網路上。  
-👉 **逐步教學**：[對外網址部署步驟](docs/對外網址部署步驟.md)（Neon + GitHub + Vercel）
+👉 **逐步教學**：[對外網址部署步驟](docs/對外網址部署步驟.md)（Neon + GitHub + Vercel）  
+👉 **只部署到 Vercel（分步說明）**：[Vercel部署步驟](docs/Vercel部署步驟.md)
 
 1. **資料庫**  
    - 使用**雲端 PostgreSQL**（例如 [Neon](https://neon.tech)、[Supabase](https://supabase.com)、[Railway](https://railway.app) 等）。  

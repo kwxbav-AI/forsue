@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   try {
     const dates = await prisma.performanceDaily.findMany({

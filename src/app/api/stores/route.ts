@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 function getSortKey(code: string): string {
   // 讓 A2 < A10：字母 + 數字補零
   const m = code.trim().toUpperCase().match(/^([A-Z]+)(\d+)?$/);

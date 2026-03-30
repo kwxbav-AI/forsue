@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const updateSchema = z.object({
   storeId: z.string().optional(),
   reason: z.enum(["EXPIRY", "CLEANING", "INVENTORY_REGISTRATION", "OTHER"]).optional(),
@@ -12,9 +14,9 @@ const updateSchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
   try {
     const body = await request.json();
     const parsed = updateSchema.safeParse(body);
@@ -48,9 +50,9 @@ export async function PUT(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
   try {
     const deleted = await prisma.storeHourDeduction.delete({ where: { id } });
     await performanceEngineService.recalculateDailyPerformance(deleted.workDate);

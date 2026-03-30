@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { getServerSession } from "@/lib/auth-server";
 
-export default function SettingsHubPage() {
+export default async function SettingsHubPage() {
+  const session = await getServerSession();
+  const isAdmin = session?.role === "ADMIN";
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -14,6 +18,15 @@ export default function SettingsHubPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {isAdmin ? (
+          <Link
+            href="/settings/users"
+            className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+          >
+            <span className="font-medium text-slate-800">帳號與權限</span>
+            <p className="mt-1 text-sm text-slate-500">新增帳號、角色（管理員／編輯者／檢視者）</p>
+          </Link>
+        ) : null}
         <Link
           href="/stores"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
@@ -46,4 +59,3 @@ export default function SettingsHubPage() {
     </div>
   );
 }
-

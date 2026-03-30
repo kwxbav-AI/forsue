@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
@@ -76,6 +77,23 @@ async function main() {
         isActive: true,
       },
     });
+  }
+
+  const userCount = await prisma.appUser.count();
+  if (userCount === 0) {
+    const adminUser = process.env.SEED_ADMIN_USERNAME || "admin";
+    const adminPass = process.env.SEED_ADMIN_PASSWORD || "ChangeMe123!";
+    const passwordHash = await bcrypt.hash(adminPass, 10);
+    await prisma.appUser.create({
+      data: {
+        username: adminUser,
+        passwordHash,
+        role: "ADMIN",
+      },
+    });
+    console.log(
+      `Created default admin login: username="${adminUser}" (change password in production)`
+    );
   }
 
   console.log(`Seed done. Stores: ${STORES.length}, employees: 3, target: 4500`);

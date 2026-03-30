@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { formatDateOnly, toDateRange } from "@/lib/date";
 import Decimal from "decimal.js";
 
+export const dynamic = "force-dynamic";
+
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
   STAFF_SHORTAGE: "人力不足",
   MEETING_REVIEW: "會議/考核",

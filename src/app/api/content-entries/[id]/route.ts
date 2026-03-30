@@ -4,6 +4,8 @@ import { parseDateOnlyUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const bodySchema = z.object({
   workDate: z.string().optional(),
   branch: z.string().optional(),
@@ -24,9 +26,9 @@ const bodySchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
   try {
     const body = await request.json();
     const parsed = bodySchema.safeParse(body);
@@ -82,9 +84,9 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await params;
+  const { id } = params;
   try {
     await prisma.contentEntry.delete({ where: { id } });
     return NextResponse.json({ success: true });

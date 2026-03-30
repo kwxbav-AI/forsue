@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { toStartOfDay } from "@/lib/date";
 import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
 
+export const dynamic = "force-dynamic";
+
 /** 單一門市單日明細：各員工在該門市的工時 */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

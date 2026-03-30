@@ -4,6 +4,8 @@ import { toStartOfDay, toDateRange, formatDateOnly } from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const createSchema = z.object({
   workDate: z.string(),
   storeId: z.string(),

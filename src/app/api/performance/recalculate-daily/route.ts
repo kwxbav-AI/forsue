@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { toStartOfDay } from "@/lib/date";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));

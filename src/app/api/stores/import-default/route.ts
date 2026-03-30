@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STORES } from "@/../prisma/stores.data";
 
+export const dynamic = "force-dynamic";
+
 /**
  * 將預設門市清單寫入資料庫（可重複執行，會 upsert）
  * 用途：避免 seed 在 Windows 被鎖檔時無法執行

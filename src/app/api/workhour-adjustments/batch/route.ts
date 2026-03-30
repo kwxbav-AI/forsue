@@ -4,6 +4,8 @@ import { toStartOfDay } from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const bodySchema = z.object({
   workDate: z.string(),
   adjustmentType: z.enum(["MANAGER_MEETING", "PROMOTION_REVIEW", "OTHER"]),

@@ -252,3 +252,20 @@ model ContentEntry {
   @@index([workDate])
   @@index([workDate, branch])
 }
+
+/// 網頁登入帳號（與 Employee 無關）
+enum UserRole {
+  ADMIN // 全部功能 + 帳號管理
+  EDITOR // 營運填報、上傳、設定（不含帳號管理）
+  VIEWER // 僅報表與工效查詢（唯讀）
+}
+
+model AppUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(EDITOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

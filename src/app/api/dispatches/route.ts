@@ -5,6 +5,8 @@ import { performanceEngineService } from "@/modules/performance/services/perform
 import { z } from "zod";
 import { addDays } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 const createSchema = z.object({
   employeeId: z.string(),
   fromStoreId: z.string().optional().nullable(),
