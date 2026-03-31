@@ -4,6 +4,12 @@ import { isAuthEnabled, SESSION_COOKIE_NAME } from "@/lib/auth-config";
 import { decodeSessionToken } from "@/lib/auth-session";
 import { canAccessApi, canAccessPage } from "@/lib/permissions";
 
+const PERMISSIONS_CACHE_TTL_MS = 5000;
+const effectivePermsCache = new Map<
+  string,
+  { expiresAt: number; data: { allowedPagePathPatterns: string[]; allowedApiReadPatterns: any[]; allowedApiWritePatterns: any[] } }
+>();
+
 function isStaticAsset(pathname: string): boolean {
   return /\.(ico|png|jpg|jpeg|gif|webp|svg|txt|xml|woff2?|ttf|eot)$/i.test(pathname);
 }
@@ -42,7 +48,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = token ? await decodeSessionToken(token) : null;
+  let session = token ? await decodeSessionToken(token) : null;
 
   if (!session) {
     if (pathname.startsWith("/api")) {
@@ -57,14 +63,51 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Edge runtime 不能直接用 Prisma；為了「儲存後立刻生效」，非 legacy role 走即時有效權限 API。
+  // 目前主要是 STORE_STAFF。
+  if (session && session.role !== "ADMIN" && session.role !== "EDITOR" && session.role !== "VIEWER") {
+    const role = session.role;
+    const cached = effectivePermsCache.get(role);
+    const now = Date.now();
+
+    if (!cached || cached.expiresAt <= now) {
+      try {
+        const url = new URL("/api/role-permissions/effective", request.url);
+        url.searchParams.set("role", role);
+        const res = await fetch(url.toString(), { headers: { accept: "application/json" } });
+        const data = await res.json();
+        effectivePermsCache.set(role, {
+          expiresAt: now + PERMISSIONS_CACHE_TTL_MS,
+          data,
+        });
+      } catch {
+        // 失敗就用 token 裡的舊值（至少不會破壞登入流程）
+      }
+    }
+
+    const fresh = effectivePermsCache.get(role)?.data;
+    if (fresh && Array.isArray(fresh.allowedPagePathPatterns)) {
+      session = {
+        ...session,
+        allowedPagePathPatterns: fresh.allowedPagePathPatterns,
+        allowedApiReadPatterns: Array.isArray(fresh.allowedApiReadPatterns)
+          ? fresh.allowedApiReadPatterns
+          : session.allowedApiReadPatterns,
+        allowedApiWritePatterns: Array.isArray(fresh.allowedApiWritePatterns)
+          ? fresh.allowedApiWritePatterns
+          : session.allowedApiWritePatterns,
+      };
+    }
+  }
+
   if (pathname.startsWith("/api")) {
-    if (!canAccessApi(session.role, pathname, request.method)) {
+    if (!canAccessApi(session, pathname, request.method)) {
       return NextResponse.json({ error: "權限不足" }, { status: 403 });
     }
     return NextResponse.next();
   }
 
-  if (!canAccessPage(session.role, pathname)) {
+  if (!canAccessPage(session, pathname)) {
     return NextResponse.redirect(new URL("/forbidden", request.url));
   }
 

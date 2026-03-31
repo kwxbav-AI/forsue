@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { isAuthEnabled } from "@/lib/auth-config";
 import { getServerSession } from "@/lib/auth-server";
+import { canAccessPageDb } from "@/lib/permissions-db";
 
 export default async function HomePage() {
   const authOn = isAuthEnabled();
   const session = await getServerSession();
-  const canEdit =
-    !authOn ||
-    (session != null &&
-      (session.role === "ADMIN" || session.role === "EDITOR"));
 
   const cards = [
     {
@@ -43,11 +40,18 @@ export default async function HomePage() {
     },
   ] as const;
 
-  const visible = cards.filter((c) => {
-    if (!authOn) return true;
-    if (canEdit) return true;
-    return c.key === "reports" || c.key === "data";
-  });
+  const visible = !authOn
+    ? cards
+    : (
+        await Promise.all(
+          cards.map(async (c) => ({
+            c,
+            ok: session != null && (await canAccessPageDb(session.role, c.href)),
+          }))
+        )
+      )
+        .filter((x) => x.ok)
+        .map((x) => x.c);
 
   return (
     <div className="p-6 sm:p-8">

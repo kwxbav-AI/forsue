@@ -4,6 +4,7 @@ import { isAuthEnabled } from "@/lib/auth-config";
 export const dynamic = "force-dynamic";
 import { getServerSession } from "@/lib/auth-server";
 import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { canAccessPageDb } from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
 
 export default async function DashboardLayout({
@@ -14,10 +15,15 @@ export default async function DashboardLayout({
   const authOn = isAuthEnabled();
   const session = await getServerSession();
   const showLogout = authOn;
-  const canEdit =
+  const canUploads =
+    !authOn || (session != null && (await canAccessPageDb(session.role, "/uploads")));
+  const canWorkhourRelated =
     !authOn ||
     (session != null &&
-      (session.role === "ADMIN" || session.role === "EDITOR"));
+      (await canAccessPageDb(session.role, "/workhour-related")));
+  const canSettings =
+    !authOn ||
+    (session != null && (await canAccessPageDb(session.role, "/settings")));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -35,12 +41,12 @@ export default async function DashboardLayout({
             {showLogout ? <AuthLogoutButton /> : null}
           </div>
           <nav className="flex flex-wrap gap-3 text-sm">
-            {canEdit ? (
+            {canUploads ? (
               <Link href="/uploads" className="text-slate-600 hover:text-sky-600">
                 資料上傳中心
               </Link>
             ) : null}
-            {canEdit ? (
+            {canWorkhourRelated ? (
               <Link href="/workhour-related" className="text-slate-600 hover:text-sky-600">
                 工時異動相關
               </Link>
@@ -51,7 +57,7 @@ export default async function DashboardLayout({
             <Link href="/data" className="text-slate-600 hover:text-sky-600">
               資料區
             </Link>
-            {canEdit ? (
+            {canSettings ? (
               <Link href="/settings" className="text-slate-600 hover:text-sky-600">
                 設定區
               </Link>

@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { isAuthEnabled } from "@/lib/auth-config";
+import { getServerSession } from "@/lib/auth-server";
+import { canAccessPageDb } from "@/lib/permissions-db";
 
 const ITEMS = [
   {
@@ -28,7 +31,22 @@ const ITEMS = [
   },
 ];
 
-export default function WorkhourRelatedPage() {
+export default async function WorkhourRelatedPage() {
+  const authOn = isAuthEnabled();
+  const session = await getServerSession();
+  const items = !authOn
+    ? ITEMS
+    : (
+        await Promise.all(
+          ITEMS.map(async (item) => ({
+            item,
+            ok: session != null && (await canAccessPageDb(session.role, item.href)),
+          }))
+        )
+      )
+        .filter((x) => x.ok)
+        .map((x) => x.item);
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -42,7 +60,7 @@ export default function WorkhourRelatedPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ITEMS.map((item) => (
+        {items.map((item) => (
           <Link
             key={item.href}
             href={item.href}

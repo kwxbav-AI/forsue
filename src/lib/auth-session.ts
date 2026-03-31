@@ -14,12 +14,18 @@ export type SessionPayload = {
   userId: string;
   username: string;
   role: UserRole;
+  allowedPagePathPatterns: string[];
+  allowedApiReadPatterns: { pathPattern: string; method: string | null }[];
+  allowedApiWritePatterns: { pathPattern: string; method: string | null }[];
 };
 
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
   return new SignJWT({
     username: payload.username,
     role: payload.role,
+    allowedPagePathPatterns: payload.allowedPagePathPatterns,
+    allowedApiReadPatterns: payload.allowedApiReadPatterns,
+    allowedApiWritePatterns: payload.allowedApiWritePatterns,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.userId)
@@ -34,8 +40,44 @@ export async function decodeSessionToken(token: string): Promise<SessionPayload 
     const userId = typeof payload.sub === "string" ? payload.sub : null;
     const username = typeof payload.username === "string" ? payload.username : null;
     const role = payload.role as UserRole | undefined;
+    const allowedPagePathPatterns =
+      Array.isArray(payload.allowedPagePathPatterns) && payload.allowedPagePathPatterns.every((x) => typeof x === "string")
+        ? (payload.allowedPagePathPatterns as string[])
+        : [];
+    const allowedApiReadPatternsRaw = payload.allowedApiReadPatterns;
+    const allowedApiWritePatternsRaw = payload.allowedApiWritePatterns;
+
+    const allowedApiReadPatterns =
+      Array.isArray(allowedApiReadPatternsRaw) && allowedApiReadPatternsRaw.every((x) => typeof x === "object" && x && "pathPattern" in x)
+        ? (allowedApiReadPatternsRaw as unknown[]).map((x) => ({
+            pathPattern: typeof (x as any).pathPattern === "string" ? (x as any).pathPattern : "",
+            method:
+              (x as any).method === null || typeof (x as any).method === "string"
+                ? (x as any).method
+                : null,
+          })).filter((p) => p.pathPattern)
+        : [];
+
+    const allowedApiWritePatterns =
+      Array.isArray(allowedApiWritePatternsRaw) && allowedApiWritePatternsRaw.every((x) => typeof x === "object" && x && "pathPattern" in x)
+        ? (allowedApiWritePatternsRaw as unknown[]).map((x) => ({
+            pathPattern: typeof (x as any).pathPattern === "string" ? (x as any).pathPattern : "",
+            method:
+              (x as any).method === null || typeof (x as any).method === "string"
+                ? (x as any).method
+                : null,
+          })).filter((p) => p.pathPattern)
+        : [];
+
     if (!userId || !username || !role) return null;
-    return { userId, username, role };
+    return {
+      userId,
+      username,
+      role,
+      allowedPagePathPatterns,
+      allowedApiReadPatterns,
+      allowedApiWritePatterns,
+    };
   } catch {
     return null;
   }

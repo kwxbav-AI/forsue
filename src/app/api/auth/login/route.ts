@@ -46,10 +46,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "帳號或密碼錯誤" }, { status: 401 });
   }
 
+  // 在登入時把「本角色允許的頁面/API 模式」寫入 token payload，
+  // 讓 middleware（Edge runtime）可以不查 DB 直接做權限判斷。
+  const rolePerms = await prisma.rolePermission.findMany({
+    where: { role: user.role },
+    include: {
+      module: {
+        select: {
+          patterns: {
+            select: { kind: true, pathPattern: true, method: true },
+          },
+        },
+      },
+    },
+  });
+
+  const allowedPagePathPatterns = new Set<string>();
+  const allowedApiReadPatterns = new Map<string, { pathPattern: string; method: string | null }>();
+  const allowedApiWritePatterns = new Map<string, { pathPattern: string; method: string | null }>();
+
+  for (const rp of rolePerms) {
+    const canReadEffective = rp.canRead || rp.canWrite;
+    const canWriteEffective = rp.canWrite;
+
+    for (const pattern of rp.module.patterns) {
+      if (pattern.kind === "PAGE") {
+        if (canReadEffective) allowedPagePathPatterns.add(pattern.pathPattern);
+        continue;
+      }
+
+      // API
+      const methodNormalized = pattern.method && pattern.method.length > 0 ? pattern.method : null;
+      const key = `${pattern.pathPattern}::${methodNormalized ?? ""}`;
+
+      if (canReadEffective) {
+        allowedApiReadPatterns.set(key, { pathPattern: pattern.pathPattern, method: methodNormalized });
+      }
+      if (canWriteEffective) {
+        allowedApiWritePatterns.set(key, { pathPattern: pattern.pathPattern, method: methodNormalized });
+      }
+    }
+  }
+
   const token = await createSessionToken({
     userId: user.id,
     username: user.username,
     role: user.role,
+    allowedPagePathPatterns: Array.from(allowedPagePathPatterns),
+    allowedApiReadPatterns: Array.from(allowedApiReadPatterns.values()),
+    allowedApiWritePatterns: Array.from(allowedApiWritePatterns.values()),
   });
 
   const res = NextResponse.json({ ok: true });

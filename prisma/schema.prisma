@@ -260,6 +260,7 @@ enum UserRole {
   ADMIN // 全部功能 + 帳號管理
   EDITOR // 營運填報、上傳、設定（不含帳號管理）
   VIEWER // 僅報表與工效查詢（唯讀）
+  STORE_STAFF // 門市人員（依可設定權限）
 }
 
 model AppUser {
@@ -270,4 +271,50 @@ model AppUser {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+enum PermissionPatternKind {
+  PAGE // 網頁路徑（pathname）
+  API // API 路徑（pathname + method）
+}
+
+model PermissionModule {
+  id          String    @id @default(cuid())
+  key         String    @unique // 例如：workhour-related、dispatches、content-entries
+  label       String
+  description String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  patterns PermissionModuleApiPattern[]
+  rolePermissions RolePermission[]
+}
+
+model PermissionModuleApiPattern {
+  id          String               @id @default(cuid())
+  moduleId    String
+  kind        PermissionPatternKind
+  pathPattern String              // 用來做 pathname 的 startsWith 比對（例如：/dispatches 或 /api/dispatches）
+  method      String?             // 可選：限制 HTTP method（例如：GET/POST）；未填代表任何 method
+
+  module      PermissionModule    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId, kind])
+  @@unique([moduleId, kind, pathPattern, method])
+}
+
+model RolePermission {
+  id         String    @id @default(cuid())
+  role       UserRole
+  moduleId   String
+  canRead    Boolean   @default(false)
+  canWrite   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  module     PermissionModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([role, moduleId])
+  @@index([role])
 }

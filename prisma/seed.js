@@ -79,6 +79,149 @@ async function main() {
     });
   }
 
+  // Permission modules + role permission defaults
+  // 目的：讓「門市人員」的權限能在未大幅改 UI/邏輯前先有 DB 可用資料。
+  const modules = [
+    {
+      key: "workhour-related",
+      label: "工時異動相關（入口）",
+      description: "工時異動相關卡片（含連結）。",
+      patterns: [{ kind: "PAGE", pathPattern: "/workhour-related", method: "" }],
+    },
+    {
+      key: "dispatches",
+      label: "人員調度",
+      description: "新增/修改調度紀錄。",
+      patterns: [
+        { kind: "PAGE", pathPattern: "/dispatches", method: "" },
+        { kind: "API", pathPattern: "/api/dispatches", method: "" },
+        { kind: "API", pathPattern: "/api/stores", method: "" },
+        { kind: "API", pathPattern: "/api/employees", method: "" },
+      ],
+    },
+    {
+      key: "workhour-adjustments",
+      label: "工時異動調整",
+      description: "查詢與新增/編輯工時扣抵。",
+      patterns: [
+        { kind: "PAGE", pathPattern: "/workhour-adjustments", method: "" },
+        { kind: "API", pathPattern: "/api/workhour-adjustments", method: "" },
+      ],
+    },
+    {
+      key: "batch-workhour-adjustment",
+      label: "批次調整工時",
+      description: "同一原因/日期批次寫入扣除時數。",
+      patterns: [
+        { kind: "PAGE", pathPattern: "/batch-workhour-adjustment", method: "" },
+        { kind: "API", pathPattern: "/api/workhour-adjustments/batch", method: "" },
+        { kind: "API", pathPattern: "/api/employees", method: "" },
+      ],
+    },
+    {
+      key: "store-hour-deductions",
+      label: "效期/清掃工時",
+      description: "依日期/門市填寫效期或清掃扣抵時數。",
+      patterns: [
+        { kind: "PAGE", pathPattern: "/store-hour-deductions", method: "" },
+        { kind: "API", pathPattern: "/api/store-hour-deductions", method: "" },
+        { kind: "API", pathPattern: "/api/stores", method: "" },
+      ],
+    },
+    {
+      key: "content-entries",
+      label: "現貨文填報（含扣工時）",
+      description: "內容篇數填報並計算扣工時。",
+      patterns: [
+        { kind: "PAGE", pathPattern: "/content-entries", method: "" },
+        { kind: "API", pathPattern: "/api/content-entries", method: "" },
+        { kind: "API", pathPattern: "/api/stores", method: "" },
+      ],
+    },
+  ];
+
+  const rolePermissionsByModuleKey = {
+    "workhour-related": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: true, canWrite: true },
+    },
+    dispatches: {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: true, canWrite: true },
+    },
+    "workhour-adjustments": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: false, canWrite: false },
+    },
+    "batch-workhour-adjustment": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: false, canWrite: false },
+    },
+    "store-hour-deductions": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: true, canWrite: true },
+    },
+    "content-entries": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: true },
+      VIEWER: { canRead: false, canWrite: false },
+      STORE_STAFF: { canRead: true, canWrite: true },
+    },
+  };
+
+  for (const m of modules) {
+    const module = await prisma.permissionModule.upsert({
+      where: { key: m.key },
+      update: { label: m.label, description: m.description },
+      create: { key: m.key, label: m.label, description: m.description },
+    });
+
+    for (const p of m.patterns) {
+      await prisma.permissionModuleApiPattern.upsert({
+        where: {
+          moduleId_kind_pathPattern_method: {
+            moduleId: module.id,
+            kind: p.kind,
+            pathPattern: p.pathPattern,
+            method: p.method,
+          },
+        },
+        update: {},
+        create: {
+          moduleId: module.id,
+          kind: p.kind,
+          pathPattern: p.pathPattern,
+          method: p.method,
+        },
+      });
+    }
+
+    const rp = rolePermissionsByModuleKey[m.key];
+    for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]) {
+      const v = rp[role];
+      await prisma.rolePermission.upsert({
+        where: { role_moduleId: { role, moduleId: module.id } },
+        update: { canRead: v.canRead, canWrite: v.canWrite },
+        create: {
+          role,
+          moduleId: module.id,
+          canRead: v.canRead,
+          canWrite: v.canWrite,
+        },
+      });
+    }
+  }
+
   const userCount = await prisma.appUser.count();
   if (userCount === 0) {
     const adminUser = process.env.SEED_ADMIN_USERNAME || "admin";
