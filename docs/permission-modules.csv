@@ -24,6 +24,7 @@ store-hour-deductions,效期/清掃工時,依日期/門市填寫扣抵時數,工
 content-entries,現貨文填報,篇數填報並計算扣工時（含門市下拉）,工時異動相關,160,,PAGE,/content-entries,
 content-entries,現貨文填報,篇數填報並計算扣工時（含門市下拉）,工時異動相關,160,,API,/api/content-entries,
 content-entries,現貨文填報,篇數填報並計算扣工時（含門市下拉）,工時異動相關,160,,API,/api/stores,
+content-entries-deduct,現貨文扣工時（可見）,控制是否可在查詢/列表看到扣工時欄位（deductedMinutes）,工時異動相關,165,content-entries,,,,
 
 uploads,資料上傳中心（入口）,上傳中心頁面（顯示上傳卡片與最近上傳資訊）,資料上傳中心,210,,PAGE,/uploads,
 uploads,資料上傳中心（入口）,上傳中心頁面（顯示上傳卡片與最近上傳資訊）,資料上傳中心,210,,API,/api/uploads/batches,

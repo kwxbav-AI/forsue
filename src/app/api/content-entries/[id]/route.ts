@@ -3,8 +3,31 @@ import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
+import { getSessionFromRequest } from "@/lib/auth-request";
 
 export const dynamic = "force-dynamic";
+
+const DEDUCT_VIS_MODULE_KEY = "content-entries-deduct";
+
+async function canSeeDeductedMinutes(req: NextRequest): Promise<boolean> {
+  const session = await getSessionFromRequest(req);
+  if (!session) return false;
+  const mod = await prisma.permissionModule.findUnique({
+    where: { key: DEDUCT_VIS_MODULE_KEY },
+    select: { id: true },
+  });
+  if (!mod) return session.role === "ADMIN" || session.role === "EDITOR";
+  const rp = await prisma.rolePermission.findUnique({
+    where: { role_moduleId: { role: session.role, moduleId: mod.id } },
+    select: { canRead: true, canWrite: true },
+  });
+  return Boolean(rp && (rp.canRead || rp.canWrite));
+}
+
+function maskDeductedMinutes<T extends Record<string, any>>(row: T): Omit<T, "deductedMinutes"> | T {
+  const { deductedMinutes, ...rest } = row;
+  return rest as any;
+}
 
 const bodySchema = z.object({
   workDate: z.string().optional(),
@@ -72,7 +95,8 @@ export async function PUT(
         deductedMinutes,
       },
     });
-    return NextResponse.json(updated);
+    const canSee = await canSeeDeductedMinutes(request);
+    return NextResponse.json(canSee ? updated : maskDeductedMinutes(updated));
   } catch (e) {
     console.error(e);
     return NextResponse.json(

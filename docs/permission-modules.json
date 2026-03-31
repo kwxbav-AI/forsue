@@ -111,6 +111,15 @@
         { "kind": "API", "pathPattern": "/api/stores", "method": null }
       ]
     },
+    {
+      "key": "content-entries-deduct",
+      "label": "現貨文扣工時（可見）",
+      "description": "控制是否可在查詢/列表看到扣工時欄位（deductedMinutes）",
+      "group": "工時異動相關",
+      "sortOrder": 165,
+      "parentKey": "content-entries",
+      "patterns": []
+    },
 
     {
       "key": "uploads",

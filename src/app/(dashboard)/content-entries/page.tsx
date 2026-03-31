@@ -29,7 +29,7 @@ type Entry = {
   articleUrl3: string | null;
   productCount3: number | null;
   commentCount3: number | null;
-  deductedMinutes: number | null;
+  deductedMinutes?: number | null;
 };
 
 const CONTENT_OPTIONS = [
@@ -67,6 +67,11 @@ export default function ContentEntriesPage() {
     productCount3: "",
     commentCount3: "",
   });
+
+  const canSeeDeductedMinutes = useMemo(
+    () => list.some((r) => typeof (r as any).deductedMinutes !== "undefined"),
+    [list]
+  );
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -494,9 +499,11 @@ export default function ContentEntriesPage() {
                 <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
                   留言3
                 </th>
-                <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
-                  扣工時
-                </th>
+                {canSeeDeductedMinutes ? (
+                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
+                    扣工時
+                  </th>
+                ) : null}
                 <th className="whitespace-nowrap px-2 py-2"></th>
               </tr>
             </thead>
@@ -560,9 +567,11 @@ export default function ContentEntriesPage() {
                   </td>
                   <td className="px-2 py-1.5 text-right">{row.productCount3 ?? "—"}</td>
                   <td className="px-2 py-1.5 text-right">{row.commentCount3 ?? "—"}</td>
-                  <td className="px-2 py-1.5 text-right font-medium text-slate-800">
-                    {formatDeducted(row.deductedMinutes)}
-                  </td>
+                  {canSeeDeductedMinutes ? (
+                    <td className="px-2 py-1.5 text-right font-medium text-slate-800">
+                      {formatDeducted(row.deductedMinutes ?? null)}
+                    </td>
+                  ) : null}
                   <td className="whitespace-nowrap px-2 py-1.5">
                     <button
                       type="button"

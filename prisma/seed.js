@@ -153,12 +153,20 @@ async function main() {
 
   function defaultPerm(role, moduleKey) {
     // ADMIN: all write
-    if (role === "ADMIN") return { canRead: true, canWrite: true };
+    if (role === "ADMIN") {
+      // 視覺化欄位權限：扣工時可見（不需要寫入）
+      if (moduleKey === "content-entries-deduct") return { canRead: true, canWrite: false };
+      return { canRead: true, canWrite: true };
+    }
 
     // EDITOR: mostly write, but keep legacy restriction (cannot manage users)
     if (role === "EDITOR") {
       if (moduleKey === "settings-users" || moduleKey === "settings-role-permissions") {
         return { canRead: false, canWrite: false };
+      }
+      // 視覺化欄位權限：扣工時可見（不需要寫入）
+      if (moduleKey === "content-entries-deduct") {
+        return { canRead: true, canWrite: false };
       }
       return { canRead: true, canWrite: true };
     }
@@ -174,6 +182,7 @@ async function main() {
       ) {
         return { canRead: true, canWrite: false };
       }
+      if (moduleKey === "content-entries-deduct") return { canRead: false, canWrite: false };
       return { canRead: false, canWrite: false };
     }
 
@@ -186,6 +195,8 @@ async function main() {
         "content-entries",
       ]);
       if (writeKeys.has(moduleKey)) return { canRead: true, canWrite: true };
+      // 扣工時可見：門市人員預設不可見
+      if (moduleKey === "content-entries-deduct") return { canRead: false, canWrite: false };
       return { canRead: false, canWrite: false };
     }
 
