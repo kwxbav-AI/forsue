@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type Employee = {
   id: string;
@@ -19,7 +20,7 @@ const REASON_OPTIONS = [
 ];
 
 export default function BatchWorkhourAdjustmentPage() {
-  const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [workDate, setWorkDate] = useState(() => formatLocalDateInput());
   const [reason, setReason] = useState("MANAGER_MEETING");
   const [hours, setHours] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);

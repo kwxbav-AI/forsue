@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +21,15 @@ export async function GET() {
       ? {
           id: active.id,
           targetValue: Number(active.targetValue),
-          effectiveStartDate: active.effectiveStartDate.toISOString().slice(0, 10),
-          effectiveEndDate: active.effectiveEndDate?.toISOString().slice(0, 10) ?? null,
+          effectiveStartDate: formatDateOnly(active.effectiveStartDate),
+          effectiveEndDate: active.effectiveEndDate ? formatDateOnly(active.effectiveEndDate) : null,
         }
       : null,
     history: list.map((s) => ({
       id: s.id,
       targetValue: Number(s.targetValue),
-      effectiveStartDate: s.effectiveStartDate.toISOString().slice(0, 10),
-      effectiveEndDate: s.effectiveEndDate?.toISOString().slice(0, 10) ?? null,
+      effectiveStartDate: formatDateOnly(s.effectiveStartDate),
+      effectiveEndDate: s.effectiveEndDate ? formatDateOnly(s.effectiveEndDate) : null,
       isActive: s.isActive,
       updatedBy: s.updatedBy,
       createdAt: s.createdAt.toISOString(),
@@ -56,8 +57,8 @@ export async function POST(request: NextRequest) {
       await tx.performanceTargetSetting.create({
         data: {
           targetValue,
-          effectiveStartDate: new Date(effectiveStartDate),
-          effectiveEndDate: effectiveEndDate ? new Date(effectiveEndDate) : null,
+          effectiveStartDate: parseDateOnlyUTC(effectiveStartDate),
+          effectiveEndDate: effectiveEndDate ? parseDateOnlyUTC(effectiveEndDate) : null,
           isActive: true,
         },
       });
@@ -72,8 +73,8 @@ export async function POST(request: NextRequest) {
         ? {
             id: active.id,
             targetValue: Number(active.targetValue),
-            effectiveStartDate: active.effectiveStartDate.toISOString().slice(0, 10),
-            effectiveEndDate: active.effectiveEndDate?.toISOString().slice(0, 10) ?? null,
+            effectiveStartDate: formatDateOnly(active.effectiveStartDate),
+            effectiveEndDate: active.effectiveEndDate ? formatDateOnly(active.effectiveEndDate) : null,
           }
         : null
     );

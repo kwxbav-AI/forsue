@@ -9,6 +9,9 @@ type ModuleRow = {
   key: string;
   label: string;
   description: string | null;
+  groupKey: string;
+  sortOrder: number;
+  parentId: string | null;
   canRead: boolean;
   canWrite: boolean;
 };
@@ -155,29 +158,61 @@ export default function RolePermissionsAdmin() {
                 </td>
               </tr>
             ) : (
-              modules.map((m) => (
-                <tr key={m.id} className="border-b border-slate-100">
-                  <td className="px-3 py-2 font-medium text-slate-800">
-                    {m.label}
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">
-                    {m.description ?? "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={statusToValue(m.canRead, m.canWrite)}
-                      onChange={(e) =>
-                        updateModuleStatus(m.id, e.target.value as "none" | "read" | "write")
-                      }
-                      className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-                    >
-                      <option value="none">不出現</option>
-                      <option value="read">讀取</option>
-                      <option value="write">寫入</option>
-                    </select>
-                  </td>
-                </tr>
-              ))
+              (() => {
+                const byGroup = new Map<string, ModuleRow[]>();
+                for (const m of modules) {
+                  const g = m.groupKey || "未分類";
+                  const list = byGroup.get(g) ?? [];
+                  list.push(m);
+                  byGroup.set(g, list);
+                }
+
+                const groupKeys = Array.from(byGroup.keys()).sort((a, b) => a.localeCompare(b, "zh-Hant"));
+
+                const rows: React.ReactNode[] = [];
+                for (const g of groupKeys) {
+                  rows.push(
+                    <tr key={`group-${g}`} className="border-b border-slate-200 bg-slate-50">
+                      <td colSpan={3} className="px-3 py-2 font-semibold text-slate-700">
+                        {g}
+                      </td>
+                    </tr>
+                  );
+
+                  const list = byGroup.get(g) ?? [];
+                  // Ensure stable order
+                  list.sort((a, b) => (a.sortOrder - b.sortOrder) || a.label.localeCompare(b.label, "zh-Hant"));
+
+                  for (const m of list) {
+                    const isChild = m.parentId != null;
+                    rows.push(
+                      <tr key={m.id} className="border-b border-slate-100">
+                        <td className="px-3 py-2 font-medium text-slate-800">
+                          <span className={isChild ? "pl-6 text-slate-700" : ""}>
+                            {isChild ? "└─ " : ""}
+                            {m.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{m.description ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={statusToValue(m.canRead, m.canWrite)}
+                            onChange={(e) =>
+                              updateModuleStatus(m.id, e.target.value as "none" | "read" | "write")
+                            }
+                            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                          >
+                            <option value="none">不出現</option>
+                            <option value="read">讀取</option>
+                            <option value="write">寫入</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  }
+                }
+                return rows;
+              })()
             )}
           </tbody>
         </table>

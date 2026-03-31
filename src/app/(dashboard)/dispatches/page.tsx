@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type Store = { id: string; code: string | null; name: string; aliases?: string[]; isActive?: boolean };
 type Employee = { id: string; employeeCode: string; name: string };
@@ -48,8 +49,8 @@ function minutesDiff(start: string, end: string): number | null {
 export default function DispatchesPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
+  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -75,8 +76,8 @@ export default function DispatchesPage() {
   }>({
     employeeId: "",
     toStoreId: "",
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
+    startDate: formatLocalDateInput(),
+    endDate: formatLocalDateInput(),
     startTime: "13:00",
     endTime: "19:00",
     reason: DISPATCH_REASONS[0],

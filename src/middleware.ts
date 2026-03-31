@@ -63,9 +63,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Edge runtime 不能直接用 Prisma；為了「儲存後立刻生效」，非 legacy role 走即時有效權限 API。
-  // 目前主要是 STORE_STAFF。
-  if (session && session.role !== "ADMIN" && session.role !== "EDITOR" && session.role !== "VIEWER") {
+  // Edge runtime 不能直接用 Prisma；為了「儲存後立刻生效」，所有角色都走即時有效權限 API（5 秒快取）。
+  if (session) {
     const role = session.role;
     const cached = effectivePermsCache.get(role);
     const now = Date.now();

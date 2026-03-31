@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type Store = {
   id: string;
@@ -37,8 +38,8 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export default function StoreHourDeductionsPage() {
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
+  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<Row[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,7 @@ export default function StoreHourDeductionsPage() {
   const [storeSearch, setStoreSearch] = useState("");
   const [storeOpen, setStoreOpen] = useState(false);
   const [form, setForm] = useState({
-    workDate: new Date().toISOString().slice(0, 10),
+    workDate: formatLocalDateInput(),
     storeId: "",
     reason: "EXPIRY" as string,
     hours: "",
@@ -173,7 +174,7 @@ export default function StoreHourDeductionsPage() {
             setModal("add");
             setStoreSearch("");
             setForm({
-              workDate: new Date().toISOString().slice(0, 10),
+              workDate: formatLocalDateInput(),
               storeId: "",
               reason: "EXPIRY",
               hours: "",

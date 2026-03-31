@@ -1,11 +1,14 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
-function LoginFormInner() {
-  const searchParams = useSearchParams();
-  const nextParam = searchParams.get("next") || "/";
+function safeNextPath(next: string): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  return next;
+}
+
+function LoginFormInner({ nextParam }: { nextParam: string }) {
+  const safeNext = safeNextPath(nextParam || "/");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,15 +23,32 @@ function LoginFormInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
+        credentials: "same-origin",
+        cache: "no-store",
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      let data: { error?: string } = {};
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        try {
+          data = (await res.json()) as { error?: string };
+        } catch {
+          data = {};
+        }
+      }
       if (!res.ok) {
-        setError(data.error || "登入失敗");
+        setError(
+          data.error ||
+            (res.status >= 500
+              ? `伺服器暫時無法回應（${res.status}），請稍後再試或洽管理員。`
+              : "登入失敗")
+        );
         return;
       }
-      const safeNext =
-        nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
       window.location.href = safeNext;
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "無法連線到伺服器，請檢查網路或稍後再試。";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -37,6 +57,8 @@ function LoginFormInner() {
   return (
     <form
       onSubmit={(e) => void onSubmit(e)}
+      action={`/login/submit?next=${encodeURIComponent(safeNext)}`}
+      method="POST"
       className="mx-auto w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
     >
       <div>
@@ -85,10 +107,10 @@ function LoginFormInner() {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ nextParam }: { nextParam: string }) {
   return (
     <Suspense fallback={<p className="text-center text-slate-500">載入中…</p>}>
-      <LoginFormInner />
+      <LoginFormInner nextParam={nextParam} />
     </Suspense>
   );
 }

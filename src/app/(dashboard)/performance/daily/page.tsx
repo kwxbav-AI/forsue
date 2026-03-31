@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type DailyRow = {
   id: string;
@@ -21,7 +22,7 @@ type SortKey = "storeName" | "revenueAmount" | "totalWorkHours" | "efficiencyRat
 type SortDir = "asc" | "desc";
 
 export default function PerformanceDailyPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailStoreId, setDetailStoreId] = useState<string | null>(null);

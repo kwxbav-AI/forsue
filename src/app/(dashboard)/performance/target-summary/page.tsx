@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type SummaryRow = {
   storeId: string;
@@ -18,9 +19,9 @@ export default function TargetSummaryPage() {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDateInput(d);
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
 

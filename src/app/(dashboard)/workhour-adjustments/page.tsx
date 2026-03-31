@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type Store = { id: string; code: string | null; name: string; isActive?: boolean };
 type Employee = { id: string; employeeCode: string; name: string; defaultStoreId: string | null };
@@ -33,7 +34,7 @@ const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function WorkhourAdjustmentsPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => formatLocalDateInput());
   const [storeId, setStoreId] = useState("");
   const [stores, setStores] = useState<Store[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);

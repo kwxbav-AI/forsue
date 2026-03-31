@@ -68,7 +68,8 @@ function isReadMethod(method: string): boolean {
 }
 
 function matchAllowedPagePatterns(session: SessionPayload, pathname: string): boolean {
-  for (const p of session.allowedPagePathPatterns) {
+  const list = session.allowedPagePathPatterns ?? [];
+  for (const p of list) {
     if (pathname.startsWith(p)) return true;
   }
   return false;
@@ -119,8 +120,8 @@ export function canAccessApi(
 
   const isRead = isReadMethod(method);
   const matched = isRead
-    ? matchAllowedApiPatterns(session.allowedApiReadPatterns, pathname, method)
-    : matchAllowedApiPatterns(session.allowedApiWritePatterns, pathname, method);
+    ? matchAllowedApiPatterns(session.allowedApiReadPatterns ?? [], pathname, method)
+    : matchAllowedApiPatterns(session.allowedApiWritePatterns ?? [], pathname, method);
 
   if (matched) return true;
 

@@ -1,0 +1,346 @@
+{
+  "version": 1,
+  "notes": "PermissionModule 匯入用資料。pathPattern 以 startsWith 比對；method 為 null 代表不限制方法。",
+  "modules": [
+    {
+      "key": "home",
+      "label": "首頁",
+      "description": "系統首頁入口",
+      "group": "System",
+      "sortOrder": 10,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/", "method": null }]
+    },
+    {
+      "key": "auth-login",
+      "label": "登入/登出/我的帳號",
+      "description": "登入與 session API（通常建議固定允許）",
+      "group": "System",
+      "sortOrder": 20,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/login", "method": null },
+        { "kind": "API", "pathPattern": "/api/auth/login", "method": null },
+        { "kind": "API", "pathPattern": "/api/auth/logout", "method": null },
+        { "kind": "API", "pathPattern": "/api/auth/me", "method": null }
+      ]
+    },
+    {
+      "key": "forbidden",
+      "label": "禁止進入頁",
+      "description": "權限不足導向頁",
+      "group": "System",
+      "sortOrder": 30,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/forbidden", "method": null }]
+    },
+
+    {
+      "key": "workhour-related",
+      "label": "工時異動相關（入口）",
+      "description": "工時異動入口卡片/連結頁",
+      "group": "工時異動相關",
+      "sortOrder": 110,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/workhour-related", "method": null }]
+    },
+    {
+      "key": "dispatches",
+      "label": "人員調度",
+      "description": "新增/修改調度紀錄（含門市/員工下拉）",
+      "group": "工時異動相關",
+      "sortOrder": 120,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/dispatches", "method": null },
+        { "kind": "API", "pathPattern": "/api/dispatches", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/employees", "method": null }
+      ]
+    },
+    {
+      "key": "workhour-adjustments",
+      "label": "工時異動調整",
+      "description": "查詢與新增/編輯工時扣抵（含門市/員工資料）",
+      "group": "工時異動相關",
+      "sortOrder": 130,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/workhour-adjustments", "method": null },
+        { "kind": "API", "pathPattern": "/api/workhour-adjustments", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/employees", "method": null }
+      ]
+    },
+    {
+      "key": "batch-workhour-adjustment",
+      "label": "批次調整工時",
+      "description": "同一原因/日期批次寫入扣抵時數",
+      "group": "工時異動相關",
+      "sortOrder": 140,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/batch-workhour-adjustment", "method": null },
+        { "kind": "API", "pathPattern": "/api/workhour-adjustments/batch", "method": null },
+        { "kind": "API", "pathPattern": "/api/employees", "method": null }
+      ]
+    },
+    {
+      "key": "store-hour-deductions",
+      "label": "效期/清掃工時",
+      "description": "依日期/門市填寫扣抵時數",
+      "group": "工時異動相關",
+      "sortOrder": 150,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/store-hour-deductions", "method": null },
+        { "kind": "API", "pathPattern": "/api/store-hour-deductions", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+    {
+      "key": "content-entries",
+      "label": "現貨文填報",
+      "description": "篇數填報並計算扣工時（含門市下拉）",
+      "group": "工時異動相關",
+      "sortOrder": 160,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/content-entries", "method": null },
+        { "kind": "API", "pathPattern": "/api/content-entries", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+
+    {
+      "key": "uploads",
+      "label": "資料上傳中心（入口）",
+      "description": "上傳中心頁面（顯示上傳卡片與最近上傳資訊）",
+      "group": "資料上傳中心",
+      "sortOrder": 210,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/uploads", "method": null },
+        { "kind": "API", "pathPattern": "/api/uploads/batches", "method": null }
+      ]
+    },
+    {
+      "key": "uploads-attendance",
+      "label": "上傳：人員出勤表（卡片）",
+      "description": "上傳出勤表 Excel（寫入=可上傳）",
+      "group": "資料上傳中心",
+      "sortOrder": 220,
+      "parentKey": "uploads",
+      "patterns": [{ "kind": "API", "pathPattern": "/api/uploads/attendance", "method": null }]
+    },
+    {
+      "key": "uploads-employee-master",
+      "label": "上傳：人員名冊（卡片）",
+      "description": "上傳人員名冊 Excel（寫入=可上傳）",
+      "group": "資料上傳中心",
+      "sortOrder": 230,
+      "parentKey": "uploads",
+      "patterns": [{ "kind": "API", "pathPattern": "/api/uploads/employee-master", "method": null }]
+    },
+    {
+      "key": "uploads-daily-revenue",
+      "label": "上傳：每日營收（卡片）",
+      "description": "上傳每日營收 Excel（寫入=可上傳）",
+      "group": "資料上傳中心",
+      "sortOrder": 240,
+      "parentKey": "uploads",
+      "patterns": [{ "kind": "API", "pathPattern": "/api/uploads/daily-revenue", "method": null }]
+    },
+    {
+      "key": "uploads-dispatch",
+      "label": "上傳：調度資料（可選）",
+      "description": "上傳調度相關檔案/資料",
+      "group": "資料上傳中心",
+      "sortOrder": 250,
+      "parentKey": "uploads",
+      "patterns": [{ "kind": "API", "pathPattern": "/api/uploads/dispatch", "method": null }]
+    },
+    {
+      "key": "uploads-inventory-reference",
+      "label": "上傳：現貨文參照表（可選）",
+      "description": "上傳現貨文計算用參照表",
+      "group": "資料上傳中心",
+      "sortOrder": 260,
+      "parentKey": "uploads",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/uploads/inventory-reference", "method": null }
+      ]
+    },
+
+    {
+      "key": "reports",
+      "label": "報表區（入口）",
+      "description": "報表入口頁",
+      "group": "報表",
+      "sortOrder": 310,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/reports", "method": null }]
+    },
+    {
+      "key": "reports-attendance",
+      "label": "出勤報表",
+      "description": "門市出勤報表查詢",
+      "group": "報表",
+      "sortOrder": 320,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/reports/attendance", "method": null },
+        { "kind": "API", "pathPattern": "/api/reports/attendance", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+    {
+      "key": "reports-revenue",
+      "label": "營收報表",
+      "description": "門市營收報表查詢",
+      "group": "報表",
+      "sortOrder": 330,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/reports/revenue", "method": null },
+        { "kind": "API", "pathPattern": "/api/reports/revenue", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+
+    {
+      "key": "performance-daily",
+      "label": "每日工效比",
+      "description": "每日工效比查詢與明細",
+      "group": "績效/工效",
+      "sortOrder": 410,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/performance/daily", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/daily", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/daily/detail", "method": null }
+      ]
+    },
+    {
+      "key": "performance-target-summary",
+      "label": "達標次數統計",
+      "description": "依區間統計達標/未達標天數",
+      "group": "績效/工效",
+      "sortOrder": 420,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/performance/target-summary", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/target-summary", "method": null }
+      ]
+    },
+    {
+      "key": "performance-maintenance-recalculate",
+      "label": "績效重算/除錯（維運）",
+      "description": "重算每日/全部、除錯扣抵（建議限 ADMIN）",
+      "group": "績效/工效",
+      "sortOrder": 490,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/performance/recalculate-daily", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/recalculate-all", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/debug-deduction", "method": null }
+      ]
+    },
+
+    {
+      "key": "data",
+      "label": "資料區（入口）",
+      "description": "資料入口頁（目前是入口，未拆子卡）",
+      "group": "資料區",
+      "sortOrder": 510,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/data", "method": null }]
+    },
+
+    {
+      "key": "settings",
+      "label": "設定區（入口）",
+      "description": "設定入口頁",
+      "group": "設定",
+      "sortOrder": 610,
+      "parentKey": null,
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/settings", "method": null }]
+    },
+    {
+      "key": "settings-users",
+      "label": "帳號與權限",
+      "description": "帳號管理與角色設定",
+      "group": "設定",
+      "sortOrder": 620,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/users", "method": null },
+        { "kind": "API", "pathPattern": "/api/users", "method": null }
+      ]
+    },
+    {
+      "key": "settings-role-permissions",
+      "label": "角色權限設定",
+      "description": "設定各角色的權限矩陣",
+      "group": "設定",
+      "sortOrder": 630,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/role-permissions", "method": null },
+        { "kind": "API", "pathPattern": "/api/role-permissions", "method": null },
+        { "kind": "API", "pathPattern": "/api/role-permissions/effective", "method": null }
+      ]
+    },
+    {
+      "key": "settings-holidays",
+      "label": "假日設定",
+      "description": "特殊假日設定（不計入達標總天數）",
+      "group": "設定",
+      "sortOrder": 640,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/holidays", "method": null },
+        { "kind": "API", "pathPattern": "/api/settings/holidays", "method": null }
+      ]
+    },
+    {
+      "key": "settings-performance-target",
+      "label": "目標值設定",
+      "description": "設定目標工效值與生效日（含觸發重算）",
+      "group": "設定",
+      "sortOrder": 650,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/performance-target", "method": null },
+        { "kind": "API", "pathPattern": "/api/settings/performance-target", "method": null },
+        { "kind": "API", "pathPattern": "/api/performance/recalculate-all", "method": null }
+      ]
+    },
+    {
+      "key": "stores",
+      "label": "門市管理",
+      "description": "新增/編輯/停用門市、匯入預設門市",
+      "group": "設定",
+      "sortOrder": 660,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores/import-default", "method": null }
+      ]
+    },
+    {
+      "key": "reserve-staff",
+      "label": "儲備人力設定",
+      "description": "儲備人力與工時計算%（含員工資料）",
+      "group": "設定",
+      "sortOrder": 670,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/reserve-staff", "method": null },
+        { "kind": "API", "pathPattern": "/api/employees", "method": null }
+      ]
+    }
+  ]
+}
+

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { formatLocalDateInput, formatDateOnly } from "@/lib/date";
 
 type Store = {
   id: string;
@@ -40,8 +41,8 @@ const CONTENT_OPTIONS = [
 ];
 
 export default function ContentEntriesPage() {
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
+  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
@@ -50,7 +51,7 @@ export default function ContentEntriesPage() {
   const [branchSearch, setBranchSearch] = useState("");
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const [form, setForm] = useState({
-    workDate: new Date().toISOString().slice(0, 10),
+    workDate: formatLocalDateInput(),
     branch: "",
     totalArticles: "" as string | number,
     contentDesc1: "",
@@ -107,7 +108,7 @@ export default function ContentEntriesPage() {
     setBranchSearch("");
     setBranchDropdownOpen(false);
     setForm({
-      workDate: new Date().toISOString().slice(0, 10),
+      workDate: formatLocalDateInput(),
       branch: "",
       totalArticles: "",
       contentDesc1: "",
@@ -208,7 +209,7 @@ export default function ContentEntriesPage() {
 
   const formatWorkDate = (workDate: string) => {
     try {
-      return new Date(workDate).toISOString().slice(0, 10);
+      return formatDateOnly(new Date(workDate));
     } catch {
       return workDate.slice(0, 10);
     }

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toDateRange, toStartOfDay, formatDateOnly } from "@/lib/date";
+import {
+  toDateRangeTaipei,
+  parseTaipeiDateStartUTC,
+  parseTaipeiDateEndUTC,
+  formatDateOnly,
+  formatDateOnlyTaipei,
+  parseDateOnlyUTC,
+  addCalendarDaysUTC,
+} from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
-import { addDays } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +42,13 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const where: { workDate?: Date | { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
-    const range = toDateRange(startDate, endDate);
+    const range = toDateRangeTaipei(startDate, endDate);
     where.workDate = { gte: range.start, lte: range.end };
   } else if (date) {
-    where.workDate = toStartOfDay(date);
+    where.workDate = {
+      gte: parseTaipeiDateStartUTC(date),
+      lte: parseTaipeiDateEndUTC(date),
+    };
   }
 
   const stores = await prisma.store.findMany({
@@ -69,7 +79,7 @@ export async function GET(request: NextRequest) {
     });
     // 同一員工同一日可能有多筆上傳（重複上傳），只取一筆與「人員出勤表」一致，取最新一筆
     for (const a of attendances) {
-      const key = `${formatDateOnly(a.workDate)}_${a.employeeId}`;
+      const key = `${formatDateOnlyTaipei(a.workDate)}_${a.employeeId}`;
       if (!attendanceByKey.has(key)) attendanceByKey.set(key, Number(a.workHours));
     }
   }
@@ -92,7 +102,7 @@ export async function GET(request: NextRequest) {
       const effective = actual ?? planned;
       const effectiveRounded = Math.round(effective * 100) / 100;
       const diff = actual != null ? Math.round((actual - planned) * 100) / 100 : null;
-      const workDateStr = formatDateOnly(d.workDate);
+      const workDateStr = formatDateOnlyTaipei(d.workDate);
       const attendanceHours =
         attendanceByKey.get(`${workDateStr}_${d.employeeId}`) ?? null;
       const attendanceHoursRounded =
@@ -136,9 +146,9 @@ export async function POST(request: NextRequest) {
 
     const { employeeId, fromStoreId, toStoreId, startDate, endDate, startTime, endTime, remark } =
       parsed.data;
-    const startD = toStartOfDay(startDate);
-    const endD = toStartOfDay(endDate);
-    if (endD < startD) {
+    const startD = parseDateOnlyUTC(startDate.trim());
+    const endD = parseDateOnlyUTC(endDate.trim());
+    if (endD.getTime() < startD.getTime()) {
       return NextResponse.json({ error: "結束日期不可早於開始日期" }, { status: 400 });
     }
 
@@ -160,28 +170,30 @@ export async function POST(request: NextRequest) {
     // 若未指定 fromStoreId，則以「出勤原門市」為準（同一員工同一日可能多筆上傳，只取最新一筆）
     const fromStoreByDate = new Map<string, string | null>();
     if (!fromStoreId) {
+      const attRange = toDateRangeTaipei(startDate.trim(), endDate.trim());
       const attendances = await prisma.attendanceRecord.findMany({
         where: {
           employeeId,
-          workDate: { gte: startD, lte: endD },
+          workDate: { gte: attRange.start, lte: attRange.end },
         },
         select: { workDate: true, originalStoreId: true },
         orderBy: { createdAt: "desc" },
       });
       for (const a of attendances) {
-        const key = formatDateOnly(a.workDate);
+        const key = formatDateOnlyTaipei(a.workDate);
         if (!fromStoreByDate.has(key)) fromStoreByDate.set(key, a.originalStoreId ?? null);
       }
     }
 
-    let cursor = startD;
-    while (cursor <= endD) {
-      const workDate = toStartOfDay(cursor);
+    let dayStr = startDate.trim();
+    const endStr = endDate.trim();
+    while (dayStr <= endStr) {
+      const workDate = parseDateOnlyUTC(dayStr);
       const created = await prisma.dispatchRecord.create({
         data: {
           workDate,
           employeeId,
-          fromStoreId: fromStoreId ?? fromStoreByDate.get(formatDateOnly(workDate)) ?? null,
+          fromStoreId: fromStoreId ?? fromStoreByDate.get(formatDateOnlyTaipei(workDate)) ?? null,
           toStoreId,
           dispatchHours: hours,
           startTime,
@@ -191,7 +203,7 @@ export async function POST(request: NextRequest) {
       });
       createdIds.push(created.id);
       touchedDates.push(workDate);
-      cursor = addDays(cursor, 1);
+      dayStr = addCalendarDaysUTC(dayStr, 1);
     }
 
     for (const d of touchedDates) {

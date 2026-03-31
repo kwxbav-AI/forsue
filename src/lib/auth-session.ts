@@ -14,18 +14,17 @@ export type SessionPayload = {
   userId: string;
   username: string;
   role: UserRole;
-  allowedPagePathPatterns: string[];
-  allowedApiReadPatterns: { pathPattern: string; method: string | null }[];
-  allowedApiWritePatterns: { pathPattern: string; method: string | null }[];
+  // 注意：不可把大量 patterns 放進 cookie（可能超過 4096 bytes 上限）。
+  // patterns 由 middleware 透過 effective API 取得並暫存於 request 生命週期中。
+  allowedPagePathPatterns?: string[];
+  allowedApiReadPatterns?: { pathPattern: string; method: string | null }[];
+  allowedApiWritePatterns?: { pathPattern: string; method: string | null }[];
 };
 
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
   return new SignJWT({
     username: payload.username,
     role: payload.role,
-    allowedPagePathPatterns: payload.allowedPagePathPatterns,
-    allowedApiReadPatterns: payload.allowedApiReadPatterns,
-    allowedApiWritePatterns: payload.allowedApiWritePatterns,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.userId)

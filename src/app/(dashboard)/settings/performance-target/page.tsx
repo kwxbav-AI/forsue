@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type ActiveTarget = {
   id: string;
@@ -25,7 +26,7 @@ export default function PerformanceTargetPage() {
   const [recalcLoading, setRecalcLoading] = useState(false);
   const [form, setForm] = useState({
     targetValue: 4000,
-    effectiveStartDate: new Date().toISOString().slice(0, 10),
+    effectiveStartDate: formatLocalDateInput(),
   });
 
   const fetchData = useCallback(async () => {

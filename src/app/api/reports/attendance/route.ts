@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, toDateRange } from "@/lib/date";
+import { formatDateOnly, formatDateOnlyTaipei, toDateRange } from "@/lib/date";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +80,7 @@ export type AttendanceReportRow =
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = formatDateOnlyTaipei();
   const startDate = searchParams.get("startDate") || todayStr;
   const endDate = searchParams.get("endDate") || startDate;
   const employeeCode = searchParams.get("employeeCode")?.trim() || "";

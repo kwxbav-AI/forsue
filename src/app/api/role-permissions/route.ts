@@ -35,8 +35,16 @@ export async function GET(req: NextRequest) {
   const role = parsedRole.data as UserRole;
 
   const modules = await prisma.permissionModule.findMany({
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, key: true, label: true, description: true },
+    orderBy: [{ groupKey: "asc" }, { sortOrder: "asc" }, { label: "asc" }],
+    select: {
+      id: true,
+      key: true,
+      label: true,
+      description: true,
+      groupKey: true,
+      sortOrder: true,
+      parentId: true,
+    },
   });
 
   const moduleIds = modules.map((m) => m.id);
@@ -53,7 +61,16 @@ export async function GET(req: NextRequest) {
     role,
     modules: modules.map((m) => {
       const perm = permMap.get(m.id) ?? { canRead: false, canWrite: false };
-      return { id: m.id, key: m.key, label: m.label, description: m.description, ...perm };
+      return {
+        id: m.id,
+        key: m.key,
+        label: m.label,
+        description: m.description,
+        groupKey: m.groupKey,
+        sortOrder: m.sortOrder,
+        parentId: m.parentId,
+        ...perm,
+      };
     }),
   });
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toStartOfDay } from "@/lib/date";
+import { toStartOfDay, formatDateOnly } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     list.map((p) => ({
       id: p.id,
-      workDate: p.workDate.toISOString().slice(0, 10),
+      workDate: formatDateOnly(p.workDate),
       storeId: p.storeId,
       storeName: p.store.name,
       storeCode: p.store.code,

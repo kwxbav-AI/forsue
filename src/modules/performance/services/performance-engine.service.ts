@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import Decimal from "decimal.js";
-import { toStartOfDay, formatDateOnly, parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
-import { startOfDay, endOfDay } from "date-fns";
+import {
+  toStartOfDay,
+  toEndOfDay,
+  formatDateOnly,
+  parseDateOnlyUTC,
+  endOfDayUTC,
+  addCalendarDaysUTC,
+} from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
 import { getTargetForDate } from "./target-setting.service";
 
@@ -42,7 +48,7 @@ class PerformanceEngineService {
     // 效期/清掃 工時：依門市彙總，從該門市總工時中扣除（workDate 以當日區間查詢）
     const storeDeductions = await prisma.storeHourDeduction.findMany({
       where: {
-        workDate: { gte: startOfDay(d), lte: endOfDay(d) },
+        workDate: { gte: dayStart, lte: dayEnd },
       },
       select: { storeId: true, hours: true },
     });
@@ -59,7 +65,7 @@ class PerformanceEngineService {
       where: { workDate: d, versionNo: 1 },
     });
 
-    const weekDay = d.getDay();
+    const weekDay = d.getUTCDay();
     const rows = stores.map((store) => {
       const rawHours = storeHours[store.id] ?? 0;
       const contentDeduction = contentDeductionHoursByStore[store.id] ?? 0;
@@ -96,11 +102,12 @@ class PerformanceEngineService {
   /** 重算日期區間 */
   async recalculateDateRange(startDate: Date, endDate: Date): Promise<void> {
     const start = toStartOfDay(startDate);
-    const end = endOfDay(endDate);
-    const current = new Date(start);
-    while (current <= end) {
-      await this.recalculateDailyPerformance(current);
-      current.setDate(current.getDate() + 1);
+    const end = toEndOfDay(endDate);
+    let dayStr = formatDateOnly(start);
+    const endStr = formatDateOnly(end);
+    while (dayStr <= endStr) {
+      await this.recalculateDailyPerformance(parseDateOnlyUTC(dayStr));
+      dayStr = addCalendarDaysUTC(dayStr, 1);
     }
   }
 }

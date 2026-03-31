@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export async function GET() {
   return NextResponse.json(
     list.map((h) => ({
       id: h.id,
-      date: h.date.toISOString().slice(0, 10),
+      date: formatDateOnly(h.date),
       name: h.name,
       isActive: h.isActive,
     }))
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       id: holiday.id,
-      date: holiday.date.toISOString().slice(0, 10),
+      date: formatDateOnly(holiday.date),
       name: holiday.name,
       isActive: holiday.isActive,
     });

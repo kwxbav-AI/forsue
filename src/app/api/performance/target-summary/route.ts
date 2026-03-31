@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
+import { parseDateOnlyUTC, endOfDayUTC, formatDateOnly } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ function countWorkingDaysInRangeUTC(
   let n = 0;
   for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
     const d = new Date(t);
-    const ymd = d.toISOString().slice(0, 10);
+    const ymd = formatDateOnly(d);
     if (d.getUTCDay() === 0) continue;
     if (holidayYmdSet.has(ymd)) continue;
     n++;
@@ -63,9 +63,7 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const holidaySet = new Set(
-    holidays.map((h) => h.date.toISOString().slice(0, 10))
-  );
+  const holidaySet = new Set(holidays.map((h) => formatDateOnly(h.date)));
 
   const workingDaysInPeriod = countWorkingDaysInRangeUTC(startDate, endDate, holidaySet);
 
@@ -84,7 +82,7 @@ export async function GET(request: NextRequest) {
   >();
 
   for (const p of list) {
-    const dateOnly = p.workDate.toISOString().slice(0, 10);
+    const dateOnly = formatDateOnly(p.workDate);
     const isSunday = p.workDate.getUTCDay() === 0;
     const isHoliday = holidaySet.has(dateOnly);
     if (isSunday || isHoliday) continue;

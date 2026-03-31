@@ -283,12 +283,19 @@ model PermissionModule {
   key         String    @unique // 例如：workhour-related、dispatches、content-entries
   label       String
   description String?
+  groupKey    String    @default("") // UI 分組用（例如：工時異動相關、報表、設定）
   sortOrder   Int       @default(0)
+  parentId    String?   // 同頁子功能縮排（例如 uploads-* 掛在 uploads 底下）
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  parent      PermissionModule? @relation("PermissionModuleParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children    PermissionModule[] @relation("PermissionModuleParent")
   patterns PermissionModuleApiPattern[]
   rolePermissions RolePermission[]
+
+  @@index([groupKey, sortOrder])
+  @@index([parentId])
 }
 
 model PermissionModuleApiPattern {

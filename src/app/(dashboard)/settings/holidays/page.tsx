@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type Holiday = {
   id: string;
@@ -13,7 +14,7 @@ type Holiday = {
 export default function HolidaysPage() {
   const [list, setList] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(false);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => formatLocalDateInput());
   const [name, setName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,11 @@ export async function PUT(
     } = {};
     if (parsed.data.targetValue !== undefined) data.targetValue = parsed.data.targetValue;
     if (parsed.data.effectiveStartDate !== undefined)
-      data.effectiveStartDate = new Date(parsed.data.effectiveStartDate);
+      data.effectiveStartDate = parseDateOnlyUTC(parsed.data.effectiveStartDate);
     if (parsed.data.effectiveEndDate !== undefined)
-      data.effectiveEndDate = parsed.data.effectiveEndDate ? new Date(parsed.data.effectiveEndDate) : null;
+      data.effectiveEndDate = parsed.data.effectiveEndDate
+        ? parseDateOnlyUTC(parsed.data.effectiveEndDate)
+        : null;
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 
     if (parsed.data.isActive === true) {
@@ -53,8 +56,8 @@ export async function PUT(
     return NextResponse.json({
       id: updated.id,
       targetValue: Number(updated.targetValue),
-      effectiveStartDate: updated.effectiveStartDate.toISOString().slice(0, 10),
-      effectiveEndDate: updated.effectiveEndDate?.toISOString().slice(0, 10) ?? null,
+      effectiveStartDate: formatDateOnly(updated.effectiveStartDate),
+      effectiveEndDate: updated.effectiveEndDate ? formatDateOnly(updated.effectiveEndDate) : null,
       isActive: updated.isActive,
     });
   } catch (e) {

@@ -1,5 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
+const fs = require("fs");
+const path = require("path");
 
 const prisma = new PrismaClient();
 
@@ -79,145 +81,130 @@ async function main() {
     });
   }
 
-  // Permission modules + role permission defaults
-  // 目的：讓「門市人員」的權限能在未大幅改 UI/邏輯前先有 DB 可用資料。
-  const modules = [
-    {
-      key: "workhour-related",
-      label: "工時異動相關（入口）",
-      description: "工時異動相關卡片（含連結）。",
-      patterns: [{ kind: "PAGE", pathPattern: "/workhour-related", method: "" }],
-    },
-    {
-      key: "dispatches",
-      label: "人員調度",
-      description: "新增/修改調度紀錄。",
-      patterns: [
-        { kind: "PAGE", pathPattern: "/dispatches", method: "" },
-        { kind: "API", pathPattern: "/api/dispatches", method: "" },
-        { kind: "API", pathPattern: "/api/stores", method: "" },
-        { kind: "API", pathPattern: "/api/employees", method: "" },
-      ],
-    },
-    {
-      key: "workhour-adjustments",
-      label: "工時異動調整",
-      description: "查詢與新增/編輯工時扣抵。",
-      patterns: [
-        { kind: "PAGE", pathPattern: "/workhour-adjustments", method: "" },
-        { kind: "API", pathPattern: "/api/workhour-adjustments", method: "" },
-      ],
-    },
-    {
-      key: "batch-workhour-adjustment",
-      label: "批次調整工時",
-      description: "同一原因/日期批次寫入扣除時數。",
-      patterns: [
-        { kind: "PAGE", pathPattern: "/batch-workhour-adjustment", method: "" },
-        { kind: "API", pathPattern: "/api/workhour-adjustments/batch", method: "" },
-        { kind: "API", pathPattern: "/api/employees", method: "" },
-      ],
-    },
-    {
-      key: "store-hour-deductions",
-      label: "效期/清掃工時",
-      description: "依日期/門市填寫效期或清掃扣抵時數。",
-      patterns: [
-        { kind: "PAGE", pathPattern: "/store-hour-deductions", method: "" },
-        { kind: "API", pathPattern: "/api/store-hour-deductions", method: "" },
-        { kind: "API", pathPattern: "/api/stores", method: "" },
-      ],
-    },
-    {
-      key: "content-entries",
-      label: "現貨文填報（含扣工時）",
-      description: "內容篇數填報並計算扣工時。",
-      patterns: [
-        { kind: "PAGE", pathPattern: "/content-entries", method: "" },
-        { kind: "API", pathPattern: "/api/content-entries", method: "" },
-        { kind: "API", pathPattern: "/api/stores", method: "" },
-      ],
-    },
-  ];
+  // Permission modules + role permission defaults (full list)
+  const modulesPath = path.join(__dirname, "..", "docs", "permission-modules.json");
+  const raw = fs.readFileSync(modulesPath, "utf8");
+  const spec = JSON.parse(raw);
+  const modulesSpec = Array.isArray(spec.modules) ? spec.modules : [];
 
-  const rolePermissionsByModuleKey = {
-    "workhour-related": {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: true, canWrite: true },
-    },
-    dispatches: {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: true, canWrite: true },
-    },
-    "workhour-adjustments": {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: false, canWrite: false },
-    },
-    "batch-workhour-adjustment": {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: false, canWrite: false },
-    },
-    "store-hour-deductions": {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: true, canWrite: true },
-    },
-    "content-entries": {
-      ADMIN: { canRead: true, canWrite: true },
-      EDITOR: { canRead: true, canWrite: true },
-      VIEWER: { canRead: false, canWrite: false },
-      STORE_STAFF: { canRead: true, canWrite: true },
-    },
-  };
-
-  for (const m of modules) {
+  // 1) upsert all modules without parentId first
+  const idByKey = new Map();
+  for (const m of modulesSpec) {
+    const key = m.key;
     const module = await prisma.permissionModule.upsert({
-      where: { key: m.key },
-      update: { label: m.label, description: m.description },
-      create: { key: m.key, label: m.label, description: m.description },
+      where: { key },
+      update: {
+        label: m.label,
+        description: m.description || null,
+        groupKey: m.group || "",
+        sortOrder: typeof m.sortOrder === "number" ? m.sortOrder : 0,
+        parentId: null,
+      },
+      create: {
+        key,
+        label: m.label,
+        description: m.description || null,
+        groupKey: m.group || "",
+        sortOrder: typeof m.sortOrder === "number" ? m.sortOrder : 0,
+        parentId: null,
+      },
     });
+    idByKey.set(key, module.id);
+  }
 
-    for (const p of m.patterns) {
+  // 2) set parentId (second pass)
+  for (const m of modulesSpec) {
+    if (!m.parentKey) continue;
+    const moduleId = idByKey.get(m.key);
+    const parentId = idByKey.get(m.parentKey);
+    if (!moduleId || !parentId) continue;
+    await prisma.permissionModule.update({
+      where: { id: moduleId },
+      data: { parentId },
+    });
+  }
+
+  // 3) upsert patterns
+  for (const m of modulesSpec) {
+    const moduleId = idByKey.get(m.key);
+    if (!moduleId) continue;
+    const patterns = Array.isArray(m.patterns) ? m.patterns : [];
+    for (const p of patterns) {
+      const method = p.method == null ? "" : String(p.method);
       await prisma.permissionModuleApiPattern.upsert({
         where: {
           moduleId_kind_pathPattern_method: {
-            moduleId: module.id,
+            moduleId,
             kind: p.kind,
             pathPattern: p.pathPattern,
-            method: p.method,
+            method,
           },
         },
         update: {},
         create: {
-          moduleId: module.id,
+          moduleId,
           kind: p.kind,
           pathPattern: p.pathPattern,
-          method: p.method,
+          method,
         },
       });
     }
+  }
 
-    const rp = rolePermissionsByModuleKey[m.key];
-    for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]) {
-      const v = rp[role];
+  function defaultPerm(role, moduleKey) {
+    // ADMIN: all write
+    if (role === "ADMIN") return { canRead: true, canWrite: true };
+
+    // EDITOR: mostly write, but keep legacy restriction (cannot manage users)
+    if (role === "EDITOR") {
+      if (moduleKey === "settings-users" || moduleKey === "settings-role-permissions") {
+        return { canRead: false, canWrite: false };
+      }
+      return { canRead: true, canWrite: true };
+    }
+
+    // VIEWER: read-only reports/performance/data, otherwise hidden
+    if (role === "VIEWER") {
+      if (
+        moduleKey === "home" ||
+        moduleKey === "forbidden" ||
+        moduleKey.startsWith("reports") ||
+        moduleKey.startsWith("performance-") ||
+        moduleKey === "data"
+      ) {
+        return { canRead: true, canWrite: false };
+      }
+      return { canRead: false, canWrite: false };
+    }
+
+    // STORE_STAFF: only specified modules write, others hidden
+    if (role === "STORE_STAFF") {
+      const writeKeys = new Set([
+        "workhour-related",
+        "dispatches",
+        "store-hour-deductions",
+        "content-entries",
+      ]);
+      if (writeKeys.has(moduleKey)) return { canRead: true, canWrite: true };
+      return { canRead: false, canWrite: false };
+    }
+
+    return { canRead: false, canWrite: false };
+  }
+
+  // 4) upsert role permissions for all modules
+  const allModuleRows = await prisma.permissionModule.findMany({
+    select: { id: true, key: true },
+  });
+  for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]) {
+    for (const m of allModuleRows) {
+      const v = defaultPerm(role, m.key);
+      const canWrite = !!v.canWrite;
+      const canRead = !!v.canRead || canWrite;
       await prisma.rolePermission.upsert({
-        where: { role_moduleId: { role, moduleId: module.id } },
-        update: { canRead: v.canRead, canWrite: v.canWrite },
-        create: {
-          role,
-          moduleId: module.id,
-          canRead: v.canRead,
-          canWrite: v.canWrite,
-        },
+        where: { role_moduleId: { role, moduleId: m.id } },
+        update: { canRead, canWrite },
+        create: { role, moduleId: m.id, canRead, canWrite },
       });
     }
   }

@@ -6,10 +6,16 @@ export const metadata = {
   title: "登入｜每日績效計算系統",
 };
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { next?: string };
+}) {
   if (!isAuthEnabled()) {
     redirect("/");
   }
+
+  const nextParam = typeof searchParams?.next === "string" ? searchParams.next : "/";
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-16">
@@ -18,7 +24,7 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-slate-500">請輸入帳號與密碼</p>
       </div>
       <div className="mx-auto mt-8 max-w-md">
-        <LoginForm />
+        <LoginForm nextParam={nextParam} />
       </div>
     </div>
   );

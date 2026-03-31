@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { formatLocalDateInput } from "@/lib/date";
 
 type AttendanceReportRow = {
   type: "attendance" | "adjustment" | "dispatch_out" | "dispatch_in" | "subtotal";
@@ -23,8 +24,7 @@ type Store = {
 };
 
 export default function AttendanceReportPage() {
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = formatLocalDateInput();
 
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
