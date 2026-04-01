@@ -45,6 +45,7 @@ export default function ContentEntriesPage() {
   const [endDate, setEndDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
@@ -226,6 +227,75 @@ export default function ContentEntriesPage() {
     const h = Math.floor(min / 60);
     const m = min % 60;
     return m ? `${h} 小時 ${m} 分鐘` : `${h} 小時`;
+  };
+
+  const exportToExcel = async () => {
+    if (exporting || loading || list.length === 0) return;
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+
+      const headers = [
+        "日期",
+        "分店",
+        "總篇數",
+        "內容說明1",
+        "篇數1(網址)",
+        "商品1",
+        "留言1",
+        "內容說明2",
+        "篇數2(網址)",
+        "商品2",
+        "留言2",
+        "內容說明3",
+        "篇數3(網址)",
+        "商品3",
+        "留言3",
+        ...(canSeeDeductedMinutes ? ["扣工時"] : []),
+      ];
+
+      const rows = list.map((r) => {
+        const base = [
+          formatWorkDate(r.workDate),
+          r.branch ?? "",
+          r.totalArticles ?? "",
+          r.contentDesc1 ?? "",
+          r.articleUrl1 ?? "",
+          r.productCount1 ?? "",
+          r.commentCount1 ?? "",
+          r.contentDesc2 ?? "",
+          r.articleUrl2 ?? "",
+          r.productCount2 ?? "",
+          r.commentCount2 ?? "",
+          r.contentDesc3 ?? "",
+          r.articleUrl3 ?? "",
+          r.productCount3 ?? "",
+          r.commentCount3 ?? "",
+        ];
+        if (canSeeDeductedMinutes) {
+          base.push(formatDeducted((r as any).deductedMinutes ?? null));
+        }
+        return base;
+      });
+
+      const aoa = [headers, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = headers.map((h) => ({
+        wch: Math.min(50, Math.max(10, String(h).length + 2)),
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "內容篇數填報");
+
+      const safeStart = String(startDate || "").trim() || "start";
+      const safeEnd = String(endDate || "").trim() || "end";
+      const filename = `內容篇數填報_${safeStart}_${safeEnd}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (e) {
+      console.error(e);
+      alert("匯出失敗，請稍後再試。");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -594,6 +664,18 @@ export default function ContentEntriesPage() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => void exportToExcel()}
+          disabled={exporting || loading || list.length === 0}
+          className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          title={list.length === 0 ? "沒有資料可匯出" : "下載目前查詢結果（Excel）"}
+        >
+          {exporting ? "匯出中…" : "下載 Excel"}
+        </button>
       </div>
     </div>
   );
