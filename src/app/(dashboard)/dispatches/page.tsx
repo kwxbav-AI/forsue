@@ -23,7 +23,7 @@ type DispatchRow = {
   effectiveHours: number;
   hoursDiff: number | null;
   attendanceHours: number | null;
-  comparisonResult: "待比對" | "一致" | "延長" | "縮短";
+  comparisonResult: "一致" | "延長" | "縮短" | null;
   startTime: string | null;
   endTime: string | null;
   remark: string | null;
@@ -393,7 +393,7 @@ export default function DispatchesPage() {
       </div>
 
       <p className="mb-3 text-sm text-slate-500">
-        預申請時數為填報時自動計算；實際可能延長或縮短，可點「編輯」填寫實際時數與確認狀態，績效計算將優先使用實際時數。「出勤時數」為該員工當日打卡上傳的總工時；「比對結果」為調度使用時數與出勤時數的比對（一致／延長／縮短／待比對）。
+        預申請時數為填報時自動計算；實際可能延長或縮短，可點「編輯」填寫實際時數與確認狀態。「差異」為（實際－預申請）；「與預申請比對」則是依差異判定（一致／延長／縮短）。若尚未填寫實際時數，則顯示「—」。
       </p>
 
       <div className="mb-3 flex items-center gap-3">
@@ -441,7 +441,12 @@ export default function DispatchesPage() {
                   <th className="px-4 py-2 text-right font-medium text-slate-700">差異</th>
                   <th className="px-4 py-2 text-center font-medium text-slate-700">狀態</th>
                   <th className="px-4 py-2 text-right font-medium text-slate-700">出勤時數</th>
-                  <th className="px-4 py-2 text-center font-medium text-slate-700">比對結果</th>
+                  <th
+                    className="px-4 py-2 text-center font-medium text-slate-700"
+                    title="以差異（實際－預申請）判定"
+                  >
+                    與預申請比對
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">時間</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
                   <th className="px-4 py-2"></th>
@@ -486,19 +491,21 @@ export default function DispatchesPage() {
                       {r.attendanceHours != null ? r.attendanceHours : "—"}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <span
-                        className={
-                          r.comparisonResult === "待比對"
-                            ? "rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600"
-                            : r.comparisonResult === "一致"
+                      {r.comparisonResult == null ? (
+                        <span className="text-slate-400">—</span>
+                      ) : (
+                        <span
+                          className={
+                            r.comparisonResult === "一致"
                               ? "rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800"
                               : r.comparisonResult === "延長"
                                 ? "rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
                                 : "rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800"
-                        }
-                      >
-                        {r.comparisonResult}
-                      </span>
+                          }
+                        >
+                          {r.comparisonResult}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-slate-600">
                       {r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}

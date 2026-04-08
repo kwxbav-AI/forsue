@@ -22,6 +22,20 @@ model Store {
   performanceDailies PerformanceDaily[]
   aliases              StoreAlias[]
   storeHourDeductions  StoreHourDeduction[]
+  changeLogs           StoreChangeLog[]
+}
+
+model StoreChangeLog {
+  id        String   @id @default(cuid())
+  storeId   String
+  action    String
+  changedBy String?
+  before    Json
+  after     Json
+  changedAt DateTime @default(now())
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  @@index([storeId, changedAt])
+  @@index([changedAt])
 }
 
 enum StoreDeductionReason {

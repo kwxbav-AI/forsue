@@ -12,6 +12,16 @@ type Store = {
   aliases: string[];
 };
 
+type StoreChangeLog = {
+  id: string;
+  storeId: string;
+  action: string;
+  changedBy: string | null;
+  before: any;
+  after: any;
+  changedAt: string;
+};
+
 export default function StoresPage() {
   const [list, setList] = useState<Store[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,6 +33,12 @@ export default function StoresPage() {
   const [editName, setEditName] = useState("");
   const [editAliasesText, setEditAliasesText] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const [logStore, setLogStore] = useState<Store | null>(null);
+  const [logs, setLogs] = useState<StoreChangeLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -33,6 +49,13 @@ export default function StoresPage() {
 
   useEffect(() => {
     refresh();
+    (async () => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      const role = data?.user?.role;
+      setIsAdmin(role === "ADMIN");
+    })();
   }, []);
 
   const aliasPreview = useMemo(
@@ -123,6 +146,22 @@ export default function StoresPage() {
     }
     setMessage("已停用門市");
     refresh();
+  }
+
+  async function openLogs(s: Store) {
+    setLogStore(s);
+    setLogs([]);
+    setLogsError(null);
+    setLogsLoading(true);
+    const res = await fetch(`/api/stores/${s.id}/change-logs`, { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLogsError(data.error || "讀取異動紀錄失敗");
+      setLogsLoading(false);
+      return;
+    }
+    setLogs(Array.isArray(data.logs) ? data.logs : []);
+    setLogsLoading(false);
   }
 
   return (
@@ -236,6 +275,15 @@ export default function StoresPage() {
                       >
                         編輯
                       </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => void openLogs(s)}
+                          className="mr-3 text-slate-600 hover:underline"
+                        >
+                          異動
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => deleteStore(s.id, s.name)}
@@ -251,6 +299,97 @@ export default function StoresPage() {
           </div>
         )}
       </div>
+
+      {logStore && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white p-5 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-medium text-slate-800">門市異動紀錄</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {logStore.name}（{[logStore.code, ...(logStore.aliases || [])].filter(Boolean).join("、") || "—"}）
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !logsLoading && setLogStore(null)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                disabled={logsLoading}
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {logsLoading ? (
+                <p className="text-sm text-slate-500">載入中…</p>
+              ) : logsError ? (
+                <p className="text-sm text-red-700">{logsError}</p>
+              ) : logs.length === 0 ? (
+                <p className="text-sm text-slate-500">尚無異動紀錄</p>
+              ) : (
+                <div className="max-h-[60vh] overflow-auto rounded border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-left">
+                      <tr>
+                        <th className="w-[160px] px-3 py-2 font-medium text-slate-700">時間</th>
+                        <th className="w-[120px] px-3 py-2 font-medium text-slate-700">操作者</th>
+                        <th className="w-[120px] px-3 py-2 font-medium text-slate-700">動作</th>
+                        <th className="px-3 py-2 font-medium text-slate-700">變更內容</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logs.map((l) => {
+                        const beforeCodes = [l.before?.code, ...(l.before?.aliases || [])].filter(Boolean).join("、") || "—";
+                        const afterCodes = [l.after?.code, ...(l.after?.aliases || [])].filter(Boolean).join("、") || "—";
+                        const beforeActive = l.before?.isActive === false ? "停用" : "啟用";
+                        const afterActive = l.after?.isActive === false ? "停用" : "啟用";
+                        return (
+                          <tr key={l.id} className="border-b border-slate-100 align-top">
+                            <td className="px-3 py-2 text-slate-600">
+                              {new Date(l.changedAt).toLocaleString("zh-TW")}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">{l.changedBy || "—"}</td>
+                            <td className="px-3 py-2 text-slate-600">{l.action}</td>
+                            <td className="px-3 py-2">
+                              <div className="space-y-1">
+                                <div>
+                                  <span className="text-slate-500">POS：</span>
+                                  <span className="text-slate-700">{beforeCodes}</span>
+                                  <span className="mx-2 text-slate-400">→</span>
+                                  <span className="font-medium text-slate-900">{afterCodes}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500">門市：</span>
+                                  <span className="text-slate-700">{l.before?.name ?? "—"}</span>
+                                  <span className="mx-2 text-slate-400">→</span>
+                                  <span className="text-slate-900">{l.after?.name ?? "—"}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500">部門：</span>
+                                  <span className="text-slate-700">{l.before?.department ?? "—"}</span>
+                                  <span className="mx-2 text-slate-400">→</span>
+                                  <span className="text-slate-900">{l.after?.department ?? "—"}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500">狀態：</span>
+                                  <span className="text-slate-700">{beforeActive}</span>
+                                  <span className="mx-2 text-slate-400">→</span>
+                                  <span className="text-slate-900">{afterActive}</span>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {edit && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/50">

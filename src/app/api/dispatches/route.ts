@@ -85,14 +85,10 @@ export async function GET(request: NextRequest) {
   }
 
   const TOLERANCE = 0.5;
-  function compareResult(
-    effectiveHours: number,
-    attendanceHours: number | null
-  ): "待比對" | "一致" | "延長" | "縮短" {
-    if (attendanceHours == null) return "待比對";
-    const diff = effectiveHours - attendanceHours;
-    if (Math.abs(diff) <= TOLERANCE) return "一致";
-    return diff > 0 ? "延長" : "縮短";
+  function compareResultByDiff(hoursDiff: number | null): "一致" | "延長" | "縮短" | null {
+    if (hoursDiff == null) return null;
+    if (Math.abs(hoursDiff) <= TOLERANCE) return "一致";
+    return hoursDiff > 0 ? "延長" : "縮短";
   }
 
   return NextResponse.json(
@@ -107,7 +103,7 @@ export async function GET(request: NextRequest) {
         attendanceByKey.get(`${workDateStr}_${d.employeeId}`) ?? null;
       const attendanceHoursRounded =
         attendanceHours != null ? Math.round(attendanceHours * 100) / 100 : null;
-      const comparisonResult = compareResult(effectiveRounded, attendanceHoursRounded);
+      const comparisonResult = compareResultByDiff(diff);
       return {
         id: d.id,
         workDate: workDateStr,

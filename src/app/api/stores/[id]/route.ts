@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { getSessionFromRequest } from "@/lib/auth-request";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +12,26 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+function toSnapshot(
+  store: { name: string; department: string | null; isActive: boolean; code: string | null },
+  aliases: { code: string }[]
+) {
+  return {
+    name: store.name,
+    department: store.department,
+    isActive: store.isActive,
+    code: store.code,
+    aliases: aliases.map((a) => a.code).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
   try {
+    const session = await getSessionFromRequest(request);
     const body = await request.json();
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
@@ -29,6 +44,13 @@ export async function PUT(
     const { name, department, aliases, isActive } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
+      const before = await tx.store.findUnique({
+        where: { id },
+        include: { aliases: true },
+      });
+      if (!before) throw new Error("找不到門市");
+      const beforeSnap = toSnapshot(before, (before as any).aliases ?? []);
+
       let primaryCode: string | null = null;
       if (aliases && aliases.length) {
         primaryCode = aliases[0].trim() || null;
@@ -59,7 +81,22 @@ export async function PUT(
         where: { id },
         include: { aliases: true },
       });
-      return withAliases ?? store;
+      const after = withAliases ?? store;
+      const afterSnap = toSnapshot(after, Array.isArray((after as any).aliases) ? (after as any).aliases : []);
+
+      if (JSON.stringify(beforeSnap) !== JSON.stringify(afterSnap)) {
+        await tx.storeChangeLog.create({
+          data: {
+            storeId: id,
+            action: "UPDATE",
+            changedBy: session?.username ?? null,
+            before: beforeSnap,
+            after: afterSnap,
+          },
+        });
+      }
+
+      return after;
     });
 
     return NextResponse.json({
@@ -82,19 +119,44 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
   try {
+    const session = await getSessionFromRequest(request);
     // 不能硬刪：門市可能被歷史績效/營收引用
     // 改採「停用」(soft delete)，保留歷史資料一致性
     await prisma.$transaction(async (tx) => {
+      const before = await tx.store.findUnique({
+        where: { id },
+        include: { aliases: true },
+      });
+      if (!before) throw new Error("找不到門市");
+      const beforeSnap = toSnapshot(before, (before as any).aliases ?? []);
+
       await tx.store.update({
         where: { id },
         data: { isActive: false },
       });
       // 停用時保留 aliases 也可；這裡先保留，避免歷史匯入對不到
+
+      const after = await tx.store.findUnique({
+        where: { id },
+        include: { aliases: true },
+      });
+      if (after) {
+        const afterSnap = toSnapshot(after, (after as any).aliases ?? []);
+        await tx.storeChangeLog.create({
+          data: {
+            storeId: id,
+            action: "DEACTIVATE",
+            changedBy: session?.username ?? null,
+            before: beforeSnap,
+            after: afterSnap,
+          },
+        });
+      }
     });
     return NextResponse.json({ success: true });
   } catch (e) {
