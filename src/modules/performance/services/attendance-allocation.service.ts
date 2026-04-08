@@ -22,7 +22,7 @@ export async function computeStoreHoursByEmployee(
   });
 
   const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate: d },
+    where: { workDate: d, confirmStatus: "已確認" },
   });
 
   const adjustments = await prisma.workhourAdjustment.findMany({

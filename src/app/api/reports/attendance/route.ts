@@ -187,6 +187,7 @@ export async function GET(request: Request) {
       prisma.dispatchRecord.findMany({
         where: {
           workDate: { gte: range.start, lte: range.end },
+          confirmStatus: "已確認",
           ...(employeeIds.length > 0 ? { employeeId: { in: employeeIds } } : {}),
         },
         include: { employee: true },
@@ -320,6 +321,7 @@ export async function GET(request: Request) {
       const dispatchInOnly = await prisma.dispatchRecord.findMany({
         where: {
           workDate: { gte: range.start, lte: range.end },
+          confirmStatus: "已確認",
           toStoreId: { in: storeIdsForFilter },
           ...(empWhere ? { employee: empWhere } : {}),
         },

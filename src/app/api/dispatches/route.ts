@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
           fromStoreId: fromStoreId ?? fromStoreByDate.get(formatDateOnlyTaipei(workDate)) ?? null,
           toStoreId,
           dispatchHours: hours,
+          confirmStatus: "待確認",
           startTime,
           endTime,
           remark: remark ?? null,
