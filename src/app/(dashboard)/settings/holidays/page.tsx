@@ -108,7 +108,7 @@ export default function HolidaysPage() {
         {message && <p className="mt-3 text-sm text-slate-700">{message}</p>}
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         {loading ? (
           <p className="p-4 text-sm text-slate-500">載入中…</p>
         ) : list.length === 0 ? (
@@ -116,9 +116,13 @@ export default function HolidaysPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                <th className="px-4 py-2 font-medium text-slate-700">日期</th>
-                <th className="px-4 py-2 font-medium text-slate-700">說明</th>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-left">
+                <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 font-medium text-slate-700">
+                  日期
+                </th>
+                <th className="sticky left-[140px] z-20 w-[220px] min-w-[220px] bg-slate-50 px-4 py-2 font-medium text-slate-700">
+                  說明
+                </th>
                 <th className="px-4 py-2 font-medium text-slate-700">狀態</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -126,8 +130,12 @@ export default function HolidaysPage() {
             <tbody>
               {list.map((h) => (
                 <tr key={h.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2">{h.date}</td>
-                  <td className="px-4 py-2 text-slate-700">{h.name}</td>
+                  <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
+                    {h.date}
+                  </td>
+                  <td className="sticky left-[140px] z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 text-slate-700">
+                    {h.name}
+                  </td>
                   <td className="px-4 py-2">
                     {h.isActive ? (
                       <span className="text-green-600">生效中</span>

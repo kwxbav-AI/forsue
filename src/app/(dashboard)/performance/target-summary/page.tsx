@@ -75,11 +75,13 @@ export default function TargetSummaryPage() {
           此區間尚無績效資料。
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-2 text-left font-medium text-slate-700">門市</th>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                <th className="sticky left-0 z-20 w-[180px] min-w-[180px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  門市
+                </th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">總天數</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">達標天數</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">未達標天數</th>
@@ -90,7 +92,9 @@ export default function TargetSummaryPage() {
             <tbody>
               {list.map((row) => (
                 <tr key={row.storeId} className="border-b border-slate-100">
-                  <td className="px-4 py-2 font-medium">{row.storeName}</td>
+                  <td className="sticky left-0 z-[5] w-[180px] min-w-[180px] bg-white px-4 py-2 font-medium">
+                    {row.storeName}
+                  </td>
                   <td className="px-4 py-2 text-right">{row.totalDays}</td>
                   <td className="px-4 py-2 text-right text-green-600">{row.metDays}</td>
                   <td className="px-4 py-2 text-right text-amber-600">{row.notMetDays}</td>

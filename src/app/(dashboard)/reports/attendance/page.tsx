@@ -186,8 +186,12 @@ export default function AttendanceReportPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-2 text-left font-medium text-slate-700">員工編號</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-700">姓名</th>
+                <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  員工編號
+                </th>
+                <th className="sticky left-[140px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  姓名
+                </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">部門</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">職稱</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">日期</th>
@@ -211,10 +215,12 @@ export default function AttendanceReportPage() {
                       !isSubtotal && !isChangeRow && isSubRow ? "text-slate-600" : ""
                     }`}
                   >
-                    <td className="px-4 py-2">
+                    <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                       {isSubtotal ? "小計" : isSubRow ? "" : r.employeeCode}
                     </td>
-                    <td className="px-4 py-2">{!isSubRow && !isSubtotal ? r.name : ""}</td>
+                    <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
+                      {!isSubRow && !isSubtotal ? r.name : ""}
+                    </td>
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.department || "—")}</td>
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.position || "—")}</td>
                     <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : r.workDate}</td>

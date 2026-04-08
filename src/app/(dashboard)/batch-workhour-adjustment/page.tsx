@@ -228,8 +228,12 @@ export default function BatchWorkhourAdjustmentPage() {
           <thead className="sticky top-0 bg-slate-50">
             <tr>
               <th className="w-10 px-2 py-2 text-left"></th>
-              <th className="px-2 py-2 text-left font-medium text-slate-700">工號</th>
-              <th className="px-2 py-2 text-left font-medium text-slate-700">姓名</th>
+              <th className="sticky left-0 z-10 w-[120px] min-w-[120px] bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
+                工號
+              </th>
+              <th className="sticky left-[120px] z-10 w-[140px] min-w-[140px] bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
+                姓名
+              </th>
               <th className="px-2 py-2 text-left font-medium text-slate-700">部門</th>
               <th className="px-2 py-2 text-left font-medium text-slate-700">職稱</th>
             </tr>
@@ -252,8 +256,12 @@ export default function BatchWorkhourAdjustmentPage() {
                       className="rounded border-slate-300"
                     />
                   </td>
-                  <td className="px-2 py-1.5">{e.employeeCode}</td>
-                  <td className="px-2 py-1.5">{e.name}</td>
+                  <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white px-2 py-1.5">
+                    {e.employeeCode}
+                  </td>
+                  <td className="sticky left-[120px] z-[5] w-[140px] min-w-[140px] bg-white px-2 py-1.5">
+                    {e.name}
+                  </td>
                   <td className="px-2 py-1.5 text-slate-600">{getDepartmentLabel(e)}</td>
                   <td className="px-2 py-1.5 text-slate-600">{e.position ?? "—"}</td>
                 </tr>

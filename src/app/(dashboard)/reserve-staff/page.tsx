@@ -135,7 +135,7 @@ export default function ReserveStaffPage() {
         {message && <p className="mt-2 text-sm text-slate-700">{message}</p>}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         {loading ? (
           <p className="p-4 text-sm text-slate-500">載入中…</p>
         ) : filtered.length === 0 ? (
@@ -143,9 +143,13 @@ export default function ReserveStaffPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">工號</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">姓名</th>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                <th className="sticky left-0 z-20 w-[120px] min-w-[120px] whitespace-nowrap bg-slate-50 px-3 py-2 text-left font-medium text-slate-700">
+                  工號
+                </th>
+                <th className="sticky left-[120px] z-20 w-[140px] min-w-[140px] whitespace-nowrap bg-slate-50 px-3 py-2 text-left font-medium text-slate-700">
+                  姓名
+                </th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">職稱</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">門市</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">儲備人力</th>
@@ -161,8 +165,12 @@ export default function ReserveStaffPage() {
                 };
                 return (
                   <tr key={e.id} className="border-b border-slate-100">
-                    <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">{e.employeeCode}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-800">{e.name}</td>
+                    <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] whitespace-nowrap bg-white px-3 py-2 font-medium text-slate-800">
+                      {e.employeeCode}
+                    </td>
+                    <td className="sticky left-[120px] z-[5] w-[140px] min-w-[140px] whitespace-nowrap bg-white px-3 py-2 text-slate-800">
+                      {e.name}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">{e.position || "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                       {e.defaultStore ? e.defaultStore.name : "—"}

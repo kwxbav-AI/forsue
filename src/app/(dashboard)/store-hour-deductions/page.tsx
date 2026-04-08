@@ -219,12 +219,16 @@ export default function StoreHourDeductionsPage() {
         ) : list.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">此區間無資料</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative max-h-[70vh] overflow-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">日期</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">門市</th>
+                <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                  <th className="sticky left-0 z-20 w-[120px] min-w-[120px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                    日期
+                  </th>
+                  <th className="sticky left-[120px] z-20 w-[160px] min-w-[160px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                    門市
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">原因</th>
                   <th className="px-4 py-2 text-right font-medium text-slate-700">時數</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
@@ -234,8 +238,12 @@ export default function StoreHourDeductionsPage() {
               <tbody>
                 {list.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100">
-                    <td className="px-4 py-2">{r.workDate}</td>
-                    <td className="px-4 py-2">{r.storeName}</td>
+                    <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white px-4 py-2">
+                      {r.workDate}
+                    </td>
+                    <td className="sticky left-[120px] z-[5] w-[160px] min-w-[160px] bg-white px-4 py-2">
+                      {r.storeName}
+                    </td>
                     <td className="px-4 py-2">{REASON_LABELS[r.reason] ?? r.reason}</td>
                     <td className="px-4 py-2 text-right">{r.hours}</td>
                     <td className="px-4 py-2 text-slate-600">{r.note ?? "—"}</td>

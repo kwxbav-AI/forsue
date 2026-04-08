@@ -350,7 +350,7 @@ export default function WorkhourAdjustmentsPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         {loading ? (
           <p className="p-4 text-sm text-slate-500">載入中…</p>
         ) : adjustments.length === 0 ? (
@@ -358,9 +358,13 @@ export default function WorkhourAdjustmentsPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-2 text-left font-medium text-slate-700">員工</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-700">類型</th>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                <th className="sticky left-0 z-20 w-[200px] min-w-[200px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  員工
+                </th>
+                <th className="sticky left-[200px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  類型
+                </th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">調整時數</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
                 <th className="px-4 py-2"></th>
@@ -369,10 +373,10 @@ export default function WorkhourAdjustmentsPage() {
             <tbody>
               {adjustments.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2">
+                  <td className="sticky left-0 z-[5] w-[200px] min-w-[200px] bg-white px-4 py-2">
                     {a.employee.employeeCode} {a.employee.name}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="sticky left-[200px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                     {ADJUSTMENT_TYPE_LABELS[a.adjustmentType] ?? a.adjustmentType}
                   </td>
                   <td className="px-4 py-2 text-right">{a.adjustmentHours}</td>

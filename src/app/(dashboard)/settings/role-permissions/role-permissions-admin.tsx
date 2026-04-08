@@ -135,12 +135,14 @@ export default function RolePermissionsAdmin() {
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50">
+          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
             <tr>
-              <th className="px-3 py-2">模組</th>
-              <th className="px-3 py-2">描述</th>
+              <th className="sticky left-0 z-20 w-[220px] min-w-[220px] bg-slate-50 px-3 py-2">模組</th>
+              <th className="sticky left-[220px] z-20 w-[280px] min-w-[280px] bg-slate-50 px-3 py-2">
+                描述
+              </th>
               <th className="px-3 py-2">權限</th>
             </tr>
           </thead>
@@ -187,13 +189,15 @@ export default function RolePermissionsAdmin() {
                     const isChild = m.parentId != null;
                     rows.push(
                       <tr key={m.id} className="border-b border-slate-100">
-                        <td className="px-3 py-2 font-medium text-slate-800">
+                        <td className="sticky left-0 z-[5] w-[220px] min-w-[220px] bg-white px-3 py-2 font-medium text-slate-800">
                           <span className={isChild ? "pl-6 text-slate-700" : ""}>
                             {isChild ? "└─ " : ""}
                             {m.label}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-slate-600">{m.description ?? "—"}</td>
+                        <td className="sticky left-[220px] z-[5] w-[280px] min-w-[280px] bg-white px-3 py-2 text-slate-600">
+                          {m.description ?? "—"}
+                        </td>
                         <td className="px-3 py-2">
                           <select
                             value={statusToValue(m.canRead, m.canWrite)}

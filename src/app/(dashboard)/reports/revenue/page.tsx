@@ -143,8 +143,12 @@ export default function RevenueReportPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-2 text-left font-medium text-slate-700">門市</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-700">部門</th>
+                <th className="sticky left-0 z-20 w-[160px] min-w-[160px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  門市
+                </th>
+                <th className="sticky left-[160px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  部門
+                </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">日期</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">營收金額</th>
               </tr>
@@ -152,8 +156,12 @@ export default function RevenueReportPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2">{r.storeName}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.department || "—"}</td>
+                  <td className="sticky left-0 z-[5] w-[160px] min-w-[160px] bg-white px-4 py-2">
+                    {r.storeName}
+                  </td>
+                  <td className="sticky left-[160px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2 text-slate-600">
+                    {r.department || "—"}
+                  </td>
                   <td className="px-4 py-2">{r.revenueDate}</td>
                   <td className="px-4 py-2 text-right">
                     {r.revenueAmount.toLocaleString("zh-TW")}

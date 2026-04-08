@@ -137,12 +137,12 @@ export default function PerformanceDailyPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">
+                  <th className="sticky left-0 z-20 w-[220px] min-w-[220px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                     <button type="button" onClick={() => toggleSort("storeName")} className="hover:underline">
                       門市{sortIndicator("storeName")}
                     </button>
                   </th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">
+                  <th className="sticky left-[220px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-right font-medium text-slate-700">
                     <button type="button" onClick={() => toggleSort("revenueAmount")} className="hover:underline">
                       營收{sortIndicator("revenueAmount")}
                     </button>
@@ -173,8 +173,10 @@ export default function PerformanceDailyPage() {
               <tbody>
                 {sortedList.map((row) => (
                   <tr key={row.id} className="border-b border-slate-100">
-                    <td className="px-4 py-2 font-medium">{row.storeName}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="sticky left-0 z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 font-medium">
+                      {row.storeName}
+                    </td>
+                    <td className="sticky left-[220px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2 text-right">
                       {row.revenueAmount.toLocaleString("zh-TW")}
                     </td>
                     <td className="px-4 py-2 text-right">{row.totalWorkHours}</td>
@@ -225,24 +227,34 @@ export default function PerformanceDailyPage() {
               <h3 className="mb-2 font-medium text-slate-800">
                 {list.find((r) => r.storeId === detailStoreId)?.storeName} 當日工時明細
               </h3>
-              <table className="w-full text-sm">
+              <div className="relative max-h-[50vh] overflow-auto">
+                <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left">
-                    <th className="py-1.5 font-medium text-slate-700">員工代碼</th>
-                    <th className="py-1.5 font-medium text-slate-700">姓名</th>
+                  <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left">
+                    <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
+                      員工代碼
+                    </th>
+                    <th className="sticky left-[140px] z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
+                      姓名
+                    </th>
                     <th className="py-1.5 text-right font-medium text-slate-700">工時</th>
                   </tr>
                 </thead>
                 <tbody>
                   {detail.detail.map((d, i) => (
                     <tr key={i} className="border-b border-slate-100">
-                      <td className="py-1.5">{d.employeeCode}</td>
-                      <td className="py-1.5">{d.name}</td>
+                      <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
+                        {d.employeeCode}
+                      </td>
+                      <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
+                        {d.name}
+                      </td>
                       <td className="py-1.5 text-right">{d.workHours}</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           )}
         </>

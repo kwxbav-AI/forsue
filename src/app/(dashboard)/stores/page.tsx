@@ -199,12 +199,16 @@ export default function StoresPage() {
         ) : list.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">尚無門市資料</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative max-h-[70vh] overflow-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">門市</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">POS 代碼（A/B/C...）</th>
+                <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                  <th className="sticky left-0 z-20 w-[180px] min-w-[180px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                    門市
+                  </th>
+                  <th className="sticky left-[180px] z-20 w-[220px] min-w-[220px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                    POS 代碼（A/B/C...）
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">部門</th>
                   <th className="px-4 py-2"></th>
                 </tr>
@@ -212,7 +216,7 @@ export default function StoresPage() {
               <tbody>
                 {list.map((s) => (
                   <tr key={s.id} className="border-b border-slate-100">
-                    <td className="px-4 py-2 font-medium">
+                    <td className="sticky left-0 z-[5] w-[180px] min-w-[180px] bg-white px-4 py-2 font-medium">
                       {s.name}
                       {s.isActive === false && (
                         <span className="ml-2 rounded bg-slate-100 px-1 text-xs text-slate-500">
@@ -220,7 +224,7 @@ export default function StoresPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-slate-600">
+                    <td className="sticky left-[180px] z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 text-slate-600">
                       {[s.code, ...(s.aliases || [])].filter(Boolean).join("、") || "—"}
                     </td>
                     <td className="px-4 py-2 text-slate-600">{s.department || "—"}</td>

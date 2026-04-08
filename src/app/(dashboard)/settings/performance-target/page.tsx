@@ -182,36 +182,44 @@ export default function PerformanceTargetPage() {
             {history.length === 0 ? (
               <p className="text-sm text-slate-500">尚無歷史紀錄</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left">
-                    <th className="py-2 font-medium text-slate-700">目標值</th>
-                    <th className="py-2 font-medium text-slate-700">生效起日</th>
-                    <th className="py-2 font-medium text-slate-700">生效迄日</th>
-                    <th className="py-2 font-medium text-slate-700">狀態</th>
-                    <th className="py-2 font-medium text-slate-700">建立時間</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((h) => (
-                    <tr key={h.id} className="border-b border-slate-100">
-                      <td className="py-2">{h.targetValue.toLocaleString("zh-TW")}</td>
-                      <td className="py-2">{h.effectiveStartDate}</td>
-                      <td className="py-2">{h.effectiveEndDate ?? "—"}</td>
-                      <td className="py-2">
-                        {h.isActive ? (
-                          <span className="text-green-600">生效中</span>
-                        ) : (
-                          <span className="text-slate-400">已停用</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-slate-500">
-                        {new Date(h.createdAt).toLocaleString("zh-TW")}
-                      </td>
+              <div className="relative max-h-[70vh] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left">
+                      <th className="sticky left-0 z-20 w-[120px] min-w-[120px] bg-white py-2 font-medium text-slate-700">
+                        目標值
+                      </th>
+                      <th className="sticky left-[120px] z-20 w-[140px] min-w-[140px] bg-white py-2 font-medium text-slate-700">
+                        生效起日
+                      </th>
+                      <th className="py-2 font-medium text-slate-700">生效迄日</th>
+                      <th className="py-2 font-medium text-slate-700">狀態</th>
+                      <th className="py-2 font-medium text-slate-700">建立時間</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {history.map((h) => (
+                      <tr key={h.id} className="border-b border-slate-100">
+                        <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white py-2">
+                          {h.targetValue.toLocaleString("zh-TW")}
+                        </td>
+                        <td className="sticky left-[120px] z-[5] w-[140px] min-w-[140px] bg-white py-2">
+                          {h.effectiveStartDate}
+                        </td>
+                        <td className="py-2">{h.effectiveEndDate ?? "—"}</td>
+                        <td className="py-2">
+                          {h.isActive ? (
+                            <span className="text-green-600">生效中</span>
+                          ) : (
+                            <span className="text-slate-400">已停用</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-slate-500">{new Date(h.createdAt).toLocaleString("zh-TW")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>

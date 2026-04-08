@@ -164,12 +164,16 @@ function UsersInner() {
         </div>
       </form>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="relative max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50">
+          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
             <tr>
-              <th className="px-3 py-2">帳號</th>
-              <th className="px-3 py-2">角色</th>
+              <th className="sticky left-0 z-20 w-[180px] min-w-[180px] bg-slate-50 px-3 py-2">
+                帳號
+              </th>
+              <th className="sticky left-[180px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-3 py-2">
+                角色
+              </th>
               <th className="px-3 py-2">狀態</th>
               <th className="px-3 py-2">操作</th>
             </tr>
@@ -190,8 +194,10 @@ function UsersInner() {
             ) : (
               users.map((u) => (
                 <tr key={u.id} className="border-b border-slate-100">
-                  <td className="px-3 py-2 font-medium">{u.username}</td>
-                  <td className="px-3 py-2">
+                  <td className="sticky left-0 z-[5] w-[180px] min-w-[180px] bg-white px-3 py-2 font-medium">
+                    {u.username}
+                  </td>
+                  <td className="sticky left-[180px] z-[5] w-[140px] min-w-[140px] bg-white px-3 py-2">
                     <select
                       defaultValue={u.role}
                       onChange={(e) =>
