@@ -6,8 +6,6 @@ import { canAccessPageDb } from "@/lib/permissions-db";
 export default async function SettingsHubPage() {
   const authOn = isAuthEnabled();
   const session = await getServerSession();
-  const role = session?.role ?? null;
-
   const canOpen = async (pathname: string) => {
     if (!authOn) return true;
     return session != null && (await canAccessPageDb(session.role, pathname));
@@ -35,7 +33,7 @@ export default async function SettingsHubPage() {
             <p className="mt-1 text-sm text-slate-500">新增帳號、角色（管理員／編輯者／檢視者）</p>
           </Link>
         ) : null}
-        {role === "ADMIN" ? (
+        {(await canOpen("/settings/role-permissions")) ? (
           <Link
             href="/settings/role-permissions"
             className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { formatLocalDateInput, formatDateOnly } from "@/lib/date";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type Store = {
   id: string;
@@ -51,6 +52,9 @@ export default function ContentEntriesPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [branchSearch, setBranchSearch] = useState("");
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
+
   const [form, setForm] = useState({
     workDate: formatLocalDateInput(),
     branch: "",
@@ -210,7 +214,19 @@ export default function ContentEntriesPage() {
   const deleteEntry = async (id: string) => {
     if (!confirm("確定刪除此筆？")) return;
     const res = await fetch(`/api/content-entries/${id}`, { method: "DELETE" });
-    if (res.ok) fetchList();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      void fetchList();
+      setPendingRefresh((k) => k + 1);
+      return;
+    }
+    if (res.status === 202) {
+      if (data.message) alert(data.message);
+      void fetchList();
+      setPendingRefresh((k) => k + 1);
+      return;
+    }
+    alert(data.error || "刪除失敗");
   };
 
   const formatWorkDate = (workDate: string) => {
@@ -309,6 +325,13 @@ export default function ContentEntriesPage() {
           回首頁
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="content-entries"
+        canRead={perm.canReadPending}
+        canApprove={perm.canApprove}
+        refreshKey={pendingRefresh}
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
         <label className="flex items-center gap-2 text-sm">

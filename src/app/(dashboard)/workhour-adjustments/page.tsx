@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type Store = { id: string; code: string | null; name: string; isActive?: boolean };
 type Employee = { id: string; employeeCode: string; name: string; defaultStoreId: string | null };
@@ -52,6 +53,8 @@ export default function WorkhourAdjustmentsPage() {
     adjustmentHours: 0,
     note: "",
   });
+  const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
 
   const fetchStores = useCallback(async () => {
     const res = await fetch("/api/stores");
@@ -82,6 +85,27 @@ export default function WorkhourAdjustmentsPage() {
   }, [fetchEmployees]);
   useEffect(() => {
     fetchAdjustments();
+  }, [fetchAdjustments]);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setPerm({
+          canReadPending: Boolean(d?.user?.canReadPendingWorkhourAdjustments),
+          canApprove: Boolean(d?.user?.canApproveDeleteWorkhourAdjustments),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      void fetchAdjustments();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
   }, [fetchAdjustments]);
 
   const filteredEmployees = useMemo(() => {
@@ -156,7 +180,19 @@ export default function WorkhourAdjustmentsPage() {
   async function deleteAdj(id: string) {
     if (!confirm("確定刪除此筆異動？")) return;
     const res = await fetch(`/api/workhour-adjustments/${id}`, { method: "DELETE" });
-    if (res.ok) fetchAdjustments();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      void fetchAdjustments();
+      setPendingRefresh((k) => k + 1);
+      return;
+    }
+    if (res.status === 202) {
+      if (data.message) alert(data.message);
+      void fetchAdjustments();
+      setPendingRefresh((k) => k + 1);
+      return;
+    }
+    alert(data.error || "刪除失敗");
   }
 
   return (
@@ -167,6 +203,13 @@ export default function WorkhourAdjustmentsPage() {
           回首頁
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="workhour-adjustments"
+        canRead={perm.canReadPending}
+        canApprove={perm.canApprove}
+        refreshKey={pendingRefresh}
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
         <label className="flex items-center gap-2">

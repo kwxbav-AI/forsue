@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type Store = {
   id: string;
@@ -33,7 +34,9 @@ export default function StoresPage() {
   const [editName, setEditName] = useState("");
   const [editAliasesText, setEditAliasesText] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [canViewStoreChangeLogs, setCanViewStoreChangeLogs] = useState(false);
+  const [permPending, setPermPending] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
 
   const [logStore, setLogStore] = useState<Store | null>(null);
   const [logs, setLogs] = useState<StoreChangeLog[]>([]);
@@ -53,9 +56,21 @@ export default function StoresPage() {
       const res = await fetch("/api/auth/me", { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
-      const role = data?.user?.role;
-      setIsAdmin(role === "ADMIN");
+      setCanViewStoreChangeLogs(Boolean(data?.user?.canViewStoreChangeLogs));
+      setPermPending({
+        canReadPending: Boolean(data?.user?.canReadPendingStores),
+        canApprove: Boolean(data?.user?.canApproveDeleteStores),
+      });
     })();
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      void refresh();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
   }, []);
 
   const aliasPreview = useMemo(
@@ -140,12 +155,19 @@ export default function StoresPage() {
     if (!confirm(`確定要停用門市「${storeName}」？（停用後不再出現在報表與下拉選單）`)) return;
     const res = await fetch(`/api/stores/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setMessage(data.error || "停用失敗");
+    if (res.ok) {
+      setMessage("已停用門市");
+      void refresh();
+      setPendingRefresh((k) => k + 1);
       return;
     }
-    setMessage("已停用門市");
-    refresh();
+    if (res.status === 202) {
+      setMessage(data.message || "已送出停用申請");
+      void refresh();
+      setPendingRefresh((k) => k + 1);
+      return;
+    }
+    setMessage(data.error || "停用失敗");
   }
 
   async function openLogs(s: Store) {
@@ -175,6 +197,14 @@ export default function StoresPage() {
           回首頁
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="stores"
+        canRead={permPending.canReadPending}
+        canApprove={permPending.canApprove}
+        title="待審門市停用申請"
+        refreshKey={pendingRefresh}
+      />
 
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-2 font-medium text-slate-800">新增門市</h2>
@@ -275,7 +305,7 @@ export default function StoresPage() {
                       >
                         編輯
                       </button>
-                      {isAdmin ? (
+                      {canViewStoreChangeLogs ? (
                         <button
                           type="button"
                           onClick={() => void openLogs(s)}

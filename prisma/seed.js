@@ -152,6 +152,12 @@ async function main() {
   }
 
   function defaultPerm(role, moduleKey) {
+    const deleteApproveKeys = new Set([
+      "delete-approve-content-entries",
+      "delete-approve-workhour-adjustments",
+      "delete-approve-stores",
+    ]);
+
     // ADMIN: all write
     if (role === "ADMIN") {
       // 視覺化欄位權限：扣工時可見（不需要寫入）
@@ -161,6 +167,9 @@ async function main() {
 
     // EDITOR: mostly write, but keep legacy restriction (cannot manage users)
     if (role === "EDITOR") {
+      if (deleteApproveKeys.has(moduleKey)) {
+        return { canRead: true, canWrite: false };
+      }
       if (moduleKey === "settings-users" || moduleKey === "settings-role-permissions") {
         return { canRead: false, canWrite: false };
       }

@@ -339,3 +339,32 @@ model RolePermission {
   @@unique([role, moduleId])
   @@index([role])
 }
+
+enum DeletionRequestTargetType {
+  CONTENT_ENTRY
+  WORKHOUR_ADJUSTMENT
+  STORE
+}
+
+enum DeletionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DeletionRequest {
+  id                  String                   @id @default(cuid())
+  targetType          DeletionRequestTargetType
+  targetId            String
+  status              DeletionRequestStatus    @default(PENDING)
+  reason              String?
+  requestedByUserId   String?
+  requestedByUsername String?
+  reviewedByUsername  String?
+  reviewedAt          DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}

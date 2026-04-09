@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
+import { hasModuleEffectivePermission } from "@/lib/permissions-db";
+import { performDeletionForTarget } from "@/lib/deletion-request-service";
 
 export const dynamic = "force-dynamic";
 
@@ -125,40 +127,58 @@ export async function DELETE(
   const { id } = params;
   try {
     const session = await getSessionFromRequest(request);
-    // 不能硬刪：門市可能被歷史績效/營收引用
-    // 改採「停用」(soft delete)，保留歷史資料一致性
-    await prisma.$transaction(async (tx) => {
-      const before = await tx.store.findUnique({
-        where: { id },
-        include: { aliases: true },
-      });
-      if (!before) throw new Error("找不到門市");
-      const beforeSnap = toSnapshot(before, (before as any).aliases ?? []);
+    if (!session) {
+      return NextResponse.json({ error: "未登入" }, { status: 401 });
+    }
 
-      await tx.store.update({
-        where: { id },
-        data: { isActive: false },
-      });
-      // 停用時保留 aliases 也可；這裡先保留，避免歷史匯入對不到
+    const canApprove = await hasModuleEffectivePermission(
+      session.role,
+      "delete-approve-stores",
+      "write"
+    );
 
-      const after = await tx.store.findUnique({
-        where: { id },
-        include: { aliases: true },
-      });
-      if (after) {
-        const afterSnap = toSnapshot(after, (after as any).aliases ?? []);
-        await tx.storeChangeLog.create({
-          data: {
-            storeId: id,
-            action: "DEACTIVATE",
-            changedBy: session?.username ?? null,
-            before: beforeSnap,
-            after: afterSnap,
-          },
-        });
-      }
+    const store = await prisma.store.findUnique({ where: { id } });
+    if (!store) {
+      return NextResponse.json({ error: "找不到門市" }, { status: 404 });
+    }
+
+    if (canApprove) {
+      await performDeletionForTarget("STORE", id, session.username);
+      return NextResponse.json({ success: true });
+    }
+
+    const dup = await prisma.deletionRequest.findFirst({
+      where: { targetType: "STORE", targetId: id, status: "PENDING" },
     });
-    return NextResponse.json({ success: true });
+    if (dup) {
+      return NextResponse.json(
+        {
+          pending: true,
+          requestId: dup.id,
+          message: "已有待審停用申請",
+        },
+        { status: 202 }
+      );
+    }
+
+    const created = await prisma.deletionRequest.create({
+      data: {
+        targetType: "STORE",
+        targetId: id,
+        status: "PENDING",
+        requestedByUserId: session.userId,
+        requestedByUsername: session.username,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        pending: true,
+        requestId: created.id,
+        message: "已送出停用申請，待核准後生效",
+      },
+      { status: 202 }
+    );
   } catch (e) {
     console.error(e);
     return NextResponse.json(

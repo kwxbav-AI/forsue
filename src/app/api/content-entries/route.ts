@@ -4,6 +4,7 @@ import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
+import { hasModuleEffectivePermission } from "@/lib/permissions-db";
 
 export const dynamic = "force-dynamic";
 
@@ -12,18 +13,7 @@ const DEDUCT_VIS_MODULE_KEY = "content-entries-deduct";
 async function canSeeDeductedMinutes(req: NextRequest): Promise<boolean> {
   const session = await getSessionFromRequest(req);
   if (!session) return false;
-  // 權限頁未設定時，仍維持 legacy：ADMIN/EDITOR 可見、其他不可見
-  // 注意：patterns 現在不再塞進 token，因此不可用 session.allowedPagePathPatterns 判斷是否「未設定」。
-  const mod = await prisma.permissionModule.findUnique({
-    where: { key: DEDUCT_VIS_MODULE_KEY },
-    select: { id: true },
-  });
-  if (!mod) return session.role === "ADMIN" || session.role === "EDITOR";
-  const rp = await prisma.rolePermission.findUnique({
-    where: { role_moduleId: { role: session.role, moduleId: mod.id } },
-    select: { canRead: true, canWrite: true },
-  });
-  return Boolean(rp && (rp.canRead || rp.canWrite));
+  return hasModuleEffectivePermission(session.role, DEDUCT_VIS_MODULE_KEY, "read");
 }
 
 function maskDeductedMinutes<T extends Record<string, any>>(row: T): Omit<T, "deductedMinutes"> | T {

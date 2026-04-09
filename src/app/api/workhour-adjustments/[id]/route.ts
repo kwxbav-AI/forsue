@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
+import { getSessionFromRequest } from "@/lib/auth-request";
+import { hasModuleEffectivePermission } from "@/lib/permissions-db";
 
 export const dynamic = "force-dynamic";
 
@@ -63,11 +65,62 @@ export async function DELETE(
 ) {
   const { id } = params;
   try {
-    const deleted = await prisma.workhourAdjustment.delete({
-      where: { id },
+    const session = await getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "未登入" }, { status: 401 });
+    }
+
+    const canApprove = await hasModuleEffectivePermission(
+      session.role,
+      "delete-approve-workhour-adjustments",
+      "write"
+    );
+
+    if (canApprove) {
+      const deleted = await prisma.workhourAdjustment.delete({
+        where: { id },
+      });
+      await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
+      return NextResponse.json({ success: true });
+    }
+
+    const existing = await prisma.workhourAdjustment.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "找不到該筆資料" }, { status: 404 });
+    }
+
+    const dup = await prisma.deletionRequest.findFirst({
+      where: { targetType: "WORKHOUR_ADJUSTMENT", targetId: id, status: "PENDING" },
     });
-    await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
-    return NextResponse.json({ success: true });
+    if (dup) {
+      return NextResponse.json(
+        {
+          pending: true,
+          requestId: dup.id,
+          message: "已有待審刪除申請",
+        },
+        { status: 202 }
+      );
+    }
+
+    const created = await prisma.deletionRequest.create({
+      data: {
+        targetType: "WORKHOUR_ADJUSTMENT",
+        targetId: id,
+        status: "PENDING",
+        requestedByUserId: session.userId,
+        requestedByUsername: session.username,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        pending: true,
+        requestId: created.id,
+        message: "已送出刪除申請，待核准後生效",
+      },
+      { status: 202 }
+    );
   } catch (e) {
     console.error(e);
     return NextResponse.json(

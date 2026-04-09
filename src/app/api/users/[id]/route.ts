@@ -5,18 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hashPassword } from "@/lib/password";
 import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { requireApiAccess } from "@/lib/api-access";
 
 export const dynamic = "force-dynamic";
-
-function requireAdmin(session: Awaited<ReturnType<typeof getSessionFromRequest>>) {
-  if (!session) {
-    return NextResponse.json({ error: "未登入" }, { status: 401 });
-  }
-  if (session.role !== "ADMIN") {
-    return NextResponse.json({ error: "需要管理員權限" }, { status: 403 });
-  }
-  return null;
-}
 
 const patchSchema = z.object({
   password: z.string().min(6).max(128).optional(),
@@ -29,7 +20,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const session = await getSessionFromRequest(req);
-  const denied = requireAdmin(session);
+  const denied = await requireApiAccess(session, req);
   if (denied) return denied;
   if (!session) {
     return NextResponse.json({ error: "未登入" }, { status: 401 });

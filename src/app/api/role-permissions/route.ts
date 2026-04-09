@@ -2,28 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
-import type { UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
+import { requireApiAccess } from "@/lib/api-access";
 
-const roleSchema = z.nativeEnum({
-  ADMIN: "ADMIN",
-  EDITOR: "EDITOR",
-  VIEWER: "VIEWER",
-  STORE_STAFF: "STORE_STAFF",
-});
-
-function requireAdmin(session: Awaited<ReturnType<typeof getSessionFromRequest>>) {
-  if (!session) {
-    return NextResponse.json({ error: "未登入" }, { status: 401 });
-  }
-  if (session.role !== "ADMIN") {
-    return NextResponse.json({ error: "需要管理員權限" }, { status: 403 });
-  }
-  return null;
-}
+const roleSchema = z.nativeEnum(UserRole);
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  const denied = requireAdmin(session);
+  const denied = await requireApiAccess(session, req);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -88,7 +74,7 @@ const updateSchema = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  const denied = requireAdmin(session);
+  const denied = await requireApiAccess(session, req);
   if (denied) return denied;
 
   const body = await req.json().catch(() => null);

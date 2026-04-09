@@ -73,6 +73,17 @@
       ]
     },
     {
+      "key": "delete-approve-workhour-adjustments",
+      "label": "刪除核定：工時異動",
+      "description": "待審刪除列表與核准／駁回（具 write 可直接刪除或核准申請）",
+      "group": "工時異動相關",
+      "sortOrder": 131,
+      "parentKey": "workhour-adjustments",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/workhour-adjustments", "method": null }
+      ]
+    },
+    {
       "key": "batch-workhour-adjustment",
       "label": "批次調整工時",
       "description": "同一原因/日期批次寫入扣抵時數",
@@ -119,6 +130,17 @@
       "sortOrder": 165,
       "parentKey": "content-entries",
       "patterns": []
+    },
+    {
+      "key": "delete-approve-content-entries",
+      "label": "刪除核定：現貨文填報",
+      "description": "待審刪除列表與核准／駁回（具 write 可直接刪除或核准申請）",
+      "group": "工時異動相關",
+      "sortOrder": 166,
+      "parentKey": "content-entries",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/content-entries", "method": null }
+      ]
     },
 
     {
@@ -336,6 +358,17 @@
         { "kind": "PAGE", "pathPattern": "/stores", "method": null },
         { "kind": "API", "pathPattern": "/api/stores", "method": null },
         { "kind": "API", "pathPattern": "/api/stores/import-default", "method": null }
+      ]
+    },
+    {
+      "key": "delete-approve-stores",
+      "label": "刪除核定：門市停用",
+      "description": "待審停用申請與核准／駁回（具 write 可直接停用或核准申請）",
+      "group": "設定",
+      "sortOrder": 661,
+      "parentKey": "stores",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/stores", "method": null }
       ]
     },
     {

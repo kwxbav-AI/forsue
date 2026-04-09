@@ -59,6 +59,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // 避免 middleware 內 fetch effective 時遞迴；此路徑僅依 route handler 驗證 session。
+  if (pathname.startsWith("/api/role-permissions/effective")) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/api/auth/me")) {
     return NextResponse.next();
   }
@@ -72,8 +77,12 @@ export async function middleware(request: NextRequest) {
     if (!cached || cached.expiresAt <= now) {
       try {
         const url = new URL("/api/role-permissions/effective", request.url);
-        url.searchParams.set("role", role);
-        const res = await fetch(url.toString(), { headers: { accept: "application/json" } });
+        const res = await fetch(url.toString(), {
+          headers: {
+            accept: "application/json",
+            cookie: request.headers.get("cookie") ?? "",
+          },
+        });
         const data = await res.json();
         effectivePermsCache.set(role, {
           expiresAt: now + PERMISSIONS_CACHE_TTL_MS,

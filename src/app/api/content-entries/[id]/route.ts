@@ -4,6 +4,7 @@ import { parseDateOnlyUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
+import { hasModuleEffectivePermission } from "@/lib/permissions-db";
 
 export const dynamic = "force-dynamic";
 
@@ -12,16 +13,7 @@ const DEDUCT_VIS_MODULE_KEY = "content-entries-deduct";
 async function canSeeDeductedMinutes(req: NextRequest): Promise<boolean> {
   const session = await getSessionFromRequest(req);
   if (!session) return false;
-  const mod = await prisma.permissionModule.findUnique({
-    where: { key: DEDUCT_VIS_MODULE_KEY },
-    select: { id: true },
-  });
-  if (!mod) return session.role === "ADMIN" || session.role === "EDITOR";
-  const rp = await prisma.rolePermission.findUnique({
-    where: { role_moduleId: { role: session.role, moduleId: mod.id } },
-    select: { canRead: true, canWrite: true },
-  });
-  return Boolean(rp && (rp.canRead || rp.canWrite));
+  return hasModuleEffectivePermission(session.role, DEDUCT_VIS_MODULE_KEY, "read");
 }
 
 function maskDeductedMinutes<T extends Record<string, any>>(row: T): Omit<T, "deductedMinutes"> | T {
@@ -112,8 +104,59 @@ export async function DELETE(
 ) {
   const { id } = params;
   try {
-    await prisma.contentEntry.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    const session = await getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "未登入" }, { status: 401 });
+    }
+
+    const canApprove = await hasModuleEffectivePermission(
+      session.role,
+      "delete-approve-content-entries",
+      "write"
+    );
+
+    if (canApprove) {
+      await prisma.contentEntry.delete({ where: { id } });
+      return NextResponse.json({ success: true });
+    }
+
+    const existing = await prisma.contentEntry.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "找不到該筆資料" }, { status: 404 });
+    }
+
+    const dup = await prisma.deletionRequest.findFirst({
+      where: { targetType: "CONTENT_ENTRY", targetId: id, status: "PENDING" },
+    });
+    if (dup) {
+      return NextResponse.json(
+        {
+          pending: true,
+          requestId: dup.id,
+          message: "已有待審刪除申請",
+        },
+        { status: 202 }
+      );
+    }
+
+    const created = await prisma.deletionRequest.create({
+      data: {
+        targetType: "CONTENT_ENTRY",
+        targetId: id,
+        status: "PENDING",
+        requestedByUserId: session.userId,
+        requestedByUsername: session.username,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        pending: true,
+        requestId: created.id,
+        message: "已送出刪除申請，待核准後生效",
+      },
+      { status: 202 }
+    );
   } catch (e) {
     console.error(e);
     return NextResponse.json(

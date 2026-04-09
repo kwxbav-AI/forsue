@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { getSessionFromRequest } from "@/lib/auth-request";
 
-const roleSchema = z.enum(["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]);
+export const dynamic = "force-dynamic";
 
+/** 僅回傳「目前登入者」角色的有效權限（不可查詢其他角色）。 */
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const roleParam = searchParams.get("role") ?? "";
-  const parsed = roleSchema.safeParse(roleParam);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "角色參數錯誤" }, { status: 400 });
+  const session = await getSessionFromRequest(req);
+  if (!session) {
+    return NextResponse.json({ error: "未登入" }, { status: 401 });
   }
 
-  const role = parsed.data;
+  const role = session.role;
   const rolePerms = await prisma.rolePermission.findMany({
     where: { role },
     include: {
@@ -72,4 +71,3 @@ export async function GET(req: NextRequest) {
     allowedApiWritePatterns: Array.from(allowedApiWriteMap.values()),
   });
 }
-
