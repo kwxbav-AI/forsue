@@ -54,6 +54,7 @@ export default function ContentEntriesPage() {
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
   const [pendingRefresh, setPendingRefresh] = useState(0);
+  const [pendingLocalIds, setPendingLocalIds] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     workDate: formatLocalDateInput(),
@@ -89,6 +90,27 @@ export default function ContentEntriesPage() {
 
   useEffect(() => {
     fetchList();
+  }, [fetchList]);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setPerm({
+          canReadPending: Boolean(d?.user?.canReadPendingContentEntries),
+          canApprove: Boolean(d?.user?.canApproveDeleteContentEntries),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      void fetchList();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
   }, [fetchList]);
 
   useEffect(() => {
@@ -218,10 +240,12 @@ export default function ContentEntriesPage() {
     if (res.ok) {
       void fetchList();
       setPendingRefresh((k) => k + 1);
+      setPendingLocalIds((prev) => prev.filter((x) => x !== id));
       return;
     }
     if (res.status === 202) {
       if (data.message) alert(data.message);
+      setPendingLocalIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       void fetchList();
       setPendingRefresh((k) => k + 1);
       return;
@@ -678,13 +702,17 @@ export default function ContentEntriesPage() {
                       編輯
                     </button>
                     <span className="mx-1 text-slate-300">|</span>
-                    <button
-                      type="button"
-                      onClick={() => deleteEntry(row.id)}
-                      className="text-red-600 hover:underline"
-                    >
-                      刪除
-                    </button>
+                    {pendingLocalIds.includes(row.id) ? (
+                      <span className="text-amber-700">審核中</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => deleteEntry(row.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        刪除
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
