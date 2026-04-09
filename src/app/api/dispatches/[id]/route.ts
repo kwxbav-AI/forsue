@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
+import { getSessionFromRequest } from "@/lib/auth-request";
+import { hasModuleEffectivePermission } from "@/lib/permissions-db";
+import type { DeletionRequestTargetType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -58,14 +61,55 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
   try {
-    const deleted = await prisma.dispatchRecord.delete({ where: { id } });
-    await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
-    return NextResponse.json({ success: true });
+    const session = await getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "未登入" }, { status: 401 });
+    }
+
+    const moduleKey = "delete-approve-dispatches";
+    const canApprove = await hasModuleEffectivePermission(session.role, moduleKey, "write");
+
+    const existing = await prisma.dispatchRecord.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "找不到該筆資料" }, { status: 404 });
+    }
+
+    if (canApprove) {
+      const deleted = await prisma.dispatchRecord.delete({ where: { id } });
+      await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
+      return NextResponse.json({ success: true });
+    }
+
+    const targetType: DeletionRequestTargetType = "DISPATCH_RECORD";
+    const dup = await prisma.deletionRequest.findFirst({
+      where: { targetType, targetId: id, status: "PENDING" },
+    });
+    if (dup) {
+      return NextResponse.json(
+        { pending: true, requestId: dup.id, message: "已有待審刪除申請" },
+        { status: 202 }
+      );
+    }
+
+    const created = await prisma.deletionRequest.create({
+      data: {
+        targetType,
+        targetId: id,
+        status: "PENDING",
+        requestedByUserId: session.userId,
+        requestedByUsername: session.username,
+      },
+    });
+
+    return NextResponse.json(
+      { pending: true, requestId: created.id, message: "已送出刪除申請，待核准後生效" },
+      { status: 202 }
+    );
   } catch (e) {
     console.error(e);
     return NextResponse.json(

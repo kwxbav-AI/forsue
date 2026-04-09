@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type Store = { id: string; code: string | null; name: string; aliases?: string[]; isActive?: boolean };
 type Employee = { id: string; employeeCode: string; name: string };
@@ -54,6 +55,8 @@ export default function DispatchesPage() {
   const [list, setList] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [employeeOpen, setEmployeeOpen] = useState(false);
   const [editRow, setEditRow] = useState<DispatchRow | null>(null);
@@ -100,6 +103,27 @@ export default function DispatchesPage() {
       .then((r) => r.json())
       .then((d) => setEmployees(d))
       .catch(() => setEmployees([]));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setPerm({
+          canReadPending: Boolean(d?.user?.canReadPendingDispatches),
+          canApprove: Boolean(d?.user?.canApproveDeleteDispatches),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      void refresh();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
   }, []);
 
   useEffect(() => {
@@ -165,10 +189,17 @@ export default function DispatchesPage() {
     if (!confirm("確定刪除此筆調度？")) return;
     const res = await fetch(`/api/dispatches/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 202) {
+      setMessage(data.message || "已送出刪除申請，待核准後生效");
+      setPendingRefresh((k) => k + 1);
+      refresh();
+      return;
+    }
     if (!res.ok) {
       setMessage(data.error || "刪除失敗");
       return;
     }
+    setPendingRefresh((k) => k + 1);
     refresh();
   }
 
@@ -219,6 +250,14 @@ export default function DispatchesPage() {
           回首頁
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="dispatches"
+        canRead={perm.canReadPending}
+        canApprove={perm.canApprove}
+        title="待審刪除申請（人員調度）"
+        refreshKey={pendingRefresh}
+      />
 
       <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-2 font-medium text-slate-800">新增調度</h2>

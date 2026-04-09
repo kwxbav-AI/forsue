@@ -156,6 +156,8 @@ async function main() {
       "delete-approve-content-entries",
       "delete-approve-workhour-adjustments",
       "delete-approve-stores",
+      "delete-approve-store-hour-deductions",
+      "delete-approve-dispatches",
     ]);
 
     // ADMIN: all write

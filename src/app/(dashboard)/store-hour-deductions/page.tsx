@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type Store = {
   id: string;
@@ -45,6 +46,8 @@ export default function StoreHourDeductionsPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [modal, setModal] = useState<"add" | null>(null);
+  const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
   const [storeSearch, setStoreSearch] = useState("");
   const [storeOpen, setStoreOpen] = useState(false);
   const [form, setForm] = useState({
@@ -68,6 +71,27 @@ export default function StoreHourDeductionsPage() {
 
   useEffect(() => {
     fetchList();
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setPerm({
+          canReadPending: Boolean(d?.user?.canReadPendingStoreHourDeductions),
+          canApprove: Boolean(d?.user?.canApproveDeleteStoreHourDeductions),
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      fetchList();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
   }, [startDate, endDate]);
 
   useEffect(() => {
@@ -143,11 +167,18 @@ export default function StoreHourDeductionsPage() {
       method: "DELETE",
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 202) {
+      setMessage({ type: "ok", text: data.message || "已送出刪除申請，待核准後生效" });
+      setPendingRefresh((k) => k + 1);
+      fetchList();
+      return;
+    }
     if (!res.ok) {
       setMessage({ type: "err", text: data.error || "刪除失敗" });
       return;
     }
     setMessage({ type: "ok", text: "已刪除，該日總工時已重算" });
+    setPendingRefresh((k) => k + 1);
     fetchList();
   }
 
@@ -162,6 +193,14 @@ export default function StoreHourDeductionsPage() {
           回工時異動相關
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="store-hour-deductions"
+        canRead={perm.canReadPending}
+        canApprove={perm.canApprove}
+        title="待審刪除申請（效期/清掃工時）"
+        refreshKey={pendingRefresh}
+      />
 
       <p className="mb-4 text-sm text-slate-500">
         填寫的時數會從「每日工效比」該門市當日的總工時中扣除。

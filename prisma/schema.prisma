@@ -344,6 +344,8 @@ enum DeletionRequestTargetType {
   CONTENT_ENTRY
   WORKHOUR_ADJUSTMENT
   STORE
+  STORE_HOUR_DEDUCTION
+  DISPATCH_RECORD
 }
 
 enum DeletionRequestStatus {

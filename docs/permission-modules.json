@@ -59,6 +59,17 @@
       ]
     },
     {
+      "key": "delete-approve-dispatches",
+      "label": "刪除核定：人員調度",
+      "description": "待審刪除列表與核准／駁回（具 write 可直接刪除或核准申請）",
+      "group": "工時異動相關",
+      "sortOrder": 121,
+      "parentKey": "dispatches",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/dispatches", "method": null }
+      ]
+    },
+    {
       "key": "workhour-adjustments",
       "label": "工時異動調整",
       "description": "查詢與新增/編輯工時扣抵（含門市/員工資料）",
@@ -107,6 +118,17 @@
         { "kind": "PAGE", "pathPattern": "/store-hour-deductions", "method": null },
         { "kind": "API", "pathPattern": "/api/store-hour-deductions", "method": null },
         { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+    {
+      "key": "delete-approve-store-hour-deductions",
+      "label": "刪除核定：效期/清掃工時",
+      "description": "待審刪除列表與核准／駁回（具 write 可直接刪除或核准申請）",
+      "group": "工時異動相關",
+      "sortOrder": 151,
+      "parentKey": "store-hour-deductions",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/store-hour-deductions", "method": null }
       ]
     },
     {

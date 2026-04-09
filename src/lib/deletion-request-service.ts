@@ -7,6 +7,8 @@ export const DELETE_APPROVE_MODULE_KEY: Record<DeletionRequestTargetType, string
   CONTENT_ENTRY: "delete-approve-content-entries",
   WORKHOUR_ADJUSTMENT: "delete-approve-workhour-adjustments",
   STORE: "delete-approve-stores",
+  STORE_HOUR_DEDUCTION: "delete-approve-store-hour-deductions",
+  DISPATCH_RECORD: "delete-approve-dispatches",
 };
 
 export async function performDeletionForTarget(
@@ -28,5 +30,15 @@ export async function performDeletionForTarget(
         await deactivateStoreWithLog(tx, targetId, changedByUsername);
       });
       return;
+    case "STORE_HOUR_DEDUCTION": {
+      const deleted = await prisma.storeHourDeduction.delete({ where: { id: targetId } });
+      await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
+      return;
+    }
+    case "DISPATCH_RECORD": {
+      const deleted = await prisma.dispatchRecord.delete({ where: { id: targetId } });
+      await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
+      return;
+    }
   }
 }

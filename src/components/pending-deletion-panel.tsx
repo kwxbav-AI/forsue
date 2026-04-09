@@ -10,7 +10,12 @@ type PendingRow = {
   createdAt: string;
 };
 
-type Segment = "content-entries" | "workhour-adjustments" | "stores";
+type Segment =
+  | "content-entries"
+  | "workhour-adjustments"
+  | "stores"
+  | "store-hour-deductions"
+  | "dispatches";
 
 type Props = {
   segment: Segment;
