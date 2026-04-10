@@ -31,12 +31,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/login")) {
-    const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const session = token ? await decodeSessionToken(token) : null;
-    if (session) {
-      const next = safeNextPath(request.nextUrl.searchParams.get("next"));
-      return NextResponse.redirect(new URL(next, request.url));
-    }
     return NextResponse.next();
   }
 
