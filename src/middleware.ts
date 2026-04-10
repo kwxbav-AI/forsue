@@ -58,7 +58,9 @@ export async function middleware(request: NextRequest) {
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session = token ? await decodeSessionToken(token) : null;
-  let effectiveStatus: "skip" | "hit" | "miss_ok" | "miss_fail" = "skip";
+  let effectiveStatus: string = "skip";
+  let effectiveHttp: number | null = null;
+  let effectiveErr: string | null = null;
 
   if (!session) {
     if (pathname.startsWith("/api")) {
@@ -98,6 +100,7 @@ export async function middleware(request: NextRequest) {
             cookie: buildCookieHeader(request),
           },
         });
+        effectiveHttp = res.status;
         if (res.ok) {
           const data = await res.json();
           effectivePermsCache.set(cacheKey, {
@@ -105,9 +108,12 @@ export async function middleware(request: NextRequest) {
             data,
           });
           effectiveStatus = "miss_ok";
+        } else {
+          effectiveStatus = `miss_http_${res.status}`;
         }
-      } catch {
+      } catch (e) {
         // 失敗就用 token 裡的舊值（至少不會破壞登入流程）
+        effectiveErr = e instanceof Error ? e.name : "unknown";
       }
     } else {
       effectiveStatus = "hit";
@@ -146,6 +152,8 @@ export async function middleware(request: NextRequest) {
   if (session) {
     res.headers.set("x-dps-role", String(session.role));
     res.headers.set("x-dps-effective", effectiveStatus);
+    if (effectiveHttp != null) res.headers.set("x-dps-effective-http", String(effectiveHttp));
+    if (effectiveErr) res.headers.set("x-dps-effective-err", effectiveErr);
     res.headers.set(
       "x-dps-pages",
       String(Array.isArray(session.allowedPagePathPatterns) ? session.allowedPagePathPatterns.length : 0)
