@@ -20,6 +20,16 @@ function buildCookieHeader(request: NextRequest): string {
   }
 }
 
+function getInternalOrigin(request: NextRequest): string | null {
+  // Cloud Run/自架時，middleware 內 fetch 打外部網域有機會失敗；
+  // 優先用容器內部 localhost 走同一個 Next 伺服器。
+  const port =
+    (typeof process !== "undefined" && process.env && (process.env.PORT || process.env.NEXT_PUBLIC_PORT)) || "8080";
+  // 只有在 server runtime 才會有 process；Edge 也可能提供，但沒關係，失敗就回到外部 URL。
+  if (!port) return null;
+  return `http://127.0.0.1:${port}`;
+}
+
 function isStaticAsset(pathname: string): boolean {
   return /\.(ico|png|jpg|jpeg|gif|webp|svg|txt|xml|woff2?|ttf|eot)$/i.test(pathname);
 }
@@ -93,13 +103,36 @@ export async function middleware(request: NextRequest) {
     if (!cached || cached.expiresAt <= now) {
       effectiveStatus = "miss_fail";
       try {
-        const url = new URL("/api/role-permissions/effective", request.url);
-        const res = await fetch(url.toString(), {
-          headers: {
-            accept: "application/json",
-            cookie: buildCookieHeader(request),
-          },
-        });
+        const cookieHeader = buildCookieHeader(request);
+        const host = request.headers.get("host") ?? "";
+
+        const candidates: string[] = [];
+        const internal = getInternalOrigin(request);
+        if (internal) candidates.push(new URL("/api/role-permissions/effective", internal).toString());
+        candidates.push(new URL("/api/role-permissions/effective", request.url).toString());
+
+        let res: Response | null = null;
+        let lastErr: unknown = null;
+
+        for (const u of candidates) {
+          try {
+            res = await fetch(u, {
+              redirect: "manual",
+              headers: {
+                accept: "application/json",
+                cookie: cookieHeader,
+                ...(host ? { host } : {}),
+              },
+            });
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (!res) {
+          throw lastErr ?? new Error("fetch_failed_no_response");
+        }
         effectiveHttp = res.status;
         if (res.ok) {
           const data = await res.json();
