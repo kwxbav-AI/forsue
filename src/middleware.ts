@@ -54,7 +54,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: "未授權，請先登入" }, { status: 401 });
     }
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
+    // Next.js 內部的 RSC 請求會帶 ?_rsc=...；把它放進 next 會造成 /login 與 / 的內部請求互跳。
+    const nextUrl = request.nextUrl.clone();
+    nextUrl.searchParams.delete("_rsc");
+    loginUrl.searchParams.set("next", pathname + nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
