@@ -113,7 +113,11 @@ export async function middleware(request: NextRequest) {
         }
       } catch (e) {
         // 失敗就用 token 裡的舊值（至少不會破壞登入流程）
-        effectiveErr = e instanceof Error ? e.name : "unknown";
+        if (e instanceof Error) {
+          effectiveErr = e.message ? `${e.name}:${e.message}` : e.name;
+        } else {
+          effectiveErr = "unknown";
+        }
       }
     } else {
       effectiveStatus = "hit";
@@ -134,18 +138,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  const effectiveFailed = typeof effectiveStatus === "string" && effectiveStatus.startsWith("miss");
+  const hasPatterns =
+    !!session &&
+    Array.isArray(session.allowedPagePathPatterns) &&
+    session.allowedPagePathPatterns.length > 0;
+
+  // 安全降級：若 effective 權限抓取失敗，避免管理員被鎖在外面（僅 ADMIN，且僅在 patterns 為空時）。
+  const bypassForAdmin =
+    !!session && session.role === "ADMIN" && effectiveFailed && !hasPatterns;
+
   const res = pathname.startsWith("/api")
     ? (() => {
-    if (!canAccessApi(session, pathname, request.method)) {
-      return NextResponse.json({ error: "權限不足" }, { status: 403 });
-    }
-    return NextResponse.next();
+        if (!bypassForAdmin && !canAccessApi(session, pathname, request.method)) {
+          return NextResponse.json({ error: "權限不足" }, { status: 403 });
+        }
+        return NextResponse.next();
       })()
     : (() => {
-    if (!canAccessPage(session, pathname)) {
-      return NextResponse.redirect(new URL("/forbidden", request.url));
-    }
-    return NextResponse.next();
+        if (!bypassForAdmin && !canAccessPage(session, pathname)) {
+          return NextResponse.redirect(new URL("/forbidden", request.url));
+        }
+        return NextResponse.next();
       })();
 
   // Debug headers (不含敏感資料): 用來確認 middleware 是否拿到有效權限。
@@ -154,6 +168,7 @@ export async function middleware(request: NextRequest) {
     res.headers.set("x-dps-effective", effectiveStatus);
     if (effectiveHttp != null) res.headers.set("x-dps-effective-http", String(effectiveHttp));
     if (effectiveErr) res.headers.set("x-dps-effective-err", effectiveErr);
+    if (bypassForAdmin) res.headers.set("x-dps-bypass", "admin_effective_failed");
     res.headers.set(
       "x-dps-pages",
       String(Array.isArray(session.allowedPagePathPatterns) ? session.allowedPagePathPatterns.length : 0)
