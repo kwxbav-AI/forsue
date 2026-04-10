@@ -28,6 +28,9 @@ type DispatchRow = {
   startTime: string | null;
   endTime: string | null;
   remark: string | null;
+  locationMatchStatus: string | null;
+  clockInStoreText: string | null;
+  clockOutStoreText: string | null;
 };
 
 const DISPATCH_REASONS = [
@@ -59,6 +62,7 @@ export default function DispatchesPage() {
   const [pendingRefresh, setPendingRefresh] = useState(0);
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [employeeOpen, setEmployeeOpen] = useState(false);
+  const [locationFilter, setLocationFilter] = useState("");
   const [editRow, setEditRow] = useState<DispatchRow | null>(null);
   const [editActualHours, setEditActualHours] = useState("");
   const [editConfirmStatus, setEditConfirmStatus] = useState<string>("待確認");
@@ -129,6 +133,11 @@ export default function DispatchesPage() {
   useEffect(() => {
     refresh();
   }, [startDate, endDate]);
+
+  const filteredList = useMemo(() => {
+    if (!locationFilter) return list;
+    return list.filter((r) => (r.locationMatchStatus ?? "") === locationFilter);
+  }, [list, locationFilter]);
 
   const activeStores = useMemo(
     () => stores.filter((s) => s.isActive !== false),
@@ -455,12 +464,30 @@ export default function DispatchesPage() {
             className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-slate-600">打卡地點</span>
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            <option value="">全部</option>
+            <option value="MATCH">相符</option>
+            <option value="MISMATCH_CLOCKIN">上班不符</option>
+            <option value="MISMATCH_CLOCKOUT">下班不符</option>
+            <option value="MISMATCH_BOTH">上下班皆不符</option>
+            <option value="DISPATCH_EXPLAINED">調度可解釋</option>
+            <option value="NEED_REVIEW">需人工確認</option>
+            <option value="EXCLUDED">排除比對</option>
+            <option value="UNKNOWN">無法判定</option>
+          </select>
+        </label>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white">
         {loading ? (
           <p className="p-4 text-sm text-slate-500">載入中…</p>
-        ) : list.length === 0 ? (
+        ) : filteredList.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">此區間沒有調度資料</p>
         ) : (
           <div className="relative max-h-[70vh] overflow-auto">
@@ -487,12 +514,34 @@ export default function DispatchesPage() {
                     與預申請比對
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">時間</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-700">打卡地點</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-700">上班地點</th>
+                  <th className="px-4 py-2 text-left font-medium text-slate-700">下班地點</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {list.map((r) => (
+                {filteredList.map((r) => {
+                  const statusLabel =
+                    r.locationMatchStatus === "MATCH"
+                      ? "相符"
+                      : r.locationMatchStatus === "MISMATCH_CLOCKIN"
+                        ? "上班不符"
+                        : r.locationMatchStatus === "MISMATCH_CLOCKOUT"
+                          ? "下班不符"
+                          : r.locationMatchStatus === "MISMATCH_BOTH"
+                            ? "上下班皆不符"
+                            : r.locationMatchStatus === "DISPATCH_EXPLAINED"
+                              ? "調度可解釋"
+                              : r.locationMatchStatus === "NEED_REVIEW"
+                                ? "需人工確認"
+                                : r.locationMatchStatus === "EXCLUDED"
+                                  ? "排除比對"
+                                  : r.locationMatchStatus === "UNKNOWN"
+                                    ? "無法判定"
+                                    : "—";
+                  return (
                   <tr key={r.id} className="border-b border-slate-100">
                     <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white px-4 py-2">
                       {r.workDate}
@@ -549,6 +598,9 @@ export default function DispatchesPage() {
                     <td className="px-4 py-2 text-slate-600">
                       {r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}
                     </td>
+                    <td className="px-4 py-2">{statusLabel}</td>
+                    <td className="px-4 py-2 text-slate-600">{r.clockInStoreText ?? "—"}</td>
+                    <td className="px-4 py-2 text-slate-600">{r.clockOutStoreText ?? "—"}</td>
                     <td className="px-4 py-2 text-slate-600">{r.remark ?? "—"}</td>
                     <td className="px-4 py-2 text-right">
                       <button
@@ -567,7 +619,8 @@ export default function DispatchesPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

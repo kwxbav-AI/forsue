@@ -62,6 +62,8 @@ export interface AttendanceRow {
   workHours: Decimal;
   startTime: string | null;
   endTime: string | null;
+  clockInInfoRaw: string | null;
+  clockOutInfoRaw: string | null;
   shiftType: string | null;
 }
 
@@ -172,6 +174,10 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
       headerMap.startTime !== undefined ? getCell(row, headerMap.startTime) || "" : "";
     const endTimeStr =
       headerMap.endTime !== undefined ? getCell(row, headerMap.endTime) || "" : "";
+    const clockInInfoRaw =
+      headerMap.clockInInfo !== undefined ? getCell(row, headerMap.clockInInfo) || "" : "";
+    const clockOutInfoRaw =
+      headerMap.clockOutInfo !== undefined ? getCell(row, headerMap.clockOutInfo) || "" : "";
 
     const workDate = parseDate(workDateRaw ?? workDateStr);
     if (!workDate) {
@@ -229,6 +235,8 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
       workHours,
       startTime: startTimeStr || null,
       endTime: endTimeStr || null,
+      clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
+      clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
       shiftType: shiftType || null,
     } as AttendanceRow);
   }

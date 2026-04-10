@@ -67,20 +67,42 @@ export async function GET(request: NextRequest) {
 
   // 避免 TypeScript 在非 ES2015 目標下對 Set 可迭代展開（...）的限制
   const employeeIds = Array.from(new Set(list.map((d) => d.employeeId)));
-  const attendanceByKey = new Map<string, number>();
+  const attendanceByKey = new Map<
+    string,
+    {
+      workHours: number;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
+    }
+  >();
   if (where.workDate && employeeIds.length > 0) {
     const attendances = await prisma.attendanceRecord.findMany({
       where: {
         workDate: where.workDate,
         employeeId: { in: employeeIds },
       },
-      select: { workDate: true, employeeId: true, workHours: true },
+      select: {
+        workDate: true,
+        employeeId: true,
+        workHours: true,
+        locationMatchStatus: true,
+        clockInStoreText: true,
+        clockOutStoreText: true,
+      },
       orderBy: { createdAt: "desc" },
     });
     // 同一員工同一日可能有多筆上傳（重複上傳），只取一筆與「人員出勤表」一致，取最新一筆
     for (const a of attendances) {
       const key = `${formatDateOnlyTaipei(a.workDate)}_${a.employeeId}`;
-      if (!attendanceByKey.has(key)) attendanceByKey.set(key, Number(a.workHours));
+      if (!attendanceByKey.has(key)) {
+        attendanceByKey.set(key, {
+          workHours: Number(a.workHours),
+          locationMatchStatus: a.locationMatchStatus ?? null,
+          clockInStoreText: a.clockInStoreText ?? null,
+          clockOutStoreText: a.clockOutStoreText ?? null,
+        });
+      }
     }
   }
 
@@ -99,8 +121,8 @@ export async function GET(request: NextRequest) {
       const effectiveRounded = Math.round(effective * 100) / 100;
       const diff = actual != null ? Math.round((actual - planned) * 100) / 100 : null;
       const workDateStr = formatDateOnlyTaipei(d.workDate);
-      const attendanceHours =
-        attendanceByKey.get(`${workDateStr}_${d.employeeId}`) ?? null;
+      const att = attendanceByKey.get(`${workDateStr}_${d.employeeId}`) ?? null;
+      const attendanceHours = att ? att.workHours : null;
       const attendanceHoursRounded =
         attendanceHours != null ? Math.round(attendanceHours * 100) / 100 : null;
       const comparisonResult = compareResultByDiff(diff);
@@ -124,6 +146,9 @@ export async function GET(request: NextRequest) {
         startTime: d.startTime,
         endTime: d.endTime,
         remark: d.remark,
+        locationMatchStatus: att?.locationMatchStatus ?? null,
+        clockInStoreText: att?.clockInStoreText ?? null,
+        clockOutStoreText: att?.clockOutStoreText ?? null,
       };
     })
   );

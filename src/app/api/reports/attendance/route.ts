@@ -27,6 +27,9 @@ export type AttendanceReportRow =
       workDate: string;
       workHours: number;
       adjustmentReason: null;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
     }
   | {
       type: "adjustment";
@@ -39,6 +42,9 @@ export type AttendanceReportRow =
       workDate: string;
       workHours: number;
       adjustmentReason: string;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
     }
   | {
       type: "dispatch_out";
@@ -51,6 +57,9 @@ export type AttendanceReportRow =
       workDate: string;
       workHours: number;
       adjustmentReason: string;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
     }
   | {
       type: "dispatch_in";
@@ -63,6 +72,9 @@ export type AttendanceReportRow =
       workDate: string;
       workHours: number;
       adjustmentReason: string;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
     }
   | {
       type: "subtotal";
@@ -75,6 +87,9 @@ export type AttendanceReportRow =
       workDate: string;
       workHours: number;
       adjustmentReason: null;
+      locationMatchStatus: string | null;
+      clockInStoreText: string | null;
+      clockOutStoreText: string | null;
     };
 
 export async function GET(request: Request) {
@@ -86,6 +101,18 @@ export async function GET(request: Request) {
   const employeeCode = searchParams.get("employeeCode")?.trim() || "";
   const name = searchParams.get("name")?.trim() || "";
   const department = searchParams.get("department")?.trim() || "";
+  const matchStatus = searchParams.get("matchStatus")?.trim() || "";
+  const allowedMatchStatus = new Set([
+    "MATCH",
+    "MISMATCH_CLOCKIN",
+    "MISMATCH_CLOCKOUT",
+    "MISMATCH_BOTH",
+    "DISPATCH_EXPLAINED",
+    "NEED_REVIEW",
+    "EXCLUDED",
+    "UNKNOWN",
+  ]);
+  const matchStatusFilter = matchStatus && allowedMatchStatus.has(matchStatus) ? matchStatus : "";
 
   let range: { start: Date; end: Date };
   try {
@@ -162,6 +189,7 @@ export async function GET(request: Request) {
         ...(storeIdsForFilter && storeIdsForFilter.length > 0
           ? { originalStoreId: { in: storeIdsForFilter } }
           : {}),
+        ...(matchStatusFilter ? { locationMatchStatus: matchStatusFilter as any } : {}),
       },
       include: {
         employee: { include: { defaultStore: true } },
@@ -413,6 +441,9 @@ export async function GET(request: Request) {
           workDate: dateStr,
           workHours: baseHours,
           adjustmentReason: null,
+          locationMatchStatus: (att as any).locationMatchStatus ?? null,
+          clockInStoreText: (att as any).clockInStoreText ?? null,
+          clockOutStoreText: (att as any).clockOutStoreText ?? null,
         });
 
         // 試作規則：員工編號開頭為 A/B（不分大小寫）時，小計固定為 -3
@@ -433,6 +464,9 @@ export async function GET(request: Request) {
             workDate: dateStr,
             workHours: Math.round(delta * 100) / 100,
             adjustmentReason: "試作",
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
           });
         }
 
@@ -455,6 +489,9 @@ export async function GET(request: Request) {
             workDate: dateStr,
             workHours: Math.round(delta * 100) / 100,
             adjustmentReason: "後勤支援門市以70%工時",
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
           });
         }
 
@@ -493,6 +530,9 @@ export async function GET(request: Request) {
                   workDate: dateStr,
                   workHours: Math.round(delta * 100) / 100,
                   adjustmentReason: `儲備人力，計${percentLabel}%工時`,
+                  locationMatchStatus: null,
+                  clockInStoreText: null,
+                  clockOutStoreText: null,
                 });
               }
             }
@@ -518,6 +558,9 @@ export async function GET(request: Request) {
             workDate: dateStr,
             workHours: h,
             adjustmentReason: reason,
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
           });
         }
 
@@ -540,6 +583,9 @@ export async function GET(request: Request) {
             workDate: dateStr,
             workHours: -h,
             adjustmentReason: d.remark?.trim() || "支援",
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
           });
         }
 
@@ -554,6 +600,9 @@ export async function GET(request: Request) {
           workDate: dateStr,
           workHours: Math.round(net * 100) / 100,
           adjustmentReason: null,
+          locationMatchStatus: null,
+          clockInStoreText: null,
+          clockOutStoreText: null,
         });
       } else if (storeIdsForFilter && storeIdsForFilter.length > 0) {
         for (const d of dispList) {
@@ -572,6 +621,9 @@ export async function GET(request: Request) {
             workDate: dateStr,
             workHours: h,
             adjustmentReason: d.remark?.trim() || "支援",
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
           });
         }
       }

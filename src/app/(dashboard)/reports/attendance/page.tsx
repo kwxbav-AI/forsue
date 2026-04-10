@@ -14,6 +14,9 @@ type AttendanceReportRow = {
   workDate: string;
   workHours: number;
   adjustmentReason: string | null;
+  locationMatchStatus: string | null;
+  clockInStoreText: string | null;
+  clockOutStoreText: string | null;
 };
 
 type Store = {
@@ -29,6 +32,7 @@ export default function AttendanceReportPage() {
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
   const [department, setDepartment] = useState("");
+  const [matchStatus, setMatchStatus] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
   const [name, setName] = useState("");
 
@@ -59,6 +63,7 @@ export default function AttendanceReportPage() {
     params.set("startDate", startDate);
     params.set("endDate", endDate);
     if (department) params.set("department", department);
+    if (matchStatus) params.set("matchStatus", matchStatus);
     if (employeeCode.trim()) params.set("employeeCode", employeeCode.trim());
     if (name.trim()) params.set("name", name.trim());
 
@@ -141,6 +146,24 @@ export default function AttendanceReportPage() {
               ))}
             </select>
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-slate-600">打卡地點</span>
+            <select
+              value={matchStatus}
+              onChange={(e) => setMatchStatus(e.target.value)}
+              className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">全部</option>
+              <option value="MATCH">相符</option>
+              <option value="MISMATCH_CLOCKIN">上班不符</option>
+              <option value="MISMATCH_CLOCKOUT">下班不符</option>
+              <option value="MISMATCH_BOTH">上下班皆不符</option>
+              <option value="DISPATCH_EXPLAINED">調度可解釋</option>
+              <option value="NEED_REVIEW">需人工確認</option>
+              <option value="EXCLUDED">排除比對</option>
+              <option value="UNKNOWN">無法判定</option>
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2 text-sm">
               <span className="text-slate-600">員工編號</span>
@@ -196,6 +219,9 @@ export default function AttendanceReportPage() {
                 <th className="px-4 py-2 text-left font-medium text-slate-700">職稱</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">日期</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">工時</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-700">打卡地點</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-700">上班地點</th>
+                <th className="px-4 py-2 text-left font-medium text-slate-700">下班地點</th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">調整事由</th>
               </tr>
             </thead>
@@ -206,6 +232,24 @@ export default function AttendanceReportPage() {
                 const isSubRow = isChangeRow || r.type === "subtotal";
                 const isSubtotal = r.type === "subtotal";
                 const isNegative = Number.isFinite(r.workHours) && r.workHours < 0;
+                const statusLabel =
+                  r.locationMatchStatus === "MATCH"
+                    ? "相符"
+                    : r.locationMatchStatus === "MISMATCH_CLOCKIN"
+                      ? "上班不符"
+                      : r.locationMatchStatus === "MISMATCH_CLOCKOUT"
+                        ? "下班不符"
+                        : r.locationMatchStatus === "MISMATCH_BOTH"
+                          ? "上下班皆不符"
+                          : r.locationMatchStatus === "DISPATCH_EXPLAINED"
+                            ? "調度可解釋"
+                            : r.locationMatchStatus === "NEED_REVIEW"
+                              ? "需人工確認"
+                              : r.locationMatchStatus === "EXCLUDED"
+                                ? "排除比對"
+                                : r.locationMatchStatus === "UNKNOWN"
+                                  ? "無法判定"
+                                  : "—";
                 return (
                   <tr
                     key={r.id}
@@ -227,6 +271,9 @@ export default function AttendanceReportPage() {
                     <td className={`px-4 py-2 text-right ${isNegative ? "font-medium text-red-700" : ""}`}>
                       {r.workHours}
                     </td>
+                    <td className="px-4 py-2">{isSubRow ? "" : statusLabel}</td>
+                    <td className="px-4 py-2">{isSubRow ? "" : (r.clockInStoreText || "—")}</td>
+                    <td className="px-4 py-2">{isSubRow ? "" : (r.clockOutStoreText || "—")}</td>
                     <td className="px-4 py-2">{r.adjustmentReason ?? "—"}</td>
                   </tr>
                 );

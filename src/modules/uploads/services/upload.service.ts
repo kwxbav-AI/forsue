@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { UploadFileType } from "@prisma/client";
+import type { AttendanceLocationMatchStatus } from "@prisma/client";
 import type { ParseError } from "../types";
 import { parseAttendanceSheet, type AttendanceRow } from "../parsers/attendance.parser";
 import { parseDispatchSheet, type DispatchRow } from "../parsers/dispatch.parser";
@@ -90,6 +91,170 @@ function resolveStoreIdFromDepartment(
     .filter((c) => c.depKey.includes(key) || key.includes(c.depKey))
     .sort((a, b) => b.depKey.length - a.depKey.length)[0];
   return contains?.id ?? null;
+}
+
+function parseClockInfoTimeToMinutes(raw: string | null): number | null {
+  if (!raw) return null;
+  const m = raw.match(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function extractStoreTextFromClockInfo(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  // 常見格式: [07:24:14]宜蘭區-校舍店 24公尺
+  const withBracket = s.match(/^\s*\[[^\]]+\]\s*(.+?)\s*(\d+\s*公尺.*)?\s*$/);
+  const candidate = (withBracket ? withBracket[1] : s).trim();
+  if (!candidate) return null;
+
+  // 去掉可能的距離尾巴: "... 24公尺" / "... 0公尺"
+  const stripped = candidate.replace(/\s+\d+\s*公尺.*$/g, "").trim();
+  return stripped || null;
+}
+
+function normalizeStoreText(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[－–—]/g, "-")
+    .replace(/[（(].*?[)）]/g, "")
+    .replace(/店$/g, "")
+    .toLowerCase();
+}
+
+function resolveStoreIdFromStoreText(
+  storeText: string,
+  stores: { id: string; department: string | null; name: string }[]
+): string | null {
+  const key = normalizeStoreText(storeText);
+  if (!key) return null;
+
+  const candidates = stores.map((s) => ({
+    id: s.id,
+    depKey: s.department ? normalizeStoreText(s.department) : "",
+    nameKey: normalizeStoreText(s.name),
+  }));
+
+  const exact = candidates.find((c) => c.depKey === key || c.nameKey === key);
+  if (exact) return exact.id;
+
+  const contains = candidates
+    .filter(
+      (c) =>
+        (c.depKey && (c.depKey.includes(key) || key.includes(c.depKey))) ||
+        c.nameKey.includes(key) ||
+        key.includes(c.nameKey)
+    )
+    .sort((a, b) => {
+      const la = Math.max(a.depKey.length, a.nameKey.length);
+      const lb = Math.max(b.depKey.length, b.nameKey.length);
+      return lb - la;
+    })[0];
+  return contains?.id ?? null;
+}
+
+async function getExcludedDepartments(): Promise<string[]> {
+  const key = "attendance.location.excludedDepartments";
+  const row = await prisma.appSetting.findUnique({
+    where: { key },
+    select: { valueJson: true },
+  });
+  const raw = row?.valueJson as unknown;
+  if (Array.isArray(raw) && raw.every((x) => typeof x === "string")) {
+    return raw.map((x) => x.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function isDepartmentExcluded(department: string | null, excluded: string[]): boolean {
+  if (!department) return false;
+  const dep = department.trim();
+  if (!dep) return false;
+  const depKey = normalizeDepartment(dep);
+  return excluded.some((x) => normalizeDepartment(x) === depKey);
+}
+
+function computeLocationMatchStatus(args: {
+  excluded: boolean;
+  hasDispatch: boolean;
+  baseStoreId: string | null;
+  clockInStoreId: string | null;
+  clockOutStoreId: string | null;
+  clockInMin: number | null;
+  clockOutMin: number | null;
+  dispatchStartMin: number | null;
+  dispatchEndMin: number | null;
+  dispatchToStoreId: string | null;
+}): AttendanceLocationMatchStatus {
+  const {
+    excluded,
+    hasDispatch,
+    baseStoreId,
+    clockInStoreId,
+    clockOutStoreId,
+    clockInMin,
+    clockOutMin,
+    dispatchStartMin,
+    dispatchEndMin,
+    dispatchToStoreId,
+  } = args;
+
+  if (excluded && !hasDispatch) return "EXCLUDED";
+  if (!baseStoreId) return "UNKNOWN";
+  if (!clockInStoreId && !clockOutStoreId) return "UNKNOWN";
+
+  const inOkNoDispatch = clockInStoreId ? clockInStoreId === baseStoreId : null;
+  const outOkNoDispatch = clockOutStoreId ? clockOutStoreId === baseStoreId : null;
+
+  if (!hasDispatch) {
+    if (inOkNoDispatch === true && outOkNoDispatch === true) return "MATCH";
+    if (inOkNoDispatch === false && outOkNoDispatch === true) return "MISMATCH_CLOCKIN";
+    if (inOkNoDispatch === true && outOkNoDispatch === false) return "MISMATCH_CLOCKOUT";
+    if (inOkNoDispatch === false && outOkNoDispatch === false) return "MISMATCH_BOTH";
+    return "UNKNOWN";
+  }
+
+  if (!dispatchToStoreId) return "NEED_REVIEW";
+  const allowed = new Set([baseStoreId, dispatchToStoreId]);
+  const inAllowed = clockInStoreId ? allowed.has(clockInStoreId) : true;
+  const outAllowed = clockOutStoreId ? allowed.has(clockOutStoreId) : true;
+
+  if (!inAllowed || !outAllowed) {
+    if (clockInStoreId && !allowed.has(clockInStoreId) && clockOutStoreId && !allowed.has(clockOutStoreId))
+      return "MISMATCH_BOTH";
+    if (clockInStoreId && !allowed.has(clockInStoreId)) return "MISMATCH_CLOCKIN";
+    if (clockOutStoreId && !allowed.has(clockOutStoreId)) return "MISMATCH_CLOCKOUT";
+  }
+
+  if (dispatchStartMin == null || dispatchEndMin == null || clockInMin == null || clockOutMin == null) {
+    return "DISPATCH_EXPLAINED";
+  }
+
+  const expectedIn =
+    clockInMin >= dispatchStartMin && clockInMin < dispatchEndMin ? dispatchToStoreId : baseStoreId;
+  const expectedOut =
+    clockOutMin >= dispatchStartMin && clockOutMin < dispatchEndMin ? dispatchToStoreId : baseStoreId;
+
+  const inOk = clockInStoreId ? clockInStoreId === expectedIn : true;
+  const outOk = clockOutStoreId ? clockOutStoreId === expectedOut : true;
+
+  const dispatchInsideWork = clockInMin < dispatchStartMin && clockOutMin >= dispatchEndMin;
+  const bothAtBase =
+    (clockInStoreId ? clockInStoreId === baseStoreId : true) &&
+    (clockOutStoreId ? clockOutStoreId === baseStoreId : true);
+  if (dispatchInsideWork && bothAtBase) return "NEED_REVIEW";
+
+  if (inOk && outOk) return "DISPATCH_EXPLAINED";
+  if (!inOk && outOk) return "MISMATCH_CLOCKIN";
+  if (inOk && !outOk) return "MISMATCH_CLOCKOUT";
+  return "MISMATCH_BOTH";
 }
 
 /** 依員工 code 查 id，找不到回 null */
@@ -186,8 +351,40 @@ export async function uploadAttendance(
     select: { id: true, department: true, name: true },
   });
 
+  const excludedDepartments = await getExcludedDepartments();
+
+  // 先建立員工，後面可一次抓同日調度（避免每列查 DB）
+  const employeeIdByCode = new Map<string, string>();
+  const rowEmployeeIds: string[] = [];
   for (const row of parsed.data) {
-    const employeeId = await getOrCreateEmployee(row.employeeCode, row.employeeName);
+    const eid = await getOrCreateEmployee(row.employeeCode, row.employeeName);
+    employeeIdByCode.set(row.employeeCode.trim(), eid);
+    rowEmployeeIds.push(eid);
+  }
+
+  const dispatchByEmpDate = new Map<
+    string,
+    { toStoreId: string; startTime: string | null; endTime: string | null }[]
+  >();
+  if (rowEmployeeIds.length > 0 && uniqueDates.length > 0) {
+    const dispatches = await prisma.dispatchRecord.findMany({
+      where: {
+        employeeId: { in: Array.from(new Set(rowEmployeeIds)) },
+        workDate: { in: uniqueDates },
+      },
+      select: { employeeId: true, workDate: true, toStoreId: true, startTime: true, endTime: true },
+      orderBy: { createdAt: "desc" },
+    });
+    for (const d of dispatches) {
+      const key = `${formatDateOnly(d.workDate)}|${d.employeeId}`;
+      const list = dispatchByEmpDate.get(key) ?? [];
+      list.push({ toStoreId: d.toStoreId, startTime: d.startTime ?? null, endTime: d.endTime ?? null });
+      dispatchByEmpDate.set(key, list);
+    }
+  }
+
+  for (const row of parsed.data) {
+    const employeeId = employeeIdByCode.get(row.employeeCode.trim())!;
     let originalStoreId: string | null = null;
     if (row.storeCode) originalStoreId = await getStoreIdByCode(row.storeCode);
     if (!originalStoreId && row.department) {
@@ -205,6 +402,39 @@ export async function uploadAttendance(
       originalStoreId = null;
     }
 
+    const clockInStoreText = extractStoreTextFromClockInfo(row.clockInInfoRaw);
+    const clockOutStoreText = extractStoreTextFromClockInfo(row.clockOutInfoRaw);
+    const clockInStoreId = clockInStoreText
+      ? resolveStoreIdFromStoreText(clockInStoreText, storesForDept)
+      : null;
+    const clockOutStoreId = clockOutStoreText
+      ? resolveStoreIdFromStoreText(clockOutStoreText, storesForDept)
+      : null;
+    const clockInMin = parseClockInfoTimeToMinutes(row.clockInInfoRaw);
+    const clockOutMin = parseClockInfoTimeToMinutes(row.clockOutInfoRaw);
+
+    const empDateKey = `${formatDateOnly(toStartOfDay(row.workDate))}|${employeeId}`;
+    const dispatchList = dispatchByEmpDate.get(empDateKey) ?? [];
+    const hasDispatch = dispatchList.length > 0;
+    const firstDispatch = dispatchList[0] ?? null;
+    const dispatchStartMin = firstDispatch?.startTime ? parseClockInfoTimeToMinutes(`[${firstDispatch.startTime}:00]`) : null;
+    const dispatchEndMin = firstDispatch?.endTime ? parseClockInfoTimeToMinutes(`[${firstDispatch.endTime}:00]`) : null;
+    const dispatchToStoreId = firstDispatch?.toStoreId ?? null;
+
+    const excluded = isDepartmentExcluded(row.department, excludedDepartments);
+    const status = computeLocationMatchStatus({
+      excluded,
+      hasDispatch,
+      baseStoreId: originalStoreId,
+      clockInStoreId,
+      clockOutStoreId,
+      clockInMin,
+      clockOutMin,
+      dispatchStartMin,
+      dispatchEndMin,
+      dispatchToStoreId,
+    });
+
     await prisma.attendanceRecord.create({
       data: {
         workDate: toStartOfDay(row.workDate),
@@ -214,6 +444,13 @@ export async function uploadAttendance(
         workHours: row.workHours.toNumber(),
         startTime: row.startTime,
         endTime: row.endTime,
+        clockInInfoRaw: row.clockInInfoRaw,
+        clockOutInfoRaw: row.clockOutInfoRaw,
+        clockInStoreText,
+        clockOutStoreText,
+        clockInStoreId,
+        clockOutStoreId,
+        locationMatchStatus: status,
         shiftType: row.shiftType,
         uploadBatchId: batch.id,
       },

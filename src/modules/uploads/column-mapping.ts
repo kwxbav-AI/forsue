@@ -12,6 +12,9 @@ export const ATTENDANCE_COLUMNS = {
   workHours: ["工時", "工作時數", "workHours", "時數", "hours", "出勤時數", "總工時", "工時數", "實際工時", "上班時數"],
   startTime: ["上班", "上班時間", "上班打卡時間", "簽到時間", "出勤時間(起)", "出勤起"],
   endTime: ["下班", "下班時間", "下班打卡時間", "簽退時間", "出勤時間(迄)", "出勤迄"],
+  // 注意：這兩欄是「含地點的文字資訊」，不是純時間欄位
+  clockInInfo: ["上班資訊", "上班打卡資訊", "上班資訊(含地點)", "clockInInfo", "clockInInfoRaw"],
+  clockOutInfo: ["下班資訊", "下班打卡資訊", "下班資訊(含地點)", "clockOutInfo", "clockOutInfoRaw"],
   shiftType: ["班別", "班型", "shiftType", "班次"],
 } as const;
 

@@ -98,6 +98,17 @@ enum UploadStatus {
   FAILED
 }
 
+enum AttendanceLocationMatchStatus {
+  MATCH              // 上下班皆符合（或無調度且與部門一致）
+  MISMATCH_CLOCKIN   // 上班不符
+  MISMATCH_CLOCKOUT  // 下班不符
+  MISMATCH_BOTH      // 上下班皆不符
+  DISPATCH_EXPLAINED // 可由調度解釋
+  NEED_REVIEW        // 有調度時段，但僅上下班打卡不足以驗證中段
+  EXCLUDED           // 部門在排除比對清單，且當天無調度
+  UNKNOWN            // 無法解析（上/下班資訊空白或格式無法解析）
+}
+
 model UploadBatch {
   id            String         @id @default(cuid())
   fileType      UploadFileType
@@ -121,6 +132,13 @@ model AttendanceRecord {
   workHours       Decimal    @db.Decimal(10, 2)
   startTime       String?
   endTime         String?
+  clockInInfoRaw   String?
+  clockOutInfoRaw  String?
+  clockInStoreText String?
+  clockOutStoreText String?
+  clockInStoreId   String?
+  clockOutStoreId  String?
+  locationMatchStatus AttendanceLocationMatchStatus @default(UNKNOWN)
   shiftType       String?
   uploadBatchId   String?
   createdAt       DateTime   @default(now())
@@ -128,6 +146,14 @@ model AttendanceRecord {
   employee        Employee   @relation(fields: [employeeId], references: [id])
   @@index([workDate])
   @@index([employeeId, workDate])
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  valueJson Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 model DispatchRecord {
