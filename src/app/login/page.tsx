@@ -6,6 +6,9 @@ export const metadata = {
   title: "登入｜每日績效計算系統",
 };
 
+// Cloud Run 會在部署後才設定 AUTH_SECRET；此頁必須 runtime 判斷，避免 build-time 靜態快取造成 redirect 迴圈。
+export const dynamic = "force-dynamic";
+
 export default function LoginPage({
   searchParams,
 }: {
