@@ -10,6 +10,16 @@ const effectivePermsCache = new Map<
   { expiresAt: number; data: { allowedPagePathPatterns: string[]; allowedApiReadPatterns: any[]; allowedApiWritePatterns: any[] } }
 >();
 
+function buildCookieHeader(request: NextRequest): string {
+  try {
+    const list = request.cookies.getAll();
+    if (!Array.isArray(list) || list.length === 0) return "";
+    return list.map((c) => `${c.name}=${c.value}`).join("; ");
+  } catch {
+    return request.headers.get("cookie") ?? "";
+  }
+}
+
 function isStaticAsset(pathname: string): boolean {
   return /\.(ico|png|jpg|jpeg|gif|webp|svg|txt|xml|woff2?|ttf|eot)$/i.test(pathname);
 }
@@ -82,14 +92,16 @@ export async function middleware(request: NextRequest) {
         const res = await fetch(url.toString(), {
           headers: {
             accept: "application/json",
-            cookie: request.headers.get("cookie") ?? "",
+            cookie: buildCookieHeader(request),
           },
         });
-        const data = await res.json();
-        effectivePermsCache.set(role, {
-          expiresAt: now + PERMISSIONS_CACHE_TTL_MS,
-          data,
-        });
+        if (res.ok) {
+          const data = await res.json();
+          effectivePermsCache.set(role, {
+            expiresAt: now + PERMISSIONS_CACHE_TTL_MS,
+            data,
+          });
+        }
       } catch {
         // 失敗就用 token 裡的舊值（至少不會破壞登入流程）
       }
