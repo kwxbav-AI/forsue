@@ -44,6 +44,7 @@ export function canAccessPage(session: SessionPayload | null, pathname: string):
   if (pathname.startsWith("/login")) return true;
   if (pathname === "/" || pathname === "/forbidden") return true;
   if (!session) return false;
+  if (session.role === "ADMIN") return true;
 
   return matchAllowedPagePatterns(session, pathname);
 }
@@ -54,6 +55,7 @@ export function canAccessApi(
   method: string
 ): boolean {
   if (!session) return false;
+  if (session.role === "ADMIN") return true;
 
   const isRead = isReadMethod(method);
   const matched = isRead

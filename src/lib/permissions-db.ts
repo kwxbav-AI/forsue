@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 export async function canAccessPageDb(role: UserRole, pathname: string): Promise<boolean> {
   if (pathname === "/" || pathname === "/forbidden") return true;
   if (pathname.startsWith("/login")) return true;
+  // 管理員：不受 RolePermission 矩陣限制（避免新模組未 seed / 未同步時被鎖）
+  if (role === "ADMIN") return true;
 
   const rolePermRows = await prisma.rolePermission.findMany({
     where: { role },
@@ -51,6 +53,8 @@ export async function canAccessApiDb(
   pathname: string,
   method: string
 ): Promise<boolean> {
+  if (role === "ADMIN") return true;
+
   const m = method.toUpperCase();
   const isRead = m === "GET" || m === "HEAD" || m === "OPTIONS";
 
@@ -90,6 +94,8 @@ export async function hasModuleEffectivePermission(
   moduleKey: string,
   min: "read" | "write"
 ): Promise<boolean> {
+  if (role === "ADMIN") return true;
+
   const mod = await prisma.permissionModule.findUnique({
     where: { key: moduleKey },
     select: { id: true },
