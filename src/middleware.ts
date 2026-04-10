@@ -58,6 +58,7 @@ export async function middleware(request: NextRequest) {
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session = token ? await decodeSessionToken(token) : null;
+  let effectiveStatus: "skip" | "hit" | "miss_ok" | "miss_fail" = "skip";
 
   if (!session) {
     if (pathname.startsWith("/api")) {
@@ -83,10 +84,12 @@ export async function middleware(request: NextRequest) {
   // Edge runtime 不能直接用 Prisma；為了「儲存後立刻生效」，所有角色都走即時有效權限 API（5 秒快取）。
   if (session) {
     const role = session.role;
-    const cached = effectivePermsCache.get(role);
+    const cacheKey = `${role}:${session.userId}`;
+    const cached = effectivePermsCache.get(cacheKey);
     const now = Date.now();
 
     if (!cached || cached.expiresAt <= now) {
+      effectiveStatus = "miss_fail";
       try {
         const url = new URL("/api/role-permissions/effective", request.url);
         const res = await fetch(url.toString(), {
@@ -97,17 +100,20 @@ export async function middleware(request: NextRequest) {
         });
         if (res.ok) {
           const data = await res.json();
-          effectivePermsCache.set(role, {
+          effectivePermsCache.set(cacheKey, {
             expiresAt: now + PERMISSIONS_CACHE_TTL_MS,
             data,
           });
+          effectiveStatus = "miss_ok";
         }
       } catch {
         // 失敗就用 token 裡的舊值（至少不會破壞登入流程）
       }
+    } else {
+      effectiveStatus = "hit";
     }
 
-    const fresh = effectivePermsCache.get(role)?.data;
+    const fresh = effectivePermsCache.get(cacheKey)?.data;
     if (fresh && Array.isArray(fresh.allowedPagePathPatterns)) {
       session = {
         ...session,
@@ -122,18 +128,42 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (pathname.startsWith("/api")) {
+  const res = pathname.startsWith("/api")
+    ? (() => {
     if (!canAccessApi(session, pathname, request.method)) {
       return NextResponse.json({ error: "權限不足" }, { status: 403 });
     }
     return NextResponse.next();
+      })()
+    : (() => {
+    if (!canAccessPage(session, pathname)) {
+      return NextResponse.redirect(new URL("/forbidden", request.url));
+    }
+    return NextResponse.next();
+      })();
+
+  // Debug headers (不含敏感資料): 用來確認 middleware 是否拿到有效權限。
+  if (session) {
+    res.headers.set("x-dps-role", String(session.role));
+    res.headers.set("x-dps-effective", effectiveStatus);
+    res.headers.set(
+      "x-dps-pages",
+      String(Array.isArray(session.allowedPagePathPatterns) ? session.allowedPagePathPatterns.length : 0)
+    );
+    res.headers.set(
+      "x-dps-api-r",
+      String(Array.isArray(session.allowedApiReadPatterns) ? session.allowedApiReadPatterns.length : 0)
+    );
+    res.headers.set(
+      "x-dps-api-w",
+      String(Array.isArray(session.allowedApiWritePatterns) ? session.allowedApiWritePatterns.length : 0)
+    );
+  } else {
+    res.headers.set("x-dps-role", "none");
+    res.headers.set("x-dps-effective", effectiveStatus);
   }
 
-  if (!canAccessPage(session, pathname)) {
-    return NextResponse.redirect(new URL("/forbidden", request.url));
-  }
-
-  return NextResponse.next();
+  return res;
 }
 
 export const config = {
