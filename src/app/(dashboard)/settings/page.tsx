@@ -78,6 +78,15 @@ export default async function SettingsHubPage() {
             <p className="mt-1 text-sm text-slate-500">設定目標工效值與生效日</p>
           </Link>
         ) : null}
+        {(await canOpen("/settings/attendance-location")) ? (
+          <Link
+            href="/settings/attendance-location"
+            className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+          >
+            <span className="font-medium text-slate-800">出勤打卡地點比對</span>
+            <p className="mt-1 text-sm text-slate-500">設定哪些部門不做打卡地點比對</p>
+          </Link>
+        ) : null}
       </div>
     </div>
   );

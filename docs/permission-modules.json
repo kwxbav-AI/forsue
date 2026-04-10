@@ -370,6 +370,19 @@
       ]
     },
     {
+      "key": "settings-attendance-location",
+      "label": "出勤打卡地點比對",
+      "description": "設定排除比對部門（後勤等）與查詢比對狀態",
+      "group": "設定",
+      "sortOrder": 655,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/attendance-location", "method": null },
+        { "kind": "API", "pathPattern": "/api/settings/attendance-location", "method": null },
+        { "kind": "API", "pathPattern": "/api/stores", "method": null }
+      ]
+    },
+    {
       "key": "stores",
       "label": "門市管理",
       "description": "新增/編輯/停用門市、匯入預設門市",

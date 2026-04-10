@@ -1,0 +1,27 @@
+﻿steps:
+  - name: node:20-bullseye
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+          set -euo pipefail
+
+          apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+          curl -fsSL -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.10.0/cloud-sql-proxy.linux.amd64
+          chmod +x /usr/local/bin/cloud-sql-proxy
+
+          # 直接寫死 instance 連線名稱（避免 env 變成空字串）
+          /usr/local/bin/cloud-sql-proxy "inventory-dev-kwxbav:asia-east1:daily-performance-system" --port 5432 &
+          PROXY_PID=$!
+
+          for i in {1..40}; do
+            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break || true
+            sleep 0.5
+          done
+
+          export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
+
+          npm ci
+          npx prisma migrate deploy
+
+          kill  || true

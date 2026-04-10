@@ -172,7 +172,11 @@ async function main() {
       if (deleteApproveKeys.has(moduleKey)) {
         return { canRead: true, canWrite: false };
       }
-      if (moduleKey === "settings-users" || moduleKey === "settings-role-permissions") {
+      if (
+        moduleKey === "settings-users" ||
+        moduleKey === "settings-role-permissions" ||
+        moduleKey === "settings-attendance-location"
+      ) {
         return { canRead: false, canWrite: false };
       }
       // 視覺化欄位權限：扣工時可見（不需要寫入）
