@@ -8,6 +8,7 @@ type PendingRow = {
   status: string;
   requestedByUsername: string | null;
   createdAt: string;
+  targetSummary?: string | null;
 };
 
 type Segment =
@@ -119,7 +120,13 @@ export function PendingDeletionPanel({
               className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-100 bg-white px-3 py-2"
             >
               <div className="text-slate-700">
-                <span className="font-mono text-xs text-slate-500">標的 {r.targetId.slice(0, 12)}…</span>
+                <div className="text-xs text-slate-500">
+                  {r.targetSummary ? (
+                    <span>{r.targetSummary}</span>
+                  ) : (
+                    <span className="font-mono">標的 {r.targetId.slice(0, 12)}…</span>
+                  )}
+                </div>
                 <span className="mx-2 text-slate-300">|</span>
                 申請人 {r.requestedByUsername || "—"}
                 <span className="mx-2 text-slate-300">|</span>

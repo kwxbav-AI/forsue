@@ -47,6 +47,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Diagnostic endpoint: allow without session.
+  if (pathname.startsWith("/api/version")) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session = token ? await decodeSessionToken(token) : null;
 
