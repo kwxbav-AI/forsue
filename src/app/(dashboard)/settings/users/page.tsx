@@ -3,44 +3,61 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
-
-type UserRole = keyof typeof USER_ROLE_LABELS;
 
 type Row = {
   id: string;
   username: string;
-  role: UserRole;
   roleLabel: string;
+  roleId: string | null;
+  roleKey: string;
+  roleName: string | null;
   isActive: boolean;
 };
 
-const ROLES = Object.keys(USER_ROLE_LABELS) as UserRole[];
+type RoleRow = { id: string; key: string; name: string; isActive: boolean };
 
 function UsersInner() {
   const searchParams = useSearchParams();
   const [users, setUsers] = useState<Row[]>([]);
+  const [roles, setRoles] = useState<RoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState({
     username: "",
     password: "",
-    role: "EDITOR" as UserRole,
+    roleId: "" as string,
   });
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/users");
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setMessage(data.error || "讀取失敗");
+    const [resUsers, resRoles] = await Promise.all([
+      fetch("/api/users", { cache: "no-store" }),
+      fetch("/api/roles", { cache: "no-store" }),
+    ]);
+    const dataUsers = await resUsers.json().catch(() => ({}));
+    const dataRoles = await resRoles.json().catch(() => ({}));
+
+    if (!resRoles.ok) {
+      setMessage(dataRoles.error || "讀取角色失敗");
+      setRoles([]);
+    } else {
+      const list = Array.isArray(dataRoles.roles) ? (dataRoles.roles as RoleRow[]) : [];
+      setRoles(list);
+      if (!form.roleId && list.length > 0) {
+        const editor = list.find((r) => r.key === "EDITOR") ?? list[0];
+        setForm((f) => ({ ...f, roleId: editor?.id ?? "" }));
+      }
+    }
+
+    if (!resUsers.ok) {
+      setMessage(dataUsers.error || "讀取失敗");
       setUsers([]);
     } else {
-      setUsers(data.users || []);
+      setUsers(dataUsers.users || []);
       setMessage(null);
     }
     setLoading(false);
-  }, []);
+  }, [form.roleId]);
 
   useEffect(() => {
     void load();
@@ -65,14 +82,14 @@ function UsersInner() {
       setMessage(data.error || "建立失敗");
       return;
     }
-    setForm({ username: "", password: "", role: "EDITOR" });
+    setForm((prev) => ({ username: "", password: "", roleId: prev.roleId }));
     await load();
     setMessage("已建立帳號");
   }
 
   async function patchUser(
     id: string,
-    patch: Partial<{ password: string; role: UserRole; isActive: boolean }>
+    patch: Partial<{ password: string; roleId: string; isActive: boolean }>
   ) {
     setMessage(null);
     const res = await fetch(`/api/users/${id}`, {
@@ -142,15 +159,15 @@ function UsersInner() {
           <label className="block">
             <span className="text-xs text-slate-500">角色</span>
             <select
-              value={form.role}
+              value={form.roleId}
               onChange={(e) =>
-                setForm((f) => ({ ...f, role: e.target.value as UserRole }))
+                setForm((f) => ({ ...f, roleId: e.target.value }))
               }
               className="mt-1 block rounded border border-slate-300 px-2 py-1.5 text-sm"
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {USER_ROLE_LABELS[r]}
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}（{r.key}）
                 </option>
               ))}
             </select>
@@ -199,15 +216,15 @@ function UsersInner() {
                   </td>
                   <td className="sticky left-[180px] z-[5] w-[140px] min-w-[140px] bg-white px-3 py-2">
                     <select
-                      defaultValue={u.role}
+                      value={u.roleId ?? ""}
                       onChange={(e) =>
-                        void patchUser(u.id, { role: e.target.value as UserRole })
+                        void patchUser(u.id, { roleId: e.target.value })
                       }
                       className="rounded border border-slate-300 px-2 py-1 text-xs"
                     >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {USER_ROLE_LABELS[r]}
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}（{r.key}）
                         </option>
                       ))}
                     </select>

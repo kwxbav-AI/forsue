@@ -132,7 +132,7 @@ export async function DELETE(
     }
 
     const canApprove = await hasModuleEffectivePermission(
-      session.role,
+      { id: session.roleId, key: session.roleKey },
       "delete-approve-stores",
       "write"
     );

@@ -12,7 +12,7 @@ export async function requireApiAccess(
     return NextResponse.json({ error: "未登入" }, { status: 401 });
   }
   const pathname = req.nextUrl.pathname;
-  const ok = await canAccessApiDb(session.role, pathname, req.method);
+  const ok = await canAccessApiDb({ id: session.roleId, key: session.roleKey }, pathname, req.method);
   if (!ok) {
     return NextResponse.json({ error: "權限不足" }, { status: 403 });
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-request";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { DEFAULT_ROLE_LABELS } from "@/lib/permissions";
 import { canAccessApiDb, hasModuleEffectivePermission } from "@/lib/permissions-db";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "未登入" }, { status: 401 });
   }
 
-  const role = session.role;
+  const role = { id: session.roleId, key: session.roleKey };
   const [
     canViewStoreChangeLogs,
     canApproveDeleteContentEntries,
@@ -41,8 +41,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     user: {
       username: session.username,
-      role: session.role,
-      roleLabel: USER_ROLE_LABELS[session.role],
+      roleId: session.roleId,
+      roleKey: session.roleKey,
+      roleLabel:
+        session.roleName ??
+        DEFAULT_ROLE_LABELS[session.roleKey] ??
+        session.roleKey,
       canViewStoreChangeLogs,
       canApproveDeleteContentEntries,
       canApproveDeleteWorkhourAdjustments,

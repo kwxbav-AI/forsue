@@ -8,7 +8,10 @@ export default async function SettingsHubPage() {
   const session = await getServerSession();
   const canOpen = async (pathname: string) => {
     if (!authOn) return true;
-    return session != null && (await canAccessPageDb(session.role, pathname));
+    return (
+      session != null &&
+      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, pathname))
+    );
   };
 
   return (

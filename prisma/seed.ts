@@ -3,6 +3,25 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  // Ensure default roles exist (for transition to Role table)
+  const defaultRoles = [
+    { key: "ADMIN", name: "管理員" },
+    { key: "EDITOR", name: "編輯者" },
+    { key: "VIEWER", name: "檢視者" },
+    { key: "STORE_STAFF", name: "門市人員" },
+  ] as const;
+
+  const roleIdByKey = new Map<string, string>();
+  for (const r of defaultRoles) {
+    const role = await prisma.role.upsert({
+      where: { key: r.key },
+      update: { name: r.name, isActive: true },
+      create: { id: r.key, key: r.key, name: r.name, isActive: true },
+      select: { id: true, key: true },
+    });
+    roleIdByKey.set(role.key, role.id);
+  }
+
   // 建立預設門市清單（依提供的 POSA/POSB 對照）
   const { STORES } = await import("./stores.data");
   for (const s of STORES) {
@@ -207,11 +226,14 @@ async function main() {
     const rp = rolePermissionsByModuleKey[m.key];
     for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"] as const) {
       const v = rp[role];
+      const roleId = roleIdByKey.get(role);
+      if (!roleId) continue;
       await prisma.rolePermission.upsert({
-        where: { role_moduleId: { role, moduleId: module.id } },
+        where: { roleId_moduleId: { roleId, moduleId: module.id } },
         update: { canRead: v.canRead, canWrite: v.canWrite },
         create: {
-          role,
+          roleId,
+          legacyRole: role,
           moduleId: module.id,
           canRead: v.canRead,
           canWrite: v.canWrite,

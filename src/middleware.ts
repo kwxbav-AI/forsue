@@ -95,7 +95,7 @@ export async function middleware(request: NextRequest) {
 
   // Edge runtime 不能直接用 Prisma；為了「儲存後立刻生效」，所有角色都走即時有效權限 API（5 秒快取）。
   if (session) {
-    const role = session.role;
+    const role = session.roleKey;
     const cacheKey = `${role}:${session.userId}`;
     const cached = effectivePermsCache.get(cacheKey);
     const now = Date.now();
@@ -179,7 +179,7 @@ export async function middleware(request: NextRequest) {
 
   // 安全降級：若 effective 權限抓取失敗，避免管理員被鎖在外面（僅 ADMIN，且僅在 patterns 為空時）。
   const bypassForAdmin =
-    !!session && session.role === "ADMIN" && effectiveFailed && !hasPatterns;
+    !!session && session.roleKey === "ADMIN" && effectiveFailed && !hasPatterns;
 
   const res = pathname.startsWith("/api")
     ? (() => {
@@ -197,7 +197,7 @@ export async function middleware(request: NextRequest) {
 
   // Debug headers (不含敏感資料): 用來確認 middleware 是否拿到有效權限。
   if (session) {
-    res.headers.set("x-dps-role", String(session.role));
+    res.headers.set("x-dps-role", String(session.roleKey));
     res.headers.set("x-dps-effective", effectiveStatus);
     if (effectiveHttp != null) res.headers.set("x-dps-effective-http", String(effectiveHttp));
     if (effectiveErr) res.headers.set("x-dps-effective-err", effectiveErr);

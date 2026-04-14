@@ -10,7 +10,11 @@ export default async function RolePermissionsPage() {
 
   if (
     authOn &&
-    (!session || !(await canAccessPageDb(session.role, "/settings/role-permissions")))
+    (!session ||
+      !(await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/settings/role-permissions"
+      )))
   ) {
     redirect("/forbidden");
   }

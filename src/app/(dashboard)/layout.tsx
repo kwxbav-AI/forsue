@@ -3,7 +3,7 @@ import { isAuthEnabled } from "@/lib/auth-config";
 
 export const dynamic = "force-dynamic";
 import { getServerSession } from "@/lib/auth-server";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { DEFAULT_ROLE_LABELS } from "@/lib/permissions";
 import { canAccessPageDb } from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
 
@@ -16,14 +16,20 @@ export default async function DashboardLayout({
   const session = await getServerSession();
   const showLogout = authOn;
   const canUploads =
-    !authOn || (session != null && (await canAccessPageDb(session.role, "/uploads")));
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/uploads")));
   const canWorkhourRelated =
     !authOn ||
     (session != null &&
-      (await canAccessPageDb(session.role, "/workhour-related")));
+      (await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/workhour-related"
+      )));
   const canSettings =
     !authOn ||
-    (session != null && (await canAccessPageDb(session.role, "/settings")));
+    (session != null &&
+      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/settings")));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -35,7 +41,10 @@ export default async function DashboardLayout({
             </Link>
             {showLogout && session ? (
               <span className="text-xs text-slate-500">
-                {session.username} · {USER_ROLE_LABELS[session.role]}
+                {session.username} ·{" "}
+                {session.roleName ??
+                  DEFAULT_ROLE_LABELS[session.roleKey] ??
+                  session.roleKey}
               </span>
             ) : null}
             {showLogout ? <AuthLogoutButton /> : null}

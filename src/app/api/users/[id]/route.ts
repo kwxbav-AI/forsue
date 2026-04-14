@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hashPassword } from "@/lib/password";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { DEFAULT_ROLE_LABELS } from "@/lib/permissions";
 import { requireApiAccess } from "@/lib/api-access";
 
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
   password: z.string().min(6).max(128).optional(),
-  role: z.nativeEnum(UserRole).optional(),
+  roleId: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -38,7 +37,7 @@ export async function PATCH(
     return NextResponse.json({ error: "參數不正確" }, { status: 400 });
   }
 
-  const { password, role, isActive } = parsed.data;
+  const { password, isActive } = parsed.data;
   const id = params.id;
 
   const existing = await prisma.appUser.findUnique({ where: { id } });
@@ -49,17 +48,21 @@ export async function PATCH(
   if (session.userId === id && isActive === false) {
     return NextResponse.json({ error: "無法停用自己" }, { status: 400 });
   }
-  if (session.userId === id && role && role !== existing.role) {
+  if (session.userId === id && parsed.data.roleId && parsed.data.roleId !== existing.roleId) {
     return NextResponse.json({ error: "無法變更自己的角色" }, { status: 400 });
   }
 
   const data: {
     passwordHash?: string;
-    role?: UserRole;
+    roleId?: string;
     isActive?: boolean;
   } = {};
   if (password) data.passwordHash = await hashPassword(password);
-  if (role !== undefined) data.role = role;
+  if (parsed.data.roleId !== undefined) {
+    const roleRow = await prisma.role.findUnique({ where: { id: parsed.data.roleId }, select: { id: true } });
+    if (!roleRow) return NextResponse.json({ error: "角色不存在" }, { status: 400 });
+    data.roleId = roleRow.id;
+  }
   if (isActive !== undefined) data.isActive = isActive;
 
   const user = await prisma.appUser.update({
@@ -68,12 +71,25 @@ export async function PATCH(
     select: {
       id: true,
       username: true,
-      role: true,
+      roleId: true,
+      role: { select: { key: true, name: true } },
+      legacyRole: true,
       isActive: true,
     },
   });
 
   return NextResponse.json({
-    user: { ...user, roleLabel: USER_ROLE_LABELS[user.role] },
+    user: {
+      id: user.id,
+      username: user.username,
+      roleId: user.roleId,
+      roleKey: user.role?.key ?? String(user.legacyRole),
+      roleName: user.role?.name ?? null,
+      roleLabel:
+        user.role?.name ??
+        DEFAULT_ROLE_LABELS[user.role?.key ?? String(user.legacyRole)] ??
+        (user.role?.key ?? String(user.legacyRole)),
+      isActive: user.isActive,
+    },
   });
 }

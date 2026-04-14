@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.appUser.findUnique({
       where: { username: parsed.data.username.trim() },
+      include: { role: true },
     });
 
     if (!user || !user.isActive) {
@@ -50,7 +51,9 @@ export async function POST(req: NextRequest) {
     const token = await createSessionToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
+      roleId: user.roleId ?? user.role?.id ?? String(user.legacyRole),
+      roleKey: user.role?.key ?? String(user.legacyRole),
+      roleName: user.role?.name ?? undefined,
     });
 
     const res = NextResponse.redirect(new URL(next, req.url));

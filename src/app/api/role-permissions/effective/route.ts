@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "未登入" }, { status: 401 });
   }
 
-  const role = session.role;
+  const roleId = session.roleId;
   const rolePerms = await prisma.rolePermission.findMany({
-    where: { role },
+    where: { roleId },
     include: {
       module: {
         select: {
@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    role,
+    roleId,
+    roleKey: session.roleKey,
     allowedPagePathPatterns: Array.from(allowedPagePathPatterns),
     allowedApiReadPatterns: Array.from(allowedApiReadMap.values()),
     allowedApiWritePatterns: Array.from(allowedApiWriteMap.values()),

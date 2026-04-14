@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
-import { UserRole } from "@prisma/client";
 import { requireApiAccess } from "@/lib/api-access";
 
-const roleSchema = z.nativeEnum(UserRole);
+const roleIdSchema = z.string().min(1);
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
@@ -13,12 +12,20 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
-  const roleParam = searchParams.get("role") ?? "STORE_STAFF";
-  const parsedRole = roleSchema.safeParse(roleParam);
-  if (!parsedRole.success) {
+  const roleIdParam = searchParams.get("roleId");
+  const parsedRoleId = roleIdSchema.safeParse(roleIdParam);
+  if (!parsedRoleId.success) {
     return NextResponse.json({ error: "角色參數錯誤" }, { status: 400 });
   }
-  const role = parsedRole.data as UserRole;
+  const roleId = parsedRoleId.data;
+
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    select: { id: true, key: true, name: true, isActive: true },
+  });
+  if (!role) {
+    return NextResponse.json({ error: "找不到角色" }, { status: 404 });
+  }
 
   const modules = await prisma.permissionModule.findMany({
     orderBy: [{ groupKey: "asc" }, { sortOrder: "asc" }, { label: "asc" }],
@@ -35,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   const moduleIds = modules.map((m) => m.id);
   const rolePerms = await prisma.rolePermission.findMany({
-    where: { role, moduleId: { in: moduleIds } },
+    where: { roleId, moduleId: { in: moduleIds } },
     select: { moduleId: true, canRead: true, canWrite: true },
   });
   const permMap = new Map<string, { canRead: boolean; canWrite: boolean }>();
@@ -62,7 +69,7 @@ export async function GET(req: NextRequest) {
 }
 
 const updateSchema = z.object({
-  role: z.string(),
+  roleId: z.string(),
   updates: z.array(
     z.object({
       moduleId: z.string(),
@@ -87,11 +94,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "參數錯誤", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const roleParsed = roleSchema.safeParse(parsed.data.role);
-  if (!roleParsed.success) {
-    return NextResponse.json({ error: "角色參數錯誤" }, { status: 400 });
-  }
-  const role = roleParsed.data as UserRole;
+  const roleIdParsed = roleIdSchema.safeParse(parsed.data.roleId);
+  if (!roleIdParsed.success) return NextResponse.json({ error: "角色參數錯誤" }, { status: 400 });
+  const roleId = roleIdParsed.data;
 
   // 寫入包含讀取：強制 canRead=true 若 canWrite=true
   const updates = parsed.data.updates.map((u) => ({
@@ -103,9 +108,15 @@ export async function POST(req: NextRequest) {
   await prisma.$transaction(
     updates.map((u) =>
       prisma.rolePermission.upsert({
-        where: { role_moduleId: { role, moduleId: u.moduleId } },
+        where: { roleId_moduleId: { roleId, moduleId: u.moduleId } },
         update: { canRead: u.canRead, canWrite: u.canWrite },
-        create: { role, moduleId: u.moduleId, canRead: u.canRead, canWrite: u.canWrite },
+        create: {
+          roleId,
+          moduleId: u.moduleId,
+          canRead: u.canRead,
+          canWrite: u.canWrite,
+          legacyRole: "EDITOR" as any,
+        },
       })
     )
   );

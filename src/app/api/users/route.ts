@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hashPassword } from "@/lib/password";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
+import { DEFAULT_ROLE_LABELS } from "@/lib/permissions";
 import { requireApiAccess } from "@/lib/api-access";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +18,9 @@ export async function GET(req: NextRequest) {
     select: {
       id: true,
       username: true,
-      role: true,
+      roleId: true,
+      role: { select: { id: true, key: true, name: true, isActive: true } },
+      legacyRole: true,
       isActive: true,
       createdAt: true,
       updatedAt: true,
@@ -28,8 +29,15 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     users: users.map((u) => ({
-      ...u,
-      roleLabel: USER_ROLE_LABELS[u.role],
+      id: u.id,
+      username: u.username,
+      roleId: u.roleId,
+      roleKey: u.role?.key ?? String(u.legacyRole),
+      roleName: u.role?.name ?? null,
+      roleLabel: u.role?.name ?? DEFAULT_ROLE_LABELS[u.role?.key ?? String(u.legacyRole)] ?? (u.role?.key ?? String(u.legacyRole)),
+      isActive: u.isActive,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
     })),
   });
 }
@@ -37,7 +45,7 @@ export async function GET(req: NextRequest) {
 const createSchema = z.object({
   username: z.string().min(2).max(64),
   password: z.string().min(6).max(128),
-  role: z.nativeEnum(UserRole),
+  roleId: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -60,7 +68,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { username, password, role } = parsed.data;
+  const { username, password, roleId } = parsed.data;
+  const role = await prisma.role.findUnique({ where: { id: roleId }, select: { id: true, key: true, name: true } });
+  if (!role) return NextResponse.json({ error: "角色不存在" }, { status: 400 });
   const exists = await prisma.appUser.findUnique({
     where: { username: username.trim() },
   });
@@ -73,17 +83,28 @@ export async function POST(req: NextRequest) {
     data: {
       username: username.trim(),
       passwordHash,
-      role,
+      roleId: role.id,
+      legacyRole: "EDITOR" as any,
     },
     select: {
       id: true,
       username: true,
-      role: true,
+      roleId: true,
+      role: { select: { key: true, name: true } },
+      legacyRole: true,
       isActive: true,
     },
   });
 
   return NextResponse.json({
-    user: { ...user, roleLabel: USER_ROLE_LABELS[user.role] },
+    user: {
+      id: user.id,
+      username: user.username,
+      roleId: user.roleId,
+      roleKey: user.role?.key ?? String(user.legacyRole),
+      roleName: user.role?.name ?? null,
+      roleLabel: user.role?.name ?? DEFAULT_ROLE_LABELS[user.role?.key ?? String(user.legacyRole)] ?? (user.role?.key ?? String(user.legacyRole)),
+      isActive: user.isActive,
+    },
   });
 }

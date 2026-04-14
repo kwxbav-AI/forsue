@@ -13,7 +13,11 @@ const DEDUCT_VIS_MODULE_KEY = "content-entries-deduct";
 async function canSeeDeductedMinutes(req: NextRequest): Promise<boolean> {
   const session = await getSessionFromRequest(req);
   if (!session) return false;
-  return hasModuleEffectivePermission(session.role, DEDUCT_VIS_MODULE_KEY, "read");
+  return hasModuleEffectivePermission(
+    { id: session.roleId, key: session.roleKey },
+    DEDUCT_VIS_MODULE_KEY,
+    "read"
+  );
 }
 
 function maskDeductedMinutes<T extends Record<string, any>>(row: T): Omit<T, "deductedMinutes"> | T {

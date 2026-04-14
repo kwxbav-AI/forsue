@@ -1,13 +1,12 @@
-import type { UserRole } from "@prisma/client";
 import type { SessionPayload } from "@/lib/auth-session";
 
 /** 角色中文說明（介面顯示） */
-export const USER_ROLE_LABELS: Record<UserRole, string> = {
+export const DEFAULT_ROLE_LABELS: Record<string, string> = {
   ADMIN: "管理員",
   EDITOR: "編輯者",
   VIEWER: "檢視者",
   STORE_STAFF: "門市人員",
-};
+} as const;
 
 function isReadMethod(method: string): boolean {
   const m = method.toUpperCase();
@@ -44,7 +43,7 @@ export function canAccessPage(session: SessionPayload | null, pathname: string):
   if (pathname.startsWith("/login")) return true;
   if (pathname === "/" || pathname === "/forbidden") return true;
   if (!session) return false;
-  if (session.role === "ADMIN") return true;
+  if (session.roleKey === "ADMIN") return true;
 
   return matchAllowedPagePatterns(session, pathname);
 }
@@ -55,7 +54,7 @@ export function canAccessApi(
   method: string
 ): boolean {
   if (!session) return false;
-  if (session.role === "ADMIN") return true;
+  if (session.roleKey === "ADMIN") return true;
 
   const isRead = isReadMethod(method);
   const matched = isRead

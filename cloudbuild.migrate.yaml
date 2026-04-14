@@ -1,4 +1,4 @@
-﻿steps:
+steps:
   - name: node:20-bullseye
     entrypoint: bash
     args:
@@ -24,4 +24,6 @@
           npm ci
           npx prisma migrate deploy
 
-          kill  || true
+          # 關閉 Cloud SQL Proxy（避免 build step 殘留背景程序）
+          kill "$PROXY_PID" || true
+          wait "$PROXY_PID" 2>/dev/null || true

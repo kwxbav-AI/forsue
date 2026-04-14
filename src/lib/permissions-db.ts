@@ -1,17 +1,19 @@
-import type { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 /**
  * Node/Server-side 頁面授權：僅依 RolePermission + PAGE patterns，無 legacy fallback。
  */
-export async function canAccessPageDb(role: UserRole, pathname: string): Promise<boolean> {
+export async function canAccessPageDb(
+  role: { id: string; key?: string },
+  pathname: string
+): Promise<boolean> {
   if (pathname === "/" || pathname === "/forbidden") return true;
   if (pathname.startsWith("/login")) return true;
   // 管理員：不受 RolePermission 矩陣限制（避免新模組未 seed / 未同步時被鎖）
-  if (role === "ADMIN") return true;
+  if (role.key === "ADMIN") return true;
 
   const rolePermRows = await prisma.rolePermission.findMany({
-    where: { role },
+    where: { roleId: role.id },
     select: { moduleId: true, canRead: true, canWrite: true },
   });
 
@@ -49,17 +51,17 @@ function normalizePatternMethod(method: string | null): string | null {
  * Node/Server-side API 授權：依 RolePermission + API patterns（與 effective / middleware 邏輯一致）。
  */
 export async function canAccessApiDb(
-  role: UserRole,
+  role: { id: string; key?: string },
   pathname: string,
   method: string
 ): Promise<boolean> {
-  if (role === "ADMIN") return true;
+  if (role.key === "ADMIN") return true;
 
   const m = method.toUpperCase();
   const isRead = m === "GET" || m === "HEAD" || m === "OPTIONS";
 
   const rolePerms = await prisma.rolePermission.findMany({
-    where: { role },
+    where: { roleId: role.id },
     include: {
       module: {
         select: {
@@ -90,11 +92,11 @@ export async function canAccessApiDb(
 
 /** 依模組 key 檢查讀/寫（子模組無 patterns 時仍有效）。 */
 export async function hasModuleEffectivePermission(
-  role: UserRole,
+  role: { id: string; key?: string },
   moduleKey: string,
   min: "read" | "write"
 ): Promise<boolean> {
-  if (role === "ADMIN") return true;
+  if (role.key === "ADMIN") return true;
 
   const mod = await prisma.permissionModule.findUnique({
     where: { key: moduleKey },
@@ -103,7 +105,7 @@ export async function hasModuleEffectivePermission(
   if (!mod) return false;
 
   const rp = await prisma.rolePermission.findUnique({
-    where: { role_moduleId: { role, moduleId: mod.id } },
+    where: { roleId_moduleId: { roleId: role.id, moduleId: mod.id } },
     select: { canRead: true, canWrite: true },
   });
   if (!rp) return false;

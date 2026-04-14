@@ -1,6 +1,5 @@
 import { SignJWT } from "jose/jwt/sign";
 import { jwtVerify } from "jose/jwt/verify";
-import type { UserRole } from "@prisma/client";
 
 function getSecret(): Uint8Array {
   const s = process.env.AUTH_SECRET;
@@ -13,7 +12,9 @@ function getSecret(): Uint8Array {
 export type SessionPayload = {
   userId: string;
   username: string;
-  role: UserRole;
+  roleId: string;
+  roleKey: string;
+  roleName?: string;
   // 注意：不可把大量 patterns 放進 cookie（可能超過 4096 bytes 上限）。
   // patterns 由 middleware 透過 effective API 取得並暫存於 request 生命週期中。
   allowedPagePathPatterns?: string[];
@@ -24,7 +25,9 @@ export type SessionPayload = {
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
   return new SignJWT({
     username: payload.username,
-    role: payload.role,
+    roleId: payload.roleId,
+    roleKey: payload.roleKey,
+    roleName: payload.roleName ?? null,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.userId)
@@ -38,7 +41,10 @@ export async function decodeSessionToken(token: string): Promise<SessionPayload 
     const { payload } = await jwtVerify(token, getSecret());
     const userId = typeof payload.sub === "string" ? payload.sub : null;
     const username = typeof payload.username === "string" ? payload.username : null;
-    const role = payload.role as UserRole | undefined;
+    const roleId = typeof (payload as any).roleId === "string" ? String((payload as any).roleId) : null;
+    const roleKey = typeof (payload as any).roleKey === "string" ? String((payload as any).roleKey) : null;
+    const roleNameRaw = (payload as any).roleName;
+    const roleName = typeof roleNameRaw === "string" ? roleNameRaw : undefined;
     const allowedPagePathPatterns =
       Array.isArray(payload.allowedPagePathPatterns) && payload.allowedPagePathPatterns.every((x) => typeof x === "string")
         ? (payload.allowedPagePathPatterns as string[])
@@ -68,11 +74,13 @@ export async function decodeSessionToken(token: string): Promise<SessionPayload 
           })).filter((p) => p.pathPattern)
         : [];
 
-    if (!userId || !username || !role) return null;
+    if (!userId || !username || !roleId || !roleKey) return null;
     return {
       userId,
       username,
-      role,
+      roleId,
+      roleKey,
+      roleName,
       allowedPagePathPatterns,
       allowedApiReadPatterns,
       allowedApiWritePatterns,

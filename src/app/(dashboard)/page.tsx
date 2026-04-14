@@ -46,7 +46,9 @@ export default async function HomePage() {
         await Promise.all(
           cards.map(async (c) => ({
             c,
-            ok: session != null && (await canAccessPageDb(session.role, c.href)),
+            ok:
+              session != null &&
+              (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, c.href)),
           }))
         )
       )

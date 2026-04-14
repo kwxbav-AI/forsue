@@ -72,7 +72,11 @@ export async function DELETE(
     }
 
     const moduleKey = "delete-approve-dispatches";
-    const canApprove = await hasModuleEffectivePermission(session.role, moduleKey, "write");
+    const canApprove = await hasModuleEffectivePermission(
+      { id: session.roleId, key: session.roleKey },
+      moduleKey,
+      "write"
+    );
 
     const existing = await prisma.dispatchRecord.findUnique({ where: { id } });
     if (!existing) {

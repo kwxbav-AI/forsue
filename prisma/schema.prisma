@@ -86,6 +86,18 @@ model Employee {
   adjustments      WorkhourAdjustment[]
 }
 
+model Role {
+  id        String   @id @default(cuid())
+  key       String   @unique // 例如：ADMIN、EDITOR、VIEWER、STORE_STAFF、或自訂 key
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       AppUser[]
+  permissions RolePermission[]
+}
+
 enum UploadFileType {
   ATTENDANCE
   DISPATCH
@@ -309,10 +321,14 @@ model AppUser {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String
-  role         UserRole @default(EDITOR)
+  legacyRole   UserRole @default(EDITOR) @map("role")
+  roleId       String?
+  role         Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([roleId])
 }
 
 enum PermissionPatternKind {
@@ -355,17 +371,21 @@ model PermissionModuleApiPattern {
 
 model RolePermission {
   id         String    @id @default(cuid())
-  role       UserRole
+  legacyRole UserRole  @map("role")
+  roleId     String?
   moduleId   String
   canRead    Boolean   @default(false)
   canWrite   Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  role       Role?     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   module     PermissionModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
-  @@unique([role, moduleId])
-  @@index([role])
+  @@unique([legacyRole, moduleId], map: "RolePermission_role_moduleId_key")
+  @@unique([roleId, moduleId], map: "RolePermission_roleId_moduleId_key")
+  @@index([legacyRole], map: "RolePermission_role_idx")
+  @@index([roleId])
 }
 
 enum DeletionRequestTargetType {

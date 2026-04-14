@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { USER_ROLE_LABELS } from "@/lib/permissions";
 import Link from "next/link";
 
 type ModuleRow = {
@@ -16,7 +15,7 @@ type ModuleRow = {
   canWrite: boolean;
 };
 
-type Role = keyof typeof USER_ROLE_LABELS;
+type RoleRow = { id: string; key: string; name: string; isActive: boolean };
 
 function statusToValue(canRead: boolean, canWrite: boolean): "none" | "read" | "write" {
   if (canWrite) return "write";
@@ -25,18 +24,43 @@ function statusToValue(canRead: boolean, canWrite: boolean): "none" | "read" | "
 }
 
 export default function RolePermissionsAdmin() {
-  const roles = useMemo(() => Object.keys(USER_ROLE_LABELS) as Role[], []);
-  const [selectedRole, setSelectedRole] = useState<Role>("STORE_STAFF");
+  const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const selectedRole = useMemo(
+    () => roles.find((r) => r.id === selectedRoleId) ?? null,
+    [roles, selectedRoleId]
+  );
+
+  async function loadRoles() {
+    const res = await fetch("/api/roles", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error || "讀取角色失敗");
+      setRoles([]);
+      return;
+    }
+    const list = Array.isArray(data.roles) ? (data.roles as RoleRow[]) : [];
+    setRoles(list);
+    if (!selectedRoleId && list.length > 0) {
+      // 預設選 STORE_STAFF，否則選第一個
+      const storeStaff = list.find((r) => r.key === "STORE_STAFF") ?? list[0];
+      setSelectedRoleId(storeStaff?.id ?? "");
+    }
+  }
+
   async function load() {
+    if (!selectedRoleId) return;
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`/api/role-permissions?role=${encodeURIComponent(selectedRole)}`);
+      const res = await fetch(
+        `/api/role-permissions?roleId=${encodeURIComponent(selectedRoleId)}`
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMessage(data.error || "讀取失敗");
@@ -50,9 +74,14 @@ export default function RolePermissionsAdmin() {
   }
 
   useEffect(() => {
+    void loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRole]);
+  }, [selectedRoleId]);
 
   function updateModuleStatus(moduleId: string, value: "none" | "read" | "write") {
     setModules((prev) =>
@@ -66,6 +95,7 @@ export default function RolePermissionsAdmin() {
   }
 
   async function save() {
+    if (!selectedRoleId) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -73,7 +103,7 @@ export default function RolePermissionsAdmin() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          role: selectedRole,
+          roleId: selectedRoleId,
           updates: modules.map((m) => ({
             moduleId: m.id,
             canRead: m.canRead,
@@ -108,13 +138,13 @@ export default function RolePermissionsAdmin() {
         <label className="block">
           <span className="text-sm text-slate-600">角色</span>
           <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value as Role)}
+            value={selectedRoleId}
+            onChange={(e) => setSelectedRoleId(e.target.value)}
             className="mt-1 block rounded border border-slate-300 px-2 py-1.5 text-sm"
           >
             {roles.map((r) => (
-              <option key={r} value={r}>
-                {USER_ROLE_LABELS[r]}
+              <option key={r.id} value={r.id}>
+                {r.name}（{r.key}）
               </option>
             ))}
           </select>
@@ -127,6 +157,90 @@ export default function RolePermissionsAdmin() {
         >
           重新載入
         </button>
+        <button
+          type="button"
+          onClick={() => void loadRoles()}
+          disabled={loading || saving}
+          className="h-[38px] rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          重新載入角色
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            const name = window.prompt("輸入新角色名稱");
+            if (!name || !name.trim()) return;
+            const cloneFromRoleId =
+              selectedRoleId && window.confirm("要複製目前角色的權限嗎？")
+                ? selectedRoleId
+                : undefined;
+            setMessage(null);
+            const res = await fetch("/api/roles", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: name.trim(), cloneFromRoleId }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setMessage(data.error || "新增角色失敗");
+              return;
+            }
+            await loadRoles();
+            if (data?.role?.id) setSelectedRoleId(String(data.role.id));
+            setMessage("已新增角色");
+          }}
+          disabled={loading || saving}
+          className="h-[38px] rounded bg-sky-600 px-3 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+        >
+          新增角色
+        </button>
+        {selectedRole ? (
+          <button
+            type="button"
+            onClick={async () => {
+              const name = window.prompt("輸入角色新名稱", selectedRole.name);
+              if (!name || !name.trim()) return;
+              const res = await fetch(`/api/roles/${selectedRole.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: name.trim() }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                setMessage(data.error || "更新角色失敗");
+                return;
+              }
+              await loadRoles();
+              setMessage("已更新角色");
+            }}
+            disabled={loading || saving}
+            className="h-[38px] rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            改名
+          </button>
+        ) : null}
+        {selectedRole ? (
+          <button
+            type="button"
+            onClick={async () => {
+              if (!confirm("確定要刪除此角色？（若仍有使用者指派會失敗）")) return;
+              const res = await fetch(`/api/roles/${selectedRole.id}`, {
+                method: "DELETE",
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                setMessage(data.error || "刪除角色失敗");
+                return;
+              }
+              setMessage("已刪除角色");
+              await loadRoles();
+            }}
+            disabled={loading || saving}
+            className="h-[38px] rounded border border-red-200 bg-white px-3 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            刪除角色
+          </button>
+        ) : null}
       </div>
 
       {message ? (

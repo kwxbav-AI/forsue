@@ -1,0 +1,75 @@
+steps:
+  # Build container image with buildpacks
+  - name: gcr.io/k8s-skaffold/pack
+    id: Buildpack
+    entrypoint: pack
+    args:
+      - build
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --builder=gcr.io/buildpacks/builder:universal_builder_20260202_RC02
+      - --network=cloudbuild
+      - --publish
+      - --path=.
+
+  # Keep the original pull/push steps (Cloud Build template compatibility)
+  - name: gcr.io/cloud-builders/docker
+    id: Pull
+    args:
+      - pull
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push
+    args:
+      - push
+      - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+
+  # Run DB migrations BEFORE deploying new revision
+  - name: node:20-bullseye
+    id: Migrate
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+          set -euo pipefail
+
+          apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+          curl -fsSL -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.10.0/cloud-sql-proxy.linux.amd64
+          chmod +x /usr/local/bin/cloud-sql-proxy
+
+          # 直接寫死 instance 連線名稱（與你現有 migrate yaml 一致）
+          /usr/local/bin/cloud-sql-proxy "inventory-dev-kwxbav:asia-east1:daily-performance-system" --port 5432 &
+          PROXY_PID=$!
+
+          for i in {1..40}; do
+            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break || true
+            sleep 0.5
+          done
+
+          # 注意：這裡仍沿用你現有設定；若要更安全，建議改用 Secret Manager 注入
+          export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
+
+          npm ci
+          npx prisma migrate deploy
+
+          kill "$PROXY_PID" || true
+          wait "$PROXY_PID" 2>/dev/null || true
+
+  # Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: Deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - $_SERVICE_NAME
+      - --platform=managed
+      - --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID
+      - --region=$_DEPLOY_REGION
+      - --quiet
+
+images:
+  - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+

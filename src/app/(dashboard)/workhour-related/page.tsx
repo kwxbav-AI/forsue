@@ -40,7 +40,12 @@ export default async function WorkhourRelatedPage() {
         await Promise.all(
           ITEMS.map(async (item) => ({
             item,
-            ok: session != null && (await canAccessPageDb(session.role, item.href)),
+            ok:
+              session != null &&
+              (await canAccessPageDb(
+                { id: session.roleId, key: session.roleKey },
+                item.href
+              )),
           }))
         )
       )
