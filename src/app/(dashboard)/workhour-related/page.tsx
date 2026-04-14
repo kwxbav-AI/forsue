@@ -10,24 +10,24 @@ const ITEMS = [
     description: "新增/修改調度紀錄，依日期與門市填報調入調出與時數",
   },
   {
-    href: "/workhour-adjustments",
-    title: "二、工時異動調整",
-    description: "查詢與新增/編輯工時扣抵、類型、備註",
-  },
-  {
     href: "/content-entries",
-    title: "三、現貨文填報",
+    title: "二、現貨文填報",
     description: "填寫日期、分店、篇數與商品/留言數，自動計算扣工時",
   },
   {
-    href: "/batch-workhour-adjustment",
-    title: "四、批次調整工時",
-    description: "同一日期、原因、扣除時數時，一次勾選多人批次寫入（如店長會議、晉升考核）",
+    href: "/store-hour-deductions",
+    title: "三、效期/清掃工時",
+    description: "依日期、門市填寫效期或清掃扣抵時數，從每日工效比總工時中扣除",
   },
   {
-    href: "/store-hour-deductions",
-    title: "五、效期/清掃 工時",
-    description: "依日期、門市填寫效期或清掃扣抵時數，從每日工效比總工時中扣除",
+    href: "/workhour-adjustments",
+    title: "四、工時異動調整",
+    description: "查詢與新增/編輯工時扣抵、類型、備註",
+  },
+  {
+    href: "/batch-workhour-adjustment",
+    title: "五、批次調整工時",
+    description: "同一日期、原因、扣除時數時，一次勾選多人批次寫入（如店長會議、晉升考核）",
   },
 ];
 

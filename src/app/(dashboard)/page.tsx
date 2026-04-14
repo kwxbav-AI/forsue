@@ -57,9 +57,6 @@ export default async function HomePage() {
 
   return (
     <div className="p-6 sm:p-8">
-      <div className="mb-6 flex items-center gap-2 text-sm text-sky-600">
-        <span className="rounded bg-sky-100 px-2 py-0.5 font-medium">網頁版</span>
-      </div>
       <p className="mb-8 text-slate-600">
         在瀏覽器中使用：上傳 Excel、查詢工效比、達標統計、工時異動與目標設定
       </p>
@@ -75,11 +72,6 @@ export default async function HomePage() {
           </Link>
         ))}
       </nav>
-      <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-sm text-slate-500">
-        本系統為網頁版，請在瀏覽器開啟此頁面使用。執行{" "}
-        <code className="rounded bg-slate-200 px-1">npm run dev</code> 後訪問
-        <code className="ml-1 rounded bg-slate-200 px-1">http://localhost:3000</code> 即可。
-      </footer>
     </div>
   );
 }

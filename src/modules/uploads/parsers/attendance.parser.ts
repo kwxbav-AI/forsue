@@ -50,7 +50,8 @@ function computeWorkHoursFromTimes(startTime: string | null, endTime: string | n
   if (startMin == null || endMin == null) return null;
   const diff = endMin - startMin;
   if (diff <= 0) return null;
-  return new Decimal(diff).div(60);
+  // 與 Excel ROUND(..., 2) 一致：算出小時後四捨五入到小數第 2 位
+  return new Decimal(diff).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 }
 
 export interface AttendanceRow {

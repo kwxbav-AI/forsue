@@ -198,7 +198,9 @@ export default function PerformanceDailyPage() {
                       {row.totalWorkHours === 0 ? (
                         <span className="text-slate-400">—</span>
                       ) : row.efficiencyRatio >= 6000 ? (
-                        <span className="text-sky-700 font-semibold">超標</span>
+                        <span className="rounded bg-red-50 px-2 py-0.5 text-red-700 font-semibold">
+                          超標
+                        </span>
                       ) : row.isTargetMet ? (
                         <span className="text-green-600">達標</span>
                       ) : (

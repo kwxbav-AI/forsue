@@ -45,6 +45,8 @@ reports-attendance,出勤報表,門市出勤報表查詢,報表,320,,API,/api/st
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,PAGE,/reports/revenue,
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,API,/api/reports/revenue,
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,API,/api/stores,
+reports-charts,圖表,區間加總、排序與工效比長條圖,報表,340,,PAGE,/reports/charts,
+reports-charts,圖表,區間加總、排序與工效比長條圖,報表,340,,API,/api/reports/charts,GET
 
 performance-daily,每日工效比,每日工效比查詢與明細,績效/工效,410,,PAGE,/performance/daily,
 performance-daily,每日工效比,每日工效比查詢與明細,績效/工效,410,,API,/api/performance/daily,

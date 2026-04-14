@@ -143,6 +143,15 @@ async function main() {
         { kind: "API" as const, pathPattern: "/api/stores" },
       ],
     },
+    {
+      key: "reports-charts",
+      label: "圖表",
+      description: "區間加總、排序與工效比長條圖。",
+      patterns: [
+        { kind: "PAGE" as const, pathPattern: "/reports/charts" },
+        { kind: "API" as const, pathPattern: "/api/reports/charts" },
+      ],
+    },
   ] as const;
 
   const rolePermissionsByModuleKey: Record<
@@ -184,6 +193,12 @@ async function main() {
       EDITOR: { canRead: true, canWrite: true },
       VIEWER: { canRead: false, canWrite: false },
       STORE_STAFF: { canRead: true, canWrite: true },
+    },
+    "reports-charts": {
+      ADMIN: { canRead: true, canWrite: true },
+      EDITOR: { canRead: true, canWrite: false },
+      VIEWER: { canRead: true, canWrite: false },
+      STORE_STAFF: { canRead: true, canWrite: false },
     },
   };
 

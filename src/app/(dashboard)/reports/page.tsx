@@ -22,6 +22,13 @@ export default function ReportsHubPage() {
           <p className="mt-1 text-sm text-slate-500">查看每日各門市營收、工時、工效比、是否達標</p>
         </Link>
         <Link
+          href="/reports/charts"
+          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+        >
+          <span className="font-medium text-slate-800">圖表</span>
+          <p className="mt-1 text-sm text-slate-500">區間加總（全門市營收/工時）、排序與工效比長條圖</p>
+        </Link>
+        <Link
           href="/performance/target-summary"
           className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
         >
