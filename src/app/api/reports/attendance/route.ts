@@ -5,6 +5,23 @@ import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
 
+function newHirePercentByDays(dayNo: number): number {
+  if (!Number.isFinite(dayNo) || dayNo <= 0) return 1;
+  if (dayNo >= 1 && dayNo <= 5) return 0;
+  if (dayNo >= 6 && dayNo <= 10) return 0.5;
+  if (dayNo >= 11 && dayNo <= 15) return 0.7;
+  if (dayNo >= 16 && dayNo <= 20) return 0.9;
+  return 1;
+}
+
+function diffDaysInclusive(workDateStr: string, hireDate: Date): number {
+  const work = new Date(`${workDateStr}T00:00:00`);
+  const w = new Date(work.getFullYear(), work.getMonth(), work.getDate()).getTime();
+  const h = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate()).getTime();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((w - h) / msPerDay) + 1;
+}
+
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
   STAFF_SHORTAGE: "人力不足",
   MEETING_REVIEW: "會議/考核",
@@ -271,6 +288,8 @@ export async function GET(request: Request) {
                 employeeId: true,
                 originalStoreId: true,
                 workHours: true,
+                scheduledWorkHours: true,
+                shiftType: true,
                 employee: { select: { defaultStoreId: true } },
               },
               orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
@@ -290,6 +309,7 @@ export async function GET(request: Request) {
       ]);
 
       const attendanceIdsByDateStore = new Map<string, Set<string>>();
+      const leaveIdsByDateStore = new Map<string, Set<string>>();
       for (const a of calcAttendances) {
         const ds = formatDateOnly(a.workDate);
         const storeId =
@@ -300,7 +320,22 @@ export async function GET(request: Request) {
         if (!storeId) continue;
         const k = `${ds}|${storeId}`;
         if (!attendanceIdsByDateStore.has(k)) attendanceIdsByDateStore.set(k, new Set());
-        attendanceIdsByDateStore.get(k)!.add(a.employeeId);
+        // 到齊判斷：必須有實際上班（workHours > 0）才算到場（避免 8 小時門檻誤傷兼職）
+        if (Number(a.workHours) > 0) {
+          attendanceIdsByDateStore.get(k)!.add(a.employeeId);
+        }
+
+        const st = a.shiftType ? String(a.shiftType).trim() : "";
+        const byText = st ? /(特休|事假|病假|公假|補休|喪假|婚假|產假|育嬰|請假|休假|半天)/.test(st) : false;
+        const scheduled =
+          a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
+        const byScheduled =
+          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && Number(a.workHours) < scheduled;
+        const isLeave = byText || byScheduled;
+        if (isLeave) {
+          if (!leaveIdsByDateStore.has(k)) leaveIdsByDateStore.set(k, new Set());
+          leaveIdsByDateStore.get(k)!.add(a.employeeId);
+        }
 
         const workH = Number(a.workHours);
         const overtime = Math.max(0, workH - 8);
@@ -333,6 +368,8 @@ export async function GET(request: Request) {
           const empIds = assignedByStore.get(storeId) ?? [];
           const presentIds = attendanceIdsByDateStore.get(k) ?? new Set<string>();
           const allPresent = empIds.length > 0 && empIds.every((id) => presentIds.has(id));
+          const leaveIds = leaveIdsByDateStore.get(k) ?? new Set<string>();
+          const hasLeave = empIds.some((id) => leaveIds.has(id));
 
           const otherOut = otherOutCountByDateStore.get(k) ?? 0;
           const learningOut = learningOutCountByDateStore.get(k) ?? 0;
@@ -340,7 +377,7 @@ export async function GET(request: Request) {
           const learningPaired = learningOut > 0 && learningIn === learningOut;
           const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
 
-          storeFullByDateStore.set(k, allPresent && !hasNetDispatchOut);
+          storeFullByDateStore.set(k, allPresent && !hasNetDispatchOut && !hasLeave);
         });
       }
     }
@@ -535,6 +572,35 @@ export async function GET(request: Request) {
                   clockOutStoreText: null,
                 });
               }
+            }
+          }
+        }
+
+        // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
+        if (!isTrial && emp.hireDate && net > 0) {
+          const dayNo = diffDaysInclusive(dateStr, emp.hireDate);
+          const percent = newHirePercentByDays(dayNo);
+          if (percent !== 1) {
+            const adjusted = new Decimal(net).mul(percent).toNumber();
+            const delta = new Decimal(adjusted).minus(net).toNumber();
+            if (Math.abs(delta) > 0) {
+              net += delta;
+              const percentLabel = Math.round(percent * 10000) / 100; // 0~100，兩位小數
+              rows.push({
+                type: "adjustment",
+                id: `newhire-${att.id}`,
+                employeeId: emp.id,
+                employeeCode: empCode,
+                name: empName,
+                department: deptForAtt,
+                position,
+                workDate: dateStr,
+                workHours: Math.round(delta * 100) / 100,
+                adjustmentReason: `新進員工，計${percentLabel}%工時`,
+                locationMatchStatus: null,
+                clockInStoreText: null,
+                clockOutStoreText: null,
+              });
             }
           }
         }

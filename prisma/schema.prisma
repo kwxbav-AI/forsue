@@ -74,6 +74,7 @@ model Employee {
   name             String
   defaultStoreId   String?
   position         String?
+  hireDate         DateTime?            // 到職日（新進員工工時折算用）
   isReserveStaff   Boolean              @default(false)
   reserveWorkPercent Decimal?           @db.Decimal(5, 2) // 0~100，僅儲備人力使用
   isActive         Boolean              @default(true)
@@ -130,6 +131,7 @@ model AttendanceRecord {
   originalStoreId String?
   department      String?
   workHours       Decimal    @db.Decimal(10, 2)
+  scheduledWorkHours Decimal? @db.Decimal(10, 2) // 表定工時（用於判斷請假/未到齊）
   startTime       String?
   endTime         String?
   clockInInfoRaw   String?

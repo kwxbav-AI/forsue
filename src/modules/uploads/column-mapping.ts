@@ -10,12 +10,14 @@ export const ATTENDANCE_COLUMNS = {
   storeCode: ["門市代碼", "門市", "storeCode", "店別", "店號", "所屬門市"],
   department: ["部門", "部門名稱", "門市部門", "單位", "組別", "區域-門市"],
   workHours: ["工時", "工作時數", "workHours", "時數", "hours", "出勤時數", "總工時", "工時數", "實際工時", "上班時數"],
+  scheduledWorkHours: ["表定工時", "表訂工時", "表訂時數", "表定時數", "應出勤時數", "應出勤工時", "scheduledWorkHours", "scheduledHours"],
   startTime: ["上班", "上班時間", "上班打卡時間", "簽到時間", "出勤時間(起)", "出勤起"],
   endTime: ["下班", "下班時間", "下班打卡時間", "簽退時間", "出勤時間(迄)", "出勤迄"],
   // 注意：這兩欄是「含地點的文字資訊」，不是純時間欄位
   clockInInfo: ["上班資訊", "上班打卡資訊", "上班資訊(含地點)", "clockInInfo", "clockInInfoRaw"],
   clockOutInfo: ["下班資訊", "下班打卡資訊", "下班資訊(含地點)", "clockOutInfo", "clockOutInfoRaw"],
-  shiftType: ["班別", "班型", "shiftType", "班次"],
+  // 班別/假別：用來辨識請假（含半天），避免用工時門檻誤傷兼職
+  shiftType: ["班別", "班型", "shiftType", "班次", "假別", "出勤狀態", "狀態"],
 } as const;
 
 export const DISPATCH_COLUMNS = {
@@ -32,6 +34,7 @@ export const EMPLOYEE_MASTER_COLUMNS = {
   name: ["姓名", "員工姓名", "name", "員工名稱", "名稱", "名字", "Name", "Employee Name", "Staff Name"],
   storeCode: ["門市代碼", "所屬門市", "storeCode", "defaultStore", "門市", "店別", "店號"],
   position: ["職稱", "職位", "position", "職務"],
+  hireDate: ["到職日", "到職日期", "報到日", "入職日", "到任日", "hireDate", "joinDate", "employmentDate"],
 } as const;
 
 export const REVENUE_COLUMNS = {

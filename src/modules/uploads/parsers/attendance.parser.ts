@@ -60,6 +60,7 @@ export interface AttendanceRow {
   storeCode: string | null;
   department: string | null;
   workHours: Decimal;
+  scheduledWorkHours: Decimal | null;
   startTime: string | null;
   endTime: string | null;
   clockInInfoRaw: string | null;
@@ -170,6 +171,8 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const workDateStr = workDateRaw != null ? String(workDateRaw).trim() : getCell(row, headerMap.workDate);
     const employeeCode = getCell(row, headerMap.employeeCode);
     const workHoursStr = getCell(row, headerMap.workHours);
+    const scheduledWorkHoursStr =
+      headerMap.scheduledWorkHours !== undefined ? getCell(row, headerMap.scheduledWorkHours) : "";
     const startTimeStr =
       headerMap.startTime !== undefined ? getCell(row, headerMap.startTime) || "" : "";
     const endTimeStr =
@@ -196,6 +199,7 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     }
 
     let workHours = parseWorkHours(workHoursStr);
+    const scheduledWorkHours = parseWorkHours(scheduledWorkHoursStr);
 
     // 若工時欄位為空白且有上/下班時間，優先用時間差計算工時
     const workHoursRaw = (workHoursStr != null ? String(workHoursStr) : "").trim();
@@ -233,6 +237,7 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
       storeCode: storeCode || null,
       department: department || null,
       workHours,
+      scheduledWorkHours,
       startTime: startTimeStr || null,
       endTime: endTimeStr || null,
       clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,

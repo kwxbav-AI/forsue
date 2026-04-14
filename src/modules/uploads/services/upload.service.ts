@@ -294,6 +294,7 @@ async function upsertEmployee(row: EmployeeMasterRow): Promise<string> {
         name: row.name,
         defaultStoreId,
         position: row.position ?? undefined,
+        hireDate: row.hireDate ? toStartOfDay(row.hireDate) : null,
       },
     });
     return existing.id;
@@ -304,6 +305,7 @@ async function upsertEmployee(row: EmployeeMasterRow): Promise<string> {
       name: row.name,
       defaultStoreId,
       position: row.position ?? undefined,
+      hireDate: row.hireDate ? toStartOfDay(row.hireDate) : null,
     },
   });
   return created.id;
@@ -442,6 +444,7 @@ export async function uploadAttendance(
         originalStoreId,
         department: row.department,
         workHours: row.workHours.toNumber(),
+        scheduledWorkHours: row.scheduledWorkHours ? row.scheduledWorkHours.toNumber() : null,
         startTime: row.startTime,
         endTime: row.endTime,
         clockInInfoRaw: row.clockInInfoRaw,
