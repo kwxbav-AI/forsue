@@ -383,7 +383,6 @@ model RolePermission {
   role       Role?     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   module     PermissionModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
-  @@unique([legacyRole, moduleId], map: "RolePermission_role_moduleId_key")
   @@unique([roleId, moduleId], map: "RolePermission_roleId_moduleId_key")
   @@index([legacyRole], map: "RolePermission_role_idx")
   @@index([roleId])
