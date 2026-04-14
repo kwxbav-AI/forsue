@@ -10,6 +10,7 @@ type Store = {
   code: string | null;
   department?: string | null;
   isActive?: boolean;
+  hideInReports?: boolean;
   aliases: string[];
 };
 
@@ -34,6 +35,7 @@ export default function StoresPage() {
   const [editName, setEditName] = useState("");
   const [editAliasesText, setEditAliasesText] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
+  const [editHideInReports, setEditHideInReports] = useState(false);
   const [canViewStoreChangeLogs, setCanViewStoreChangeLogs] = useState(false);
   const [permPending, setPermPending] = useState({ canReadPending: false, canApprove: false });
   const [pendingRefresh, setPendingRefresh] = useState(0);
@@ -123,6 +125,7 @@ export default function StoresPage() {
     setEditName(s.name);
     setEditDepartment(s.department ?? "");
     setEditAliasesText(([s.code, ...(s.aliases || [])].filter(Boolean) as string[]).join(" "));
+    setEditHideInReports(Boolean(s.hideInReports));
   }
 
   const editAliasPreview = useMemo(
@@ -139,7 +142,12 @@ export default function StoresPage() {
     const res = await fetch(`/api/stores/${edit.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName, department: editDepartment || null, aliases: editAliasPreview }),
+      body: JSON.stringify({
+        name: editName,
+        department: editDepartment || null,
+        aliases: editAliasPreview,
+        hideInReports: editHideInReports,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -292,6 +300,11 @@ export default function StoresPage() {
                           已停用
                         </span>
                       )}
+                      {s.hideInReports ? (
+                        <span className="ml-2 rounded bg-indigo-50 px-1 text-xs text-indigo-700">
+                          報表隱藏
+                        </span>
+                      ) : null}
                     </td>
                     <td className="sticky left-[180px] z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 text-slate-600">
                       {[s.code, ...(s.aliases || [])].filter(Boolean).join("、") || "—"}
@@ -456,6 +469,14 @@ export default function StoresPage() {
                     代碼預覽：{editAliasPreview.join("、")}
                   </p>
                 )}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editHideInReports}
+                  onChange={(e) => setEditHideInReports(e.target.checked)}
+                />
+                <span className="text-sm text-slate-700">報表隱藏（圖表 / 工效比 / 出勤 / 營收）</span>
               </label>
             </div>
             <div className="mt-4 flex justify-end gap-2">

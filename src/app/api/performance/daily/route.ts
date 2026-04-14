@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
       versionNo: 1,
       store: {
         isActive: true,
+        hideInReports: false as any,
       },
     },
     include: { store: true },

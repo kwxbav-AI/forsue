@@ -15,6 +15,7 @@ model Store {
   name             String             @unique
   department       String?
   isActive         Boolean            @default(true)
+  hideInReports    Boolean            @default(false) // 報表/績效頁隱藏（不影響門市啟用/資料對應）
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   employees        Employee[]

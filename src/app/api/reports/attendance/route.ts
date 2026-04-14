@@ -167,7 +167,7 @@ export async function GET(request: Request) {
     }
 
     const allStores = await prisma.store.findMany({
-      where: { isActive: true },
+      where: { isActive: true, hideInReports: false as any },
       select: { id: true, name: true, department: true },
     });
     const storeById = new Map(allStores.map((s) => [s.id, s]));
@@ -207,6 +207,10 @@ export async function GET(request: Request) {
           ? { originalStoreId: { in: storeIdsForFilter } }
           : {}),
         ...(matchStatusFilter ? { locationMatchStatus: matchStatusFilter as any } : {}),
+        OR: [
+          { originalStoreId: null },
+          { store: { hideInReports: false as any } } as any,
+        ],
       },
       include: {
         employee: { include: { defaultStore: true } },

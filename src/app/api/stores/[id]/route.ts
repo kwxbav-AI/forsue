@@ -12,16 +12,18 @@ const updateSchema = z.object({
   department: z.string().optional().nullable(),
   aliases: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
+  hideInReports: z.boolean().optional(),
 });
 
 function toSnapshot(
-  store: { name: string; department: string | null; isActive: boolean; code: string | null },
+  store: { name: string; department: string | null; isActive: boolean; code: string | null; hideInReports?: boolean },
   aliases: { code: string }[]
 ) {
   return {
     name: store.name,
     department: store.department,
     isActive: store.isActive,
+    hideInReports: Boolean(store.hideInReports),
     code: store.code,
     aliases: aliases.map((a) => a.code).filter(Boolean).sort((a, b) => a.localeCompare(b)),
   };
@@ -43,7 +45,7 @@ export async function PUT(
       );
     }
 
-    const { name, department, aliases, isActive } = parsed.data;
+    const { name, department, aliases, isActive, hideInReports } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
       const before = await tx.store.findUnique({
@@ -64,6 +66,7 @@ export async function PUT(
           ...(name ? { name: name.trim() } : {}),
           ...(department !== undefined ? { department: (department ?? "").trim() || null } : {}),
           ...(isActive !== undefined ? { isActive } : {}),
+          ...(hideInReports !== undefined ? { hideInReports } : {}),
           ...(primaryCode !== null ? { code: primaryCode } : {}),
         },
       });
@@ -107,6 +110,7 @@ export async function PUT(
       code: updated.code,
       department: updated.department,
       isActive: updated.isActive,
+      hideInReports: Boolean((updated as any).hideInReports),
       aliases: Array.isArray((updated as any).aliases)
         ? (updated as any).aliases.map((a: any) => a.code)
         : [],

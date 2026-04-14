@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
         ...(storeId ? { storeId } : {}),
         store: {
           isActive: true,
+          hideInReports: false as any,
         },
       },
       include: {

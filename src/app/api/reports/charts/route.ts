@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     where: {
       workDate: { gte: start, lte: end },
       versionNo: 1,
-      store: { isActive: true },
+      store: { isActive: true, hideInReports: false as any },
     },
     _sum: {
       revenueAmount: true,

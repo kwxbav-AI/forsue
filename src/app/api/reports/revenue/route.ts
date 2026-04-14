@@ -26,16 +26,17 @@ export async function GET(request: Request) {
           gte: range.start,
           lte: range.end,
         },
-        ...(department
-          ? {
-              store: {
+        store: {
+          hideInReports: false as any,
+          ...(department
+            ? {
                 department: {
                   contains: department,
                   mode: "insensitive",
                 },
-              },
-            }
-          : {}),
+              }
+            : {}),
+        },
       },
       include: {
         store: true,
