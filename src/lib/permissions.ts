@@ -16,7 +16,15 @@ function isReadMethod(method: string): boolean {
 function matchAllowedPagePatterns(session: SessionPayload, pathname: string): boolean {
   const list = session.allowedPagePathPatterns ?? [];
   for (const p of list) {
-    if (pathname.startsWith(p)) return true;
+    // PAGE pattern 預設採「精準匹配」；若 pattern 以 "/" 結尾，才視為 prefix（涵蓋子路徑）。
+    // 目的：避免只開 /reports 入口就讓 /reports/* 全部可進。
+    const pat = String(p || "");
+    if (!pat) continue;
+    if (pat.endsWith("/")) {
+      if (pathname.startsWith(pat)) return true;
+      continue;
+    }
+    if (pathname === pat) return true;
   }
   return false;
 }

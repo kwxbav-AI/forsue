@@ -238,9 +238,9 @@
       "key": "reports-attendance",
       "label": "出勤報表",
       "description": "門市出勤報表查詢",
-      "group": "報表",
+      "group": "資料區",
       "sortOrder": 320,
-      "parentKey": null,
+      "parentKey": "data",
       "patterns": [
         { "kind": "PAGE", "pathPattern": "/reports/attendance", "method": null },
         { "kind": "API", "pathPattern": "/api/reports/attendance", "method": null },
@@ -251,9 +251,9 @@
       "key": "reports-revenue",
       "label": "營收報表",
       "description": "門市營收報表查詢",
-      "group": "報表",
+      "group": "資料區",
       "sortOrder": 330,
-      "parentKey": null,
+      "parentKey": "data",
       "patterns": [
         { "kind": "PAGE", "pathPattern": "/reports/revenue", "method": null },
         { "kind": "API", "pathPattern": "/api/reports/revenue", "method": null },

@@ -33,7 +33,11 @@ export async function canAccessPageDb(
   });
 
   for (const p of patterns) {
-    if (!pathname.startsWith(p.pathPattern)) continue;
+    const pat = String(p.pathPattern || "");
+    if (!pat) continue;
+    // 與 middleware/permissions.ts 一致：PAGE pattern 預設精準匹配；以 "/" 結尾才視為 prefix。
+    const matched = pat.endsWith("/") ? pathname.startsWith(pat) : pathname === pat;
+    if (!matched) continue;
     const perm = rolePermMap.get(p.moduleId);
     if (!perm) continue;
     if (perm.canRead || perm.canWrite) return true;

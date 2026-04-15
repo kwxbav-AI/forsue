@@ -26,6 +26,14 @@ export default async function DashboardLayout({
         { id: session.roleId, key: session.roleKey },
         "/workhour-related"
       )));
+  const canReports =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/reports")));
+  const canData =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/data")));
   const canSettings =
     !authOn ||
     (session != null &&
@@ -60,12 +68,16 @@ export default async function DashboardLayout({
                 工時異動相關
               </Link>
             ) : null}
-            <Link href="/reports" className="text-slate-600 hover:text-sky-600">
-              報表區
-            </Link>
-            <Link href="/data" className="text-slate-600 hover:text-sky-600">
-              資料區
-            </Link>
+            {canReports ? (
+              <Link href="/reports" className="text-slate-600 hover:text-sky-600">
+                報表區
+              </Link>
+            ) : null}
+            {canData ? (
+              <Link href="/data" className="text-slate-600 hover:text-sky-600">
+                資料區
+              </Link>
+            ) : null}
             {canSettings ? (
               <Link href="/settings" className="text-slate-600 hover:text-sky-600">
                 設定區

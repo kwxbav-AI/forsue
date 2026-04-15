@@ -6,6 +6,8 @@
     "postinstall": "prisma generate",
     "dev": "next dev",
     "dev:share": "next dev -H 0.0.0.0",
+    "permissions:check": "node scripts/check-permission-modules.cjs",
+    "prebuild": "npm run permissions:check",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
