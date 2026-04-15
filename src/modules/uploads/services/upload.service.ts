@@ -7,14 +7,14 @@ import { parseDispatchSheet, type DispatchRow } from "../parsers/dispatch.parser
 import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/employee-master.parser";
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
-import { toStartOfDay, formatDateOnly } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei } from "@/lib/date";
 import Decimal from "decimal.js";
 
 /** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
 function uniqueCalendarDates(dates: Date[]): Date[] {
   const map = new Map<string, Date>();
   for (const raw of dates) {
-    const d = toStartOfDay(raw);
+    const d = toWorkDateUTC(raw);
     const key = formatDateOnly(d);
     if (!map.has(key)) map.set(key, d);
   }
@@ -24,6 +24,16 @@ function uniqueCalendarDates(dates: Date[]): Date[] {
 }
 import type { UploadResult } from "../types";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
+
+/**
+ * 將「出勤表中的日期」統一轉成：台北日曆日對應的 UTC 00:00。
+ * 目的：避免伺服器時區 / Excel Date 物件導致 DB 內日期落在前一天 UTC，
+ * 進而讓報表用 YYYY-MM-DD 查詢永遠查不到。
+ */
+function toWorkDateUTC(input: Date): Date {
+  const ymd = formatDateOnlyTaipei(input);
+  return parseDateOnlyUTC(ymd);
+}
 
 /** 依門市 code 查 id，找不到回 null */
 async function getStoreIdByCode(code: string): Promise<string | null> {
@@ -265,6 +275,14 @@ async function getEmployeeIdByCode(code: string): Promise<string | null> {
   return emp?.id ?? null;
 }
 
+function normalizeEmployeeName(value: string): string {
+  // 移除各種空白（含全形空白）與零寬字元，避免「看起來一樣但 contains 找不到」
+  return value
+    .trim()
+    .replace(/[\s\u3000\u200B\u200C\u200D\uFEFF]+/g, "")
+    .trim();
+}
+
 /** 取得或建立員工（出勤上傳時若無此人則自動建立，姓名可選） */
 async function getOrCreateEmployee(employeeCode: string, name?: string): Promise<string> {
   const code = employeeCode.trim();
@@ -272,10 +290,10 @@ async function getOrCreateEmployee(employeeCode: string, name?: string): Promise
     where: { employeeCode: code },
   });
   if (existing) {
-    const incomingName = (name ?? "").trim();
+    const incomingName = name ? normalizeEmployeeName(name) : "";
     // 若員工已存在但姓名仍是預設值（例如第一次匯入缺少姓名欄位時用工號代填），
     // 後續出勤匯入若帶了姓名，這裡順便補齊，避免「用姓名查不到」。
-    const existingName = (existing.name ?? "").trim();
+    const existingName = existing.name ? normalizeEmployeeName(existing.name) : "";
     if (incomingName && (!existingName || existingName === code)) {
       await prisma.employee.update({
         where: { id: existing.id },
@@ -287,7 +305,7 @@ async function getOrCreateEmployee(employeeCode: string, name?: string): Promise
   const created = await prisma.employee.create({
     data: {
       employeeCode: code,
-      name: (name && name.trim()) || code,
+      name: (name ? normalizeEmployeeName(name) : "") || code,
     },
   });
   return created.id;
@@ -349,7 +367,7 @@ export async function uploadAttendance(
     },
   });
 
-  const dates = parsed.data.map((r) => toStartOfDay(r.workDate));
+  const dates = parsed.data.map((r) => toWorkDateUTC(r.workDate));
   const uniqueDates: Date[] = [];
   const uniqueTimes = new Set<number>();
   dates.forEach((d) => uniqueTimes.add(d.getTime()));
@@ -398,6 +416,7 @@ export async function uploadAttendance(
   }
 
   for (const row of parsed.data) {
+    const workDate = toWorkDateUTC(row.workDate);
     const employeeId = employeeIdByCode.get(row.employeeCode.trim())!;
     let originalStoreId: string | null = null;
     if (row.storeCode) originalStoreId = await getStoreIdByCode(row.storeCode);
@@ -427,7 +446,7 @@ export async function uploadAttendance(
     const clockInMin = parseClockInfoTimeToMinutes(row.clockInInfoRaw);
     const clockOutMin = parseClockInfoTimeToMinutes(row.clockOutInfoRaw);
 
-    const empDateKey = `${formatDateOnly(toStartOfDay(row.workDate))}|${employeeId}`;
+    const empDateKey = `${formatDateOnly(workDate)}|${employeeId}`;
     const dispatchList = dispatchByEmpDate.get(empDateKey) ?? [];
     const hasDispatch = dispatchList.length > 0;
     const firstDispatch = dispatchList[0] ?? null;
@@ -451,7 +470,7 @@ export async function uploadAttendance(
 
     await prisma.attendanceRecord.create({
       data: {
-        workDate: toStartOfDay(row.workDate),
+        workDate,
         employeeId,
         originalStoreId,
         department: row.department,
