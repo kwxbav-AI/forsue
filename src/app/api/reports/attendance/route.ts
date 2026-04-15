@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, formatDateOnlyTaipei, toDateRange } from "@/lib/date";
+import { formatDateOnly, formatDateOnlyTaipei, toDateRangeTaipei } from "@/lib/date";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -133,7 +133,8 @@ export async function GET(request: Request) {
 
   let range: { start: Date; end: Date };
   try {
-    range = toDateRange(startDate, endDate);
+    // 出勤資料以「台北營運日」為準寫入 DB（避免 UTC/本地午夜混用），報表查詢必須用同一套日曆日轉換
+    range = toDateRangeTaipei(startDate, endDate);
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }
