@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, formatDateOnlyTaipei, toDateRangeTaipei } from "@/lib/date";
+import type { Prisma } from "@prisma/client";
+import { formatDateOnly, formatDateOnlyTaipei, toDateRange, toDateRangeTaipei } from "@/lib/date";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -131,13 +132,26 @@ export async function GET(request: Request) {
   ]);
   const matchStatusFilter = matchStatus && allowedMatchStatus.has(matchStatus) ? matchStatus : "";
 
-  let range: { start: Date; end: Date };
+  let rangeTaipei: { start: Date; end: Date };
+  let rangeUtcDay: { start: Date; end: Date };
   try {
     // 出勤資料以「台北營運日」為準寫入 DB（避免 UTC/本地午夜混用），報表查詢必須用同一套日曆日轉換
-    range = toDateRangeTaipei(startDate, endDate);
+    rangeTaipei = toDateRangeTaipei(startDate, endDate);
+    // 相容舊資料：歷史版本可能以「UTC 日曆日 00:00」儲存 workDate；因此查詢用兩種區間取聯集，避免整批查不到
+    rangeUtcDay = toDateRange(startDate, endDate);
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }
+
+  const attendanceWorkDateWhere: Prisma.AttendanceRecordWhereInput = {
+    OR: [
+      { workDate: { gte: rangeTaipei.start, lte: rangeTaipei.end } },
+      { workDate: { gte: rangeUtcDay.start, lte: rangeUtcDay.end } },
+    ],
+  };
+  const dispatchWorkDateWhere = attendanceWorkDateWhere as unknown as Prisma.DispatchRecordWhereInput;
+  const adjustmentWorkDateWhere =
+    attendanceWorkDateWhere as unknown as Prisma.WorkhourAdjustmentWhereInput;
 
   try {
     const activeEmployees = await prisma.employee.findMany({
@@ -167,8 +181,9 @@ export async function GET(request: Request) {
       assignedByStore.set(homeStoreId, list);
     }
 
+    // 出勤明細需要能顯示「被隱藏門市」的原始出勤資料；此處載入所有啟用門市供顯示/部門篩選
     const allStores = await prisma.store.findMany({
-      where: { isActive: true, hideInReports: false as any },
+      where: { isActive: true },
       select: { id: true, name: true, department: true },
     });
     const storeById = new Map(allStores.map((s) => [s.id, s]));
@@ -200,17 +215,15 @@ export async function GET(request: Request) {
           }
         : undefined;
 
-    const records = await prisma.attendanceRecord.findMany({
+    const recordsRaw = await prisma.attendanceRecord.findMany({
       where: {
-        workDate: { gte: range.start, lte: range.end },
-        ...(empWhere ? { employee: empWhere } : {}),
-        ...(storeIdsForFilter && storeIdsForFilter.length > 0
-          ? { originalStoreId: { in: storeIdsForFilter } }
-          : {}),
-        ...(matchStatusFilter ? { locationMatchStatus: matchStatusFilter as any } : {}),
-        OR: [
-          { originalStoreId: null },
-          { store: { hideInReports: false as any } } as any,
+        AND: [
+          attendanceWorkDateWhere,
+          ...(empWhere ? [{ employee: empWhere }] : []),
+          ...(storeIdsForFilter && storeIdsForFilter.length > 0
+            ? [{ originalStoreId: { in: storeIdsForFilter } }]
+            : []),
+          ...(matchStatusFilter ? [{ locationMatchStatus: matchStatusFilter as any }] : []),
         ],
       },
       include: {
@@ -218,6 +231,10 @@ export async function GET(request: Request) {
       },
       orderBy: [{ workDate: "asc" }, { employee: { employeeCode: "asc" } }],
     });
+
+    const recordsById = new Map<string, (typeof recordsRaw)[number]>();
+    for (const r of recordsRaw) recordsById.set(r.id, r);
+    const records = Array.from(recordsById.values());
 
     const employeeIds = Array.from(
       new Set(records.map((r) => r.employeeId))
@@ -227,8 +244,7 @@ export async function GET(request: Request) {
       employeeIds.length > 0
         ? prisma.workhourAdjustment.findMany({
             where: {
-              workDate: { gte: range.start, lte: range.end },
-              employeeId: { in: employeeIds },
+              AND: [adjustmentWorkDateWhere, { employeeId: { in: employeeIds } }],
             },
             include: { employee: true },
             orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
@@ -236,9 +252,11 @@ export async function GET(request: Request) {
         : ([] as any[]),
       prisma.dispatchRecord.findMany({
         where: {
-          workDate: { gte: range.start, lte: range.end },
-          confirmStatus: "已確認",
-          ...(employeeIds.length > 0 ? { employeeId: { in: employeeIds } } : {}),
+          AND: [
+            dispatchWorkDateWhere,
+            { confirmStatus: "已確認" },
+            ...(employeeIds.length > 0 ? [{ employeeId: { in: employeeIds } }] : []),
+          ],
         },
         include: { employee: true },
         orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
@@ -285,8 +303,7 @@ export async function GET(request: Request) {
         calcEmployeeIdList.length > 0
           ? prisma.attendanceRecord.findMany({
               where: {
-                workDate: { gte: range.start, lte: range.end },
-                employeeId: { in: calcEmployeeIdList },
+                AND: [attendanceWorkDateWhere, { employeeId: { in: calcEmployeeIdList } }],
               },
               select: {
                 workDate: true,
@@ -302,7 +319,9 @@ export async function GET(request: Request) {
           : [],
         prisma.dispatchRecord.findMany({
           where: {
-            workDate: { gte: range.start, lte: range.end },
+            AND: [
+              dispatchWorkDateWhere,
+            ],
             OR: [
               { fromStoreId: { in: Array.from(reserveHomeStoreIds) } },
               { toStoreId: { in: Array.from(reserveHomeStoreIds) } },
@@ -390,10 +409,12 @@ export async function GET(request: Request) {
     if (storeIdsForFilter && storeIdsForFilter.length > 0) {
       const dispatchInOnly = await prisma.dispatchRecord.findMany({
         where: {
-          workDate: { gte: range.start, lte: range.end },
-          confirmStatus: "已確認",
-          toStoreId: { in: storeIdsForFilter },
-          ...(empWhere ? { employee: empWhere } : {}),
+          AND: [
+            dispatchWorkDateWhere,
+            { confirmStatus: "已確認" },
+            { toStoreId: { in: storeIdsForFilter } },
+            ...(empWhere ? [{ employee: empWhere }] : []),
+          ],
         },
         include: { employee: true },
       });
