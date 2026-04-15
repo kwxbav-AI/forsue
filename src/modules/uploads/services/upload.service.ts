@@ -271,7 +271,19 @@ async function getOrCreateEmployee(employeeCode: string, name?: string): Promise
   const existing = await prisma.employee.findUnique({
     where: { employeeCode: code },
   });
-  if (existing) return existing.id;
+  if (existing) {
+    const incomingName = (name ?? "").trim();
+    // 若員工已存在但姓名仍是預設值（例如第一次匯入缺少姓名欄位時用工號代填），
+    // 後續出勤匯入若帶了姓名，這裡順便補齊，避免「用姓名查不到」。
+    const existingName = (existing.name ?? "").trim();
+    if (incomingName && (!existingName || existingName === code)) {
+      await prisma.employee.update({
+        where: { id: existing.id },
+        data: { name: incomingName },
+      });
+    }
+    return existing.id;
+  }
   const created = await prisma.employee.create({
     data: {
       employeeCode: code,
