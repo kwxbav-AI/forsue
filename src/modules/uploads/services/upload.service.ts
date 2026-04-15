@@ -7,8 +7,10 @@ import { parseDispatchSheet, type DispatchRow } from "../parsers/dispatch.parser
 import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/employee-master.parser";
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
-import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei, toStartOfDay } from "@/lib/date";
 import Decimal from "decimal.js";
+import type { UploadResult } from "../types";
+import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
 /** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
 function uniqueCalendarDates(dates: Date[]): Date[] {
@@ -22,8 +24,6 @@ function uniqueCalendarDates(dates: Date[]): Date[] {
   map.forEach((v) => result.push(v));
   return result;
 }
-import type { UploadResult } from "../types";
-import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
 /**
  * 將「出勤表中的日期」統一轉成：台北日曆日對應的 UTC 00:00。
