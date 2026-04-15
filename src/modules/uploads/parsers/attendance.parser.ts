@@ -202,16 +202,16 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     let workHours = parseWorkHours(workHoursStr);
     const scheduledWorkHours = parseWorkHours(scheduledWorkHoursStr);
 
-    // 若工時欄位為空白且有上/下班時間，優先用時間差計算工時
-    const workHoursRaw = (workHoursStr != null ? String(workHoursStr) : "").trim();
-    if ((workHours === null || workHours.lt(0)) && !workHoursRaw && startTimeStr && endTimeStr) {
-      const fromTimes = computeWorkHoursFromTimes(startTimeStr, endTimeStr);
-      if (fromTimes !== null && !fromTimes.lt(0)) {
-        workHours = fromTimes;
-      }
+    // 一律優先使用上/下班時間計算工時（支援秒數），避免 Excel 內「工時」欄位與打卡時間不一致。
+    // 若時間無法解析或跨日導致 diff<=0，才退回使用工時欄位。
+    const workHoursFromTimes =
+      startTimeStr && endTimeStr ? computeWorkHoursFromTimes(startTimeStr, endTimeStr) : null;
+    if (workHoursFromTimes !== null && !workHoursFromTimes.lt(0)) {
+      workHours = workHoursFromTimes;
     }
 
     if (workHours === null || workHours.lt(0)) {
+      const workHoursRaw = (workHoursStr != null ? String(workHoursStr) : "").trim();
       const rawPreview = workHoursRaw.slice(0, 30);
       if (!rawPreview) {
         workHours = new Decimal(0);

@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
   const detail: { employeeId: string; employeeCode: string; name: string; workHours: number }[] = [];
   byEmployee.forEach((storeHours, empId) => {
     const hours = storeHours[storeId];
-    if (hours == null || hours <= 0) return;
+    // 允許顯示 0 工時：例如新進員工在折算規則下被計為 0%，但「人員出勤表」仍會顯示其出勤與折算後小計
+    if (hours == null || hours < 0) return;
     const emp = employeeMap.get(empId);
     detail.push({
       employeeId: empId,
