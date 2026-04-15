@@ -51,6 +51,7 @@ steps:
 
           npm ci
           npx prisma migrate deploy
+          npm run db:sync-permissions
 
           kill "$PROXY_PID" || true
           wait "$PROXY_PID" 2>/dev/null || true
