@@ -36,7 +36,13 @@ export async function canAccessPageDb(
     const pat = String(p.pathPattern || "");
     if (!pat) continue;
     // 與 middleware/permissions.ts 一致：PAGE pattern 預設精準匹配；以 "/" 結尾才視為 prefix。
-    const matched = pat.endsWith("/") ? pathname.startsWith(pat) : pathname === pat;
+    // 特例：根路徑 "/" 不能當 prefix，否則會放行全站。
+    const matched =
+      pat === "/"
+        ? pathname === "/"
+        : pat.endsWith("/")
+          ? pathname.startsWith(pat)
+          : pathname === pat;
     if (!matched) continue;
     const perm = rolePermMap.get(p.moduleId);
     if (!perm) continue;
@@ -83,7 +89,14 @@ export async function canAccessApiDb(
     const canWriteEffective = rp.canWrite;
 
     for (const pattern of rp.module.patterns) {
-      if (!pathname.startsWith(pattern.pathPattern)) continue;
+      const pat = String(pattern.pathPattern || "");
+      if (!pat) continue;
+      // 防呆：避免用 "/" 或 "/api" 這種超寬字首誤放行整個站/API。
+      const matched =
+        pat === "/" || pat === "/api"
+          ? pathname === pat
+          : pathname.startsWith(pat);
+      if (!matched) continue;
       const needMethod = normalizePatternMethod(pattern.method);
       if (needMethod && needMethod.toUpperCase() !== m) continue;
       if (isRead && canReadEffective) return true;

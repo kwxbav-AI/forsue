@@ -20,6 +20,11 @@ function matchAllowedPagePatterns(session: SessionPayload, pathname: string): bo
     // 目的：避免只開 /reports 入口就讓 /reports/* 全部可進。
     const pat = String(p || "");
     if (!pat) continue;
+    // 特例：根路徑 "/" 不能當 prefix，否則會放行全站。
+    if (pat === "/") {
+      if (pathname === "/") return true;
+      continue;
+    }
     if (pat.endsWith("/")) {
       if (pathname.startsWith(pat)) return true;
       continue;
@@ -36,7 +41,15 @@ function matchAllowedApiPatterns(
 ): boolean {
   const m = method.toUpperCase();
   for (const p of patterns) {
-    if (!pathname.startsWith(p.pathPattern)) continue;
+    const pat = String(p.pathPattern || "");
+    if (!pat) continue;
+    // 防呆：避免用 "/" 或 "/api" 這種超寬字首誤放行整個站/API。
+    // 既有 API patterns（例如 /api/dispatches）仍維持 startsWith 行為以涵蓋子路徑。
+    const matched =
+      pat === "/" || pat === "/api"
+        ? pathname === pat
+        : pathname.startsWith(pat);
+    if (!matched) continue;
     const needMethod = p.method ?? null;
     if (needMethod && needMethod.toUpperCase() !== m) continue;
     return true;

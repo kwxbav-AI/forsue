@@ -14,6 +14,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:sync-permissions": "node scripts/sync-permissions.cjs",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:fix-dispatch-workdate": "node scripts/fix-dispatch-workdate.cjs",
