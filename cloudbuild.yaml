@@ -6,8 +6,11 @@ steps:
     args:
       - build
       - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
-      - --builder=gcr.io/buildpacks/builder:universal_builder_20260202_RC02
+      # 避免使用 RC builder 觸發「untrusted builder」而建置失敗
+      - --builder=gcr.io/buildpacks/builder:google-22
       - --network=cloudbuild
+      # 明確指定 Node 版本，避免 buildpacks 以預設版本建置造成相容性問題
+      - --env=GOOGLE_RUNTIME_VERSION=20
       - --publish
       - --path=.
 
