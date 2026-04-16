@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { formatDateOnly, formatDateOnlyTaipei, toDateRange, toDateRangeTaipei } from "@/lib/date";
+import {
+  formatDateOnly,
+  formatDateOnlyTaipei,
+  parseDateOnlyUTC,
+  parseTaipeiDateStartUTC,
+  toDateRange,
+  toDateRangeTaipei,
+} from "@/lib/date";
+import { calcAssumedWorkedDayOffsetByCalendar, getAttendanceDataStartDate } from "@/lib/attendance-data";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +25,8 @@ function newHirePercentByDays(dayNo: number): number {
 
 function buildWorkedDayNoIndex(
   attendanceRows: { employeeId: string; workDate: Date }[],
-  hireDateByEmployeeId: Map<string, Date>
+  hireDateByEmployeeId: Map<string, Date>,
+  attendanceDataStartDate: Date
 ): Map<string, Map<string, number>> {
   const dateSetByEmp = new Map<string, Set<string>>();
   for (const r of attendanceRows) {
@@ -32,10 +41,15 @@ function buildWorkedDayNoIndex(
 
   const index = new Map<string, Map<string, number>>();
   for (const [empId, set] of dateSetByEmp.entries()) {
+    const hire = hireDateByEmployeeId.get(empId);
+    const assumedOffset =
+      hire != null
+        ? calcAssumedWorkedDayOffsetByCalendar({ hireDate: hire, dataStartDate: attendanceDataStartDate })
+        : 0;
     const sorted = Array.from(set).sort();
     const byDate = new Map<string, number>();
     for (let i = 0; i < sorted.length; i++) {
-      byDate.set(sorted[i], i + 1); // dayNo 從 1 開始
+      byDate.set(sorted[i], assumedOffset + i + 1); // dayNo 從 1 開始（混合補正 offset）
     }
     index.set(empId, byDate);
   }
@@ -265,14 +279,32 @@ export async function GET(request: Request) {
     for (const r of records) {
       if (r.employee.hireDate) hireDateByEmployeeId.set(r.employeeId, r.employee.hireDate);
     }
+    const attendanceDataStartDate = await getAttendanceDataStartDate();
+
+    // 關鍵：dayNo 需要「從到職日起累計的有上班日」，不能只用目前報表區間。
+    // 若使用 startDate=endDate（查單日），索引只會含那一天，會導致所有人 dayNo=1 → 0%。
+    const earliestHireDate = Array.from(hireDateByEmployeeId.values()).reduce<Date | null>(
+      (min, v) => {
+        if (!min) return v;
+        return v.getTime() < min.getTime() ? v : min;
+      },
+      null
+    );
+    const workedStartTaipei = earliestHireDate
+      ? parseTaipeiDateStartUTC(formatDateOnlyTaipei(earliestHireDate))
+      : rangeTaipei.start;
+    const workedStartUtcDay = earliestHireDate
+      ? parseDateOnlyUTC(formatDateOnly(earliestHireDate))
+      : rangeUtcDay.start;
+
     const workedAttendanceRows =
       employeeIds.length > 0
         ? await prisma.attendanceRecord.findMany({
             where: {
               employeeId: { in: employeeIds },
               OR: [
-                { workDate: { gte: rangeTaipei.start, lte: rangeTaipei.end } },
-                { workDate: { gte: rangeUtcDay.start, lte: rangeUtcDay.end } },
+                { workDate: { gte: workedStartTaipei, lte: rangeTaipei.end } },
+                { workDate: { gte: workedStartUtcDay, lte: rangeUtcDay.end } },
               ],
               workHours: { gt: 0 },
             },
@@ -282,7 +314,8 @@ export async function GET(request: Request) {
         : [];
     const workedDayNoIndexByEmployeeId = buildWorkedDayNoIndex(
       workedAttendanceRows,
-      hireDateByEmployeeId
+      hireDateByEmployeeId,
+      attendanceDataStartDate
     );
 
     const [adjustments, dispatches] = await Promise.all([
