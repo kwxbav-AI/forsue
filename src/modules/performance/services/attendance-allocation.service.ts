@@ -306,7 +306,14 @@ export async function computeStoreHoursByEmployee(
     // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
     if (!isTrial && att.employee.hireDate && Number(att.workHours) > 0) {
-      const dayNo = workedDaysByEmployeeId.get(att.employeeId) ?? 1;
+      const dayNo = workedDaysByEmployeeId.get(att.employeeId);
+      // 若因資料缺漏/查詢範圍導致拿不到「已上班日」天數，避免誤套用 0% 造成全員工時歸零
+      if (dayNo == null) {
+        const hours = new Decimal(hoursValue);
+        const storeHours: StoreHoursMap = { [origStoreId]: hours.toNumber() };
+        employeeStores.set(att.employeeId, storeHours);
+        continue;
+      }
       const percent = newHirePercentByDays(dayNo);
       if (percent !== 1) {
         hoursValue = new Decimal(hoursValue).mul(percent).toNumber();

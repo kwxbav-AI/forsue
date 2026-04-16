@@ -649,10 +649,11 @@ export async function GET(request: Request) {
 
         // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
         if (!isTrial && emp.hireDate && net > 0) {
-          const dayNo =
-            workedDayNoIndexByEmployeeId.get(emp.id)?.get(dateStr) ??
-            // 若沒有出勤日索引（理論上不會發生在 att.workHours > 0），保底為 1
-            1;
+          const dayNo = workedDayNoIndexByEmployeeId.get(emp.id)?.get(dateStr);
+          // 若拿不到「已上班日」天數索引，避免誤套用 0% 造成全員被當成新進員工
+          if (dayNo == null) {
+            // 不做新進員工折算
+          } else {
           const percent = newHirePercentByDays(dayNo);
           if (percent !== 1) {
             const adjusted = new Decimal(net).mul(percent).toNumber();
@@ -676,6 +677,7 @@ export async function GET(request: Request) {
                 clockOutStoreText: null,
               });
             }
+          }
           }
         }
 
