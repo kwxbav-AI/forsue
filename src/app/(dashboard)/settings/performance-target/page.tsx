@@ -24,6 +24,11 @@ export default function PerformanceTargetPage() {
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [recalcLoading, setRecalcLoading] = useState(false);
+  const [recalcRangeLoading, setRecalcRangeLoading] = useState(false);
+  const [recalcRange, setRecalcRange] = useState(() => {
+    const today = formatLocalDateInput();
+    return { startDate: today, endDate: today };
+  });
   const [form, setForm] = useState({
     targetValue: 4000,
     effectiveStartDate: formatLocalDateInput(),
@@ -77,6 +82,34 @@ export default function PerformanceTargetPage() {
     setMessage(`已重算完成：${data.datesCount ?? 0} 天`);
   }
 
+  async function recalcByRange() {
+    const { startDate, endDate } = recalcRange;
+    if (!startDate || !endDate) {
+      setMessage("請選擇起訖日期");
+      return;
+    }
+    if (startDate > endDate) {
+      setMessage("起日不可晚於迄日");
+      return;
+    }
+    if (!confirm(`確定要重算區間：${startDate} ～ ${endDate}？（可能需要一些時間）`)) return;
+
+    setMessage(null);
+    setRecalcRangeLoading(true);
+    const res = await fetch("/api/performance/recalculate-daily", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate, endDate }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setRecalcRangeLoading(false);
+    if (!res.ok) {
+      setMessage(data.error || "重算失敗");
+      return;
+    }
+    setMessage(`已重算完成：${startDate} ～ ${endDate}`);
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -119,6 +152,41 @@ export default function PerformanceTargetPage() {
               >
                 {recalcLoading ? "重算中…" : "重算全部歷史績效"}
               </button>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-sm font-medium text-slate-700">區間重算（不需重上傳出勤表）</div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label>
+                  <span className="block text-sm text-slate-600">起日</span>
+                  <input
+                    type="date"
+                    value={recalcRange.startDate}
+                    onChange={(e) => setRecalcRange((s) => ({ ...s, startDate: e.target.value }))}
+                    className="mt-1 rounded border border-slate-300 bg-white px-2 py-1.5"
+                  />
+                </label>
+                <label>
+                  <span className="block text-sm text-slate-600">迄日</span>
+                  <input
+                    type="date"
+                    value={recalcRange.endDate}
+                    onChange={(e) => setRecalcRange((s) => ({ ...s, endDate: e.target.value }))}
+                    className="mt-1 rounded border border-slate-300 bg-white px-2 py-1.5"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={recalcRangeLoading}
+                  onClick={recalcByRange}
+                  className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {recalcRangeLoading ? "重算中…" : "重算此區間"}
+                </button>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                會依你選的日期逐日重算每日績效（包含調度/工時異動/扣工時規則變更後的結果）。
+              </div>
             </div>
           </div>
 

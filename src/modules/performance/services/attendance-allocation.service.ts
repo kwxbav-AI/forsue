@@ -83,6 +83,29 @@ export async function computeStoreHoursByEmployee(
     where: { workDate: d },
   });
 
+  // 錯誤訊息希望顯示「員工姓名」而不是 id
+  const employeeNameById = new Map<string, string>();
+  for (const a of attendances) {
+    if (a.employeeId && a.employee?.name) employeeNameById.set(a.employeeId, a.employee.name);
+  }
+  const missingNameIds = Array.from(
+    new Set(
+      [...dispatches.map((x) => x.employeeId), ...adjustments.map((x) => x.employeeId)].filter(
+        (id): id is string => Boolean(id) && !employeeNameById.has(id)
+      )
+    )
+  );
+  if (missingNameIds.length > 0) {
+    const emps = await prisma.employee.findMany({
+      where: { id: { in: missingNameIds } },
+      select: { id: true, name: true },
+    });
+    for (const e of emps) {
+      if (e.name) employeeNameById.set(e.id, e.name);
+    }
+  }
+  const formatEmployee = (employeeId: string) => employeeNameById.get(employeeId) ?? employeeId;
+
   // 儲備人力計算規則（以人員名冊的門市為準）
   // - 全店到齊且加班總時數未超過 3H：以 reserveWorkPercent 計部份工時
   // - 全店到齊且加班總時數超過 3H：計 100%
@@ -309,7 +332,7 @@ export async function computeStoreHoursByEmployee(
     if (fromCurrent < dispatchH) {
       const dateStr = formatDateOnly(d);
       throw new Error(
-        `調度工時大於出勤工時：員工 ${disp.employeeId}，日期 ${dateStr}，原店 ${fromCurrent}h，調出 ${dispatchH}h`
+        `調度工時大於出勤工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}，原店 ${fromCurrent}h，調出 ${dispatchH}h`
       );
     }
 
@@ -332,7 +355,7 @@ export async function computeStoreHoursByEmployee(
     const after = current + Number(adj.adjustmentHours);
     if (after < 0) {
       throw new Error(
-        `調整後工時不得小於 0：員工 ${adj.employeeId}，門市 ${storeId}，結果 ${after}h`
+        `調整後工時不得小於 0：員工 ${formatEmployee(adj.employeeId)}，門市 ${storeId}，結果 ${after}h`
       );
     }
     storeHours[storeId] = after;

@@ -1,33 +1,12 @@
 steps:
-  # Build container image with buildpacks
-  - name: gcr.io/k8s-skaffold/pack
-    id: Buildpack
-    entrypoint: bash
-    args:
-      - -lc
-      - |
-          set -euo pipefail
-
-          # Cloud Build 每個 step 是獨立容器；將 pack config 放在 /workspace 才能在本 step 內生效
-          export PACK_HOME=/workspace/.pack
-          mkdir -p "$PACK_HOME"
-
-          # 避免 pack 在 CI 中因「untrusted builder」直接中止
-          pack config trusted-builders add gcr.io/buildpacks/builder:google-22 || true
-
-          pack build "$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA" \
-            --builder=gcr.io/buildpacks/builder:google-22 \
-            --network=cloudbuild \
-            --env=GOOGLE_RUNTIME_VERSION=20 \
-            --publish \
-            --path=.
-
-  # Keep the original pull/push steps (Cloud Build template compatibility)
+  # Build container image with Dockerfile (avoid buildpack detection/trust issues)
   - name: gcr.io/cloud-builders/docker
-    id: Pull
+    id: Build
     args:
-      - pull
+      - build
+      - -t
       - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - .
 
   - name: gcr.io/cloud-builders/docker
     id: Push

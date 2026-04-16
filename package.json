@@ -12,7 +12,7 @@
     "permissions:check": "node scripts/check-permission-modules.cjs",
     "prebuild": "npm run permissions:check",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-8080}",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
