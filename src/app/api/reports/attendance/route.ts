@@ -15,12 +15,31 @@ function newHirePercentByDays(dayNo: number): number {
   return 1;
 }
 
-function diffDaysInclusive(workDateStr: string, hireDate: Date): number {
-  const work = new Date(`${workDateStr}T00:00:00`);
-  const w = new Date(work.getFullYear(), work.getMonth(), work.getDate()).getTime();
-  const h = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate()).getTime();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  return Math.floor((w - h) / msPerDay) + 1;
+function buildWorkedDayNoIndex(
+  attendanceRows: { employeeId: string; workDate: Date }[],
+  hireDateByEmployeeId: Map<string, Date>
+): Map<string, Map<string, number>> {
+  const dateSetByEmp = new Map<string, Set<string>>();
+  for (const r of attendanceRows) {
+    const hire = hireDateByEmployeeId.get(r.employeeId);
+    if (!hire) continue;
+    // 以日曆日比較，避免時區/時間戳造成邊界誤判
+    if (formatDateOnly(r.workDate) < formatDateOnly(hire)) continue;
+    const dayStr = formatDateOnly(r.workDate);
+    if (!dateSetByEmp.has(r.employeeId)) dateSetByEmp.set(r.employeeId, new Set());
+    dateSetByEmp.get(r.employeeId)!.add(dayStr);
+  }
+
+  const index = new Map<string, Map<string, number>>();
+  for (const [empId, set] of dateSetByEmp.entries()) {
+    const sorted = Array.from(set).sort();
+    const byDate = new Map<string, number>();
+    for (let i = 0; i < sorted.length; i++) {
+      byDate.set(sorted[i], i + 1); // dayNo 從 1 開始
+    }
+    index.set(empId, byDate);
+  }
+  return index;
 }
 
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
@@ -239,6 +258,32 @@ export async function GET(request: Request) {
     const employeeIds = Array.from(
       new Set(records.map((r) => r.employeeId))
     ) as string[];
+
+    // 新進員工折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日）。
+    // 為避免在迴圈中逐筆查 DB，先把本次報表涉及的員工在日期區間內的「有上班」出勤日一次撈出來做索引。
+    const hireDateByEmployeeId = new Map<string, Date>();
+    for (const r of records) {
+      if (r.employee.hireDate) hireDateByEmployeeId.set(r.employeeId, r.employee.hireDate);
+    }
+    const workedAttendanceRows =
+      employeeIds.length > 0
+        ? await prisma.attendanceRecord.findMany({
+            where: {
+              employeeId: { in: employeeIds },
+              OR: [
+                { workDate: { gte: rangeTaipei.start, lte: rangeTaipei.end } },
+                { workDate: { gte: rangeUtcDay.start, lte: rangeUtcDay.end } },
+              ],
+              workHours: { gt: 0 },
+            },
+            select: { employeeId: true, workDate: true },
+            orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
+          })
+        : [];
+    const workedDayNoIndexByEmployeeId = buildWorkedDayNoIndex(
+      workedAttendanceRows,
+      hireDateByEmployeeId
+    );
 
     const [adjustments, dispatches] = await Promise.all([
       employeeIds.length > 0
@@ -604,7 +649,10 @@ export async function GET(request: Request) {
 
         // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
         if (!isTrial && emp.hireDate && net > 0) {
-          const dayNo = diffDaysInclusive(dateStr, emp.hireDate);
+          const dayNo =
+            workedDayNoIndexByEmployeeId.get(emp.id)?.get(dateStr) ??
+            // 若沒有出勤日索引（理論上不會發生在 att.workHours > 0），保底為 1
+            1;
           const percent = newHirePercentByDays(dayNo);
           if (percent !== 1) {
             const adjusted = new Decimal(net).mul(percent).toNumber();

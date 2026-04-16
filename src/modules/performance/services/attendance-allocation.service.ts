@@ -14,11 +14,49 @@ function newHirePercentByDays(dayNo: number): number {
   return 1;
 }
 
-function diffDaysInclusive(workDate: Date, hireDate: Date): number {
-  const w = toStartOfDay(workDate).getTime();
-  const h = toStartOfDay(hireDate).getTime();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  return Math.floor((w - h) / msPerDay) + 1;
+async function computeWorkedDaysSinceHireByEmployee(
+  workDate: Date,
+  employeeIds: string[],
+  hireDateByEmployeeId: Map<string, Date>
+): Promise<Map<string, number>> {
+  if (employeeIds.length === 0) return new Map();
+  const d = toStartOfDay(workDate);
+
+  const earliestHireDate = Array.from(hireDateByEmployeeId.values()).reduce<Date | null>(
+    (min, v) => {
+      const t = toStartOfDay(v);
+      if (!min) return t;
+      return t.getTime() < min.getTime() ? t : min;
+    },
+    null
+  );
+  if (!earliestHireDate) return new Map();
+
+  const rows = await prisma.attendanceRecord.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      workDate: { gte: earliestHireDate, lte: d },
+      workHours: { gt: 0 },
+    },
+    select: { employeeId: true, workDate: true },
+    orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
+  });
+
+  const dateSetByEmployeeId = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const hire = hireDateByEmployeeId.get(r.employeeId);
+    if (!hire) continue;
+    if (toStartOfDay(r.workDate).getTime() < toStartOfDay(hire).getTime()) continue;
+    const dayStr = formatDateOnly(r.workDate);
+    if (!dateSetByEmployeeId.has(r.employeeId)) dateSetByEmployeeId.set(r.employeeId, new Set());
+    dateSetByEmployeeId.get(r.employeeId)!.add(dayStr);
+  }
+
+  const dayCountByEmployeeId = new Map<string, number>();
+  for (const [empId, set] of dateSetByEmployeeId.entries()) {
+    dayCountByEmployeeId.set(empId, set.size);
+  }
+  return dayCountByEmployeeId;
 }
 
 /**
@@ -176,6 +214,25 @@ export async function computeStoreHoursByEmployee(
 
   const employeeStores: Map<string, StoreHoursMap> = new Map();
 
+  // 新進員工工時折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日），而非日曆天。
+  // dayNo = 從到職日起算至當日（含當日）累計的「有上班日」天數。
+  const newHireCandidateIds: string[] = [];
+  const hireDateByEmployeeId = new Map<string, Date>();
+  for (const att of attendances) {
+    const codePrefix = (att.employee.employeeCode || "").trim().toLowerCase();
+    const isTrial = codePrefix.startsWith("a") || codePrefix.startsWith("b");
+    if (isTrial) continue;
+    if (!att.employee.hireDate) continue;
+    if (!(Number(att.workHours) > 0)) continue;
+    newHireCandidateIds.push(att.employeeId);
+    hireDateByEmployeeId.set(att.employeeId, att.employee.hireDate);
+  }
+  const workedDaysByEmployeeId = await computeWorkedDaysSinceHireByEmployee(
+    d,
+    Array.from(new Set(newHireCandidateIds)),
+    hireDateByEmployeeId
+  );
+
   for (const att of attendances) {
     const origStoreId = att.originalStoreId ?? att.employee.defaultStoreId ?? "unknown";
     let hoursValue = Number(att.workHours);
@@ -223,10 +280,10 @@ export async function computeStoreHoursByEmployee(
       }
     }
 
-    // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
+    // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
-    if (!isTrial && att.employee.hireDate && Number(hoursValue) > 0) {
-      const dayNo = diffDaysInclusive(d, att.employee.hireDate);
+    if (!isTrial && att.employee.hireDate && Number(att.workHours) > 0) {
+      const dayNo = workedDaysByEmployeeId.get(att.employeeId) ?? 1;
       const percent = newHirePercentByDays(dayNo);
       if (percent !== 1) {
         hoursValue = new Decimal(hoursValue).mul(percent).toNumber();
