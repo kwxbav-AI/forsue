@@ -9,7 +9,11 @@ import {
   toDateRange,
   toDateRangeTaipei,
 } from "@/lib/date";
-import { calcAssumedWorkedDayOffsetByCalendar, getAttendanceDataStartDate } from "@/lib/attendance-data";
+import {
+  getAttendanceDataStartDate,
+  getNewHireOffsetOverridesByEmployeeCode,
+  resolveAssumedWorkedDayOffset,
+} from "@/lib/attendance-data";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +30,9 @@ function newHirePercentByDays(dayNo: number): number {
 function buildWorkedDayNoIndex(
   attendanceRows: { employeeId: string; workDate: Date }[],
   hireDateByEmployeeId: Map<string, Date>,
-  attendanceDataStartDate: Date
+  attendanceDataStartDate: Date,
+  employeeCodeByEmployeeId: Map<string, string>,
+  overridesByEmployeeCode: Map<string, number>
 ): Map<string, Map<string, number>> {
   const dateSetByEmp = new Map<string, Set<string>>();
   for (const r of attendanceRows) {
@@ -42,9 +48,15 @@ function buildWorkedDayNoIndex(
   const index = new Map<string, Map<string, number>>();
   for (const [empId, set] of dateSetByEmp.entries()) {
     const hire = hireDateByEmployeeId.get(empId);
+    const empCode = employeeCodeByEmployeeId.get(empId) ?? "";
     const assumedOffset =
       hire != null
-        ? calcAssumedWorkedDayOffsetByCalendar({ hireDate: hire, dataStartDate: attendanceDataStartDate })
+        ? resolveAssumedWorkedDayOffset({
+            employeeCode: empCode,
+            hireDate: hire,
+            dataStartDate: attendanceDataStartDate,
+            overridesByEmployeeCode,
+          })
         : 0;
     const sorted = Array.from(set).sort();
     const byDate = new Map<string, number>();
@@ -276,10 +288,13 @@ export async function GET(request: Request) {
     // 新進員工折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日）。
     // 為避免在迴圈中逐筆查 DB，先把本次報表涉及的員工在日期區間內的「有上班」出勤日一次撈出來做索引。
     const hireDateByEmployeeId = new Map<string, Date>();
+    const employeeCodeByEmployeeId = new Map<string, string>();
     for (const r of records) {
       if (r.employee.hireDate) hireDateByEmployeeId.set(r.employeeId, r.employee.hireDate);
+      if (r.employee.employeeCode) employeeCodeByEmployeeId.set(r.employeeId, r.employee.employeeCode);
     }
     const attendanceDataStartDate = await getAttendanceDataStartDate();
+    const overridesByEmployeeCode = await getNewHireOffsetOverridesByEmployeeCode();
 
     // 關鍵：dayNo 需要「從到職日起累計的有上班日」，不能只用目前報表區間。
     // 若使用 startDate=endDate（查單日），索引只會含那一天，會導致所有人 dayNo=1 → 0%。
@@ -315,7 +330,9 @@ export async function GET(request: Request) {
     const workedDayNoIndexByEmployeeId = buildWorkedDayNoIndex(
       workedAttendanceRows,
       hireDateByEmployeeId,
-      attendanceDataStartDate
+      attendanceDataStartDate,
+      employeeCodeByEmployeeId,
+      overridesByEmployeeCode
     );
 
     const [adjustments, dispatches] = await Promise.all([

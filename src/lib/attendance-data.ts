@@ -6,6 +6,10 @@ import { formatDateOnlyTaipei, parseTaipeiDateStartUTC, toStartOfDay } from "@/l
 const KEY_ATTENDANCE_DATA_START = "attendance.dataStartDate";
 const DEFAULT_ATTENDANCE_DATA_START_YMD = "2026-04-01";
 
+// 個別覆寫：employeeCode -> offset（整數天數）
+// 例如：{"T2603505": 5}
+const KEY_NEW_HIRE_OFFSET_OVERRIDES = "attendance.newHireOffsetOverrides";
+
 export async function getAttendanceDataStartDate(): Promise<Date> {
   const row = await prisma.appSetting.findUnique({
     where: { key: KEY_ATTENDANCE_DATA_START },
@@ -15,6 +19,25 @@ export async function getAttendanceDataStartDate(): Promise<Date> {
   const ymd = typeof raw === "string" && raw.trim() ? raw.trim() : DEFAULT_ATTENDANCE_DATA_START_YMD;
   // toStartOfDay(YYYY-MM-DD) -> UTC 日初；用於比對/查詢
   return toStartOfDay(ymd);
+}
+
+export async function getNewHireOffsetOverridesByEmployeeCode(): Promise<Map<string, number>> {
+  const row = await prisma.appSetting.findUnique({
+    where: { key: KEY_NEW_HIRE_OFFSET_OVERRIDES },
+    select: { valueJson: true },
+  });
+  const raw = row?.valueJson as unknown;
+  const map = new Map<string, number>();
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      const key = String(k).trim();
+      const n = typeof v === "number" ? v : Number(v);
+      if (!key) continue;
+      if (!Number.isFinite(n)) continue;
+      map.set(key, Math.max(0, Math.floor(n)));
+    }
+  }
+  return map;
 }
 
 /**
@@ -35,5 +58,17 @@ export function calcAssumedWorkedDayOffsetByCalendar(args: {
   const startUtc = parseTaipeiDateStartUTC(startYmd);
   const diffDays = Math.floor((startUtc.getTime() - hireStartUtc.getTime()) / 86400000);
   return Math.max(0, diffDays);
+}
+
+export function resolveAssumedWorkedDayOffset(args: {
+  employeeCode: string | null | undefined;
+  hireDate: Date;
+  dataStartDate: Date;
+  overridesByEmployeeCode: Map<string, number>;
+}): number {
+  const code = String(args.employeeCode ?? "").trim();
+  const overridden = code ? args.overridesByEmployeeCode.get(code) : undefined;
+  if (overridden != null) return overridden;
+  return calcAssumedWorkedDayOffsetByCalendar({ hireDate: args.hireDate, dataStartDate: args.dataStartDate });
 }
 

@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import Decimal from "decimal.js";
 import { toStartOfDay, formatDateOnly } from "@/lib/date";
-import { calcAssumedWorkedDayOffsetByCalendar, getAttendanceDataStartDate } from "@/lib/attendance-data";
+import {
+  getAttendanceDataStartDate,
+  getNewHireOffsetOverridesByEmployeeCode,
+  resolveAssumedWorkedDayOffset,
+} from "@/lib/attendance-data";
 
 /** 單一員工單日、依門市拆分後的工時 { storeId: hours } */
 export type StoreHoursMap = Record<string, number>;
@@ -241,6 +245,7 @@ export async function computeStoreHoursByEmployee(
   // 新進員工工時折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日），而非日曆天。
   // dayNo = 從到職日起算至當日（含當日）累計的「有上班日」天數。
   const attendanceDataStartDate = await getAttendanceDataStartDate();
+  const newHireOffsetOverridesByEmployeeCode = await getNewHireOffsetOverridesByEmployeeCode();
   const newHireCandidateIds: string[] = [];
   const hireDateByEmployeeId = new Map<string, Date>();
   for (const att of attendances) {
@@ -308,9 +313,11 @@ export async function computeStoreHoursByEmployee(
     // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
     if (!isTrial && att.employee.hireDate && Number(att.workHours) > 0) {
-      const assumedOffset = calcAssumedWorkedDayOffsetByCalendar({
+      const assumedOffset = resolveAssumedWorkedDayOffset({
+        employeeCode: att.employee.employeeCode,
         hireDate: att.employee.hireDate,
         dataStartDate: attendanceDataStartDate,
+        overridesByEmployeeCode: newHireOffsetOverridesByEmployeeCode,
       });
       const workedDayCount = workedDaysByEmployeeId.get(att.employeeId);
       // 若拿不到索引且也沒有 offset，才視為無法判定（保留原工時，避免誤套 0%）
