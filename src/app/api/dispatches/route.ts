@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  toDateRangeTaipei,
-  parseTaipeiDateStartUTC,
-  parseTaipeiDateEndUTC,
   formatDateOnly,
   formatDateOnlyTaipei,
   parseDateOnlyUTC,
@@ -42,13 +39,11 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const where: { workDate?: Date | { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
-    const range = toDateRangeTaipei(startDate, endDate);
-    where.workDate = { gte: range.start, lte: range.end };
+    const start = parseDateOnlyUTC(startDate);
+    const end = parseDateOnlyUTC(endDate);
+    where.workDate = { gte: start, lte: end };
   } else if (date) {
-    where.workDate = {
-      gte: parseTaipeiDateStartUTC(date),
-      lte: parseTaipeiDateEndUTC(date),
-    };
+    where.workDate = parseDateOnlyUTC(date);
   }
 
   const stores = await prisma.store.findMany({
@@ -191,17 +186,18 @@ export async function POST(request: NextRequest) {
     // 若未指定 fromStoreId，則以「出勤原門市」為準（同一員工同一日可能多筆上傳，只取最新一筆）
     const fromStoreByDate = new Map<string, string | null>();
     if (!fromStoreId) {
-      const attRange = toDateRangeTaipei(startDate.trim(), endDate.trim());
+      const attStart = parseDateOnlyUTC(startDate.trim());
+      const attEnd = parseDateOnlyUTC(endDate.trim());
       const attendances = await prisma.attendanceRecord.findMany({
         where: {
           employeeId,
-          workDate: { gte: attRange.start, lte: attRange.end },
+          workDate: { gte: attStart, lte: attEnd },
         },
         select: { workDate: true, originalStoreId: true },
         orderBy: { createdAt: "desc" },
       });
       for (const a of attendances) {
-        const key = formatDateOnlyTaipei(a.workDate);
+        const key = formatDateOnly(a.workDate);
         if (!fromStoreByDate.has(key)) fromStoreByDate.set(key, a.originalStoreId ?? null);
       }
     }
@@ -214,7 +210,7 @@ export async function POST(request: NextRequest) {
         data: {
           workDate,
           employeeId,
-          fromStoreId: fromStoreId ?? fromStoreByDate.get(formatDateOnlyTaipei(workDate)) ?? null,
+          fromStoreId: fromStoreId ?? fromStoreByDate.get(dayStr) ?? null,
           toStoreId,
           dispatchHours: hours,
           confirmStatus: "待確認",

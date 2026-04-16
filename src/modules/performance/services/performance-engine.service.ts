@@ -5,7 +5,6 @@ import {
   toEndOfDay,
   formatDateOnly,
   parseDateOnlyUTC,
-  endOfDayUTC,
   addCalendarDaysUTC,
 } from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
@@ -24,11 +23,8 @@ class PerformanceEngineService {
     });
 
     // 內容篇數填報的扣工時：依分店（門市名稱）彙總，從該門市總工時中扣除
-    const dateStr = formatDateOnly(d);
-    const dayStart = parseDateOnlyUTC(dateStr);
-    const dayEnd = endOfDayUTC(dateStr);
     const contentEntries = await prisma.contentEntry.findMany({
-      where: { workDate: { gte: dayStart, lte: dayEnd } },
+      where: { workDate: d },
       select: { branch: true, deductedMinutes: true },
     });
     // 以 trim 後門市名稱對應 storeId，避免前後空白導致對不到
@@ -48,7 +44,7 @@ class PerformanceEngineService {
     // 效期/清掃 工時：依門市彙總，從該門市總工時中扣除（workDate 以當日區間查詢）
     const storeDeductions = await prisma.storeHourDeduction.findMany({
       where: {
-        workDate: { gte: dayStart, lte: dayEnd },
+        workDate: d,
       },
       select: { storeId: true, hours: true },
     });

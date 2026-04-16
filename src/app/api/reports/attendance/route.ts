@@ -5,9 +5,6 @@ import {
   formatDateOnly,
   formatDateOnlyTaipei,
   parseDateOnlyUTC,
-  parseTaipeiDateStartUTC,
-  toDateRange,
-  toDateRangeTaipei,
 } from "@/lib/date";
 import {
   getAttendanceDataStartDate,
@@ -46,10 +43,12 @@ function buildWorkedDayNoIndex(
   }
 
   const index = new Map<string, Map<string, number>>();
+  const dataStartYmd = formatDateOnly(attendanceDataStartDate);
   for (const [empId, set] of dateSetByEmp.entries()) {
     const hire = hireDateByEmployeeId.get(empId);
     const empCode = employeeCodeByEmployeeId.get(empId) ?? "";
-    const assumedOffset =
+    const hasOverride = empCode ? overridesByEmployeeCode.has(empCode) : false;
+    let assumedBeforeStart =
       hire != null
         ? resolveAssumedWorkedDayOffset({
             employeeCode: empCode,
@@ -59,9 +58,24 @@ function buildWorkedDayNoIndex(
           })
         : 0;
     const sorted = Array.from(set).sort();
+    const actualBeforeStart = sorted.filter((d) => d < dataStartYmd).length;
+
+    // 若資料庫中其實已經有 dataStartDate 以前的出勤日，代表不是「缺資料」情境；
+    // 不該套用 assumedBeforeStart（會把 dayNo 再往上推），除非使用者明確設定 override。
+    if (!hasOverride && actualBeforeStart > 0) {
+      assumedBeforeStart = 0;
+    }
     const byDate = new Map<string, number>();
     for (let i = 0; i < sorted.length; i++) {
-      byDate.set(sorted[i], assumedOffset + i + 1); // dayNo 從 1 開始（混合補正 offset）
+      const dayStr = sorted[i];
+      // 覆寫值的語意：代表「資料開始日前」應算的累計天數（取代實際資料開始日前的累計，避免雙重計算）
+      if (dayStr >= dataStartYmd && assumedBeforeStart > 0) {
+        const afterIndex = i - actualBeforeStart; // 從資料開始日後的第幾個「有上班日」
+        byDate.set(dayStr, assumedBeforeStart + afterIndex + 1);
+      } else {
+        // 資料開始日前：仍用實際資料順序（或未設定覆寫時）
+        byDate.set(dayStr, i + 1);
+      }
     }
     index.set(empId, byDate);
   }
@@ -177,22 +191,19 @@ export async function GET(request: Request) {
   ]);
   const matchStatusFilter = matchStatus && allowedMatchStatus.has(matchStatus) ? matchStatus : "";
 
-  let rangeTaipei: { start: Date; end: Date };
-  let rangeUtcDay: { start: Date; end: Date };
   try {
-    // 出勤資料以「台北營運日」為準寫入 DB（避免 UTC/本地午夜混用），報表查詢必須用同一套日曆日轉換
-    rangeTaipei = toDateRangeTaipei(startDate, endDate);
-    // 相容舊資料：歷史版本可能以「UTC 日曆日 00:00」儲存 workDate；因此查詢用兩種區間取聯集，避免整批查不到
-    rangeUtcDay = toDateRange(startDate, endDate);
+    // Calendar day columns are stored as DATE; query directly by date-only values.
+    // Prisma uses JS Date for DATE columns; we keep a stable date-only representation via UTC parsing.
+    parseDateOnlyUTC(startDate);
+    parseDateOnlyUTC(endDate);
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }
 
+  const start = parseDateOnlyUTC(startDate);
+  const end = parseDateOnlyUTC(endDate);
   const attendanceWorkDateWhere: Prisma.AttendanceRecordWhereInput = {
-    OR: [
-      { workDate: { gte: rangeTaipei.start, lte: rangeTaipei.end } },
-      { workDate: { gte: rangeUtcDay.start, lte: rangeUtcDay.end } },
-    ],
+    workDate: { gte: start, lte: end },
   };
   const dispatchWorkDateWhere = attendanceWorkDateWhere as unknown as Prisma.DispatchRecordWhereInput;
   const adjustmentWorkDateWhere =
@@ -305,22 +316,14 @@ export async function GET(request: Request) {
       },
       null
     );
-    const workedStartTaipei = earliestHireDate
-      ? parseTaipeiDateStartUTC(formatDateOnlyTaipei(earliestHireDate))
-      : rangeTaipei.start;
-    const workedStartUtcDay = earliestHireDate
-      ? parseDateOnlyUTC(formatDateOnly(earliestHireDate))
-      : rangeUtcDay.start;
+    const workedStart = earliestHireDate ? parseDateOnlyUTC(formatDateOnly(earliestHireDate)) : start;
 
     const workedAttendanceRows =
       employeeIds.length > 0
         ? await prisma.attendanceRecord.findMany({
             where: {
               employeeId: { in: employeeIds },
-              OR: [
-                { workDate: { gte: workedStartTaipei, lte: rangeTaipei.end } },
-                { workDate: { gte: workedStartUtcDay, lte: rangeUtcDay.end } },
-              ],
+              workDate: { gte: workedStart, lte: end },
               workHours: { gt: 0 },
             },
             select: { employeeId: true, workDate: true },

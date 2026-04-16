@@ -48,7 +48,7 @@ enum StoreDeductionReason {
 
 model StoreHourDeduction {
   id        String               @id @default(cuid())
-  workDate  DateTime
+  workDate  DateTime             @db.Date
   storeId   String
   reason    StoreDeductionReason
   hours     Decimal               @db.Decimal(10, 2)
@@ -139,7 +139,7 @@ model UploadBatch {
 
 model AttendanceRecord {
   id              String     @id @default(cuid())
-  workDate        DateTime
+  workDate        DateTime   @db.Date
   employeeId      String
   originalStoreId String?
   department      String?
@@ -173,7 +173,7 @@ model AppSetting {
 
 model DispatchRecord {
   id              String     @id @default(cuid())
-  workDate        DateTime
+  workDate        DateTime   @db.Date
   employeeId      String
   fromStoreId     String?
   toStoreId       String
@@ -193,7 +193,7 @@ model DispatchRecord {
 
 model RevenueRecord {
   id            String   @id @default(cuid())
-  revenueDate   DateTime
+  revenueDate   DateTime @db.Date
   storeId       String
   revenueAmount Decimal  @db.Decimal(12, 2)
   cashIncome    Decimal  @db.Decimal(12, 2) @default(0)
@@ -219,7 +219,7 @@ enum AdjustmentType {
 
 model WorkhourAdjustment {
   id              String         @id @default(cuid())
-  workDate        DateTime
+  workDate        DateTime       @db.Date
   employeeId      String
   storeId         String?
   adjustmentType  AdjustmentType
@@ -237,8 +237,8 @@ model WorkhourAdjustment {
 model PerformanceTargetSetting {
   id                  String    @id @default(cuid())
   targetValue         Decimal   @db.Decimal(10, 2)
-  effectiveStartDate  DateTime
-  effectiveEndDate    DateTime?
+  effectiveStartDate  DateTime  @db.Date
+  effectiveEndDate    DateTime? @db.Date
   isActive            Boolean   @default(true)
   updatedBy           String?
   createdAt           DateTime  @default(now())
@@ -248,7 +248,7 @@ model PerformanceTargetSetting {
 
 model PerformanceDaily {
   id              String   @id @default(cuid())
-  workDate        DateTime
+  workDate        DateTime @db.Date
   storeId         String
   revenueAmount   Decimal  @db.Decimal(12, 2)
   totalWorkHours  Decimal  @db.Decimal(10, 2)
@@ -276,7 +276,7 @@ model AuditLog {
 
 model Holiday {
   id        String   @id @default(cuid())
-  date      DateTime
+  date      DateTime @db.Date
   name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -287,7 +287,7 @@ model Holiday {
 
 model ContentEntry {
   id              String   @id @default(cuid())
-  workDate        DateTime
+  workDate        DateTime @db.Date
   branch          String
   totalArticles   Int?
   contentDesc1    String?

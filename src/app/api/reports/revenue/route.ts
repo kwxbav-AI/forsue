@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, formatDateOnlyTaipei, toDateRange } from "@/lib/date";
+import { formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +12,11 @@ export async function GET(request: Request) {
   const endDate = searchParams.get("endDate") || startDate;
   const department = searchParams.get("department")?.trim() || "";
 
-  let range;
+  let start: Date;
+  let end: Date;
   try {
-    range = toDateRange(startDate, endDate);
+    start = parseDateOnlyUTC(startDate);
+    end = parseDateOnlyUTC(endDate);
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }
@@ -23,8 +25,8 @@ export async function GET(request: Request) {
     const records = await prisma.revenueRecord.findMany({
       where: {
         revenueDate: {
-          gte: range.start,
-          lte: range.end,
+          gte: start,
+          lte: end,
         },
         store: {
           hideInReports: false as any,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toStartOfDay, toDateRange, formatDateOnly } from "@/lib/date";
+import { toStartOfDay, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
 
@@ -20,8 +20,9 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const where: { workDate?: { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
-    const range = toDateRange(startDate, endDate);
-    where.workDate = { gte: range.start, lte: range.end };
+    const start = parseDateOnlyUTC(startDate);
+    const end = parseDateOnlyUTC(endDate);
+    where.workDate = { gte: start, lte: end };
   }
   const list = await prisma.storeHourDeduction.findMany({
     where,

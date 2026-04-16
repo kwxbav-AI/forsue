@@ -22,9 +22,12 @@ function newHirePercentByDays(dayNo: number): number {
 async function computeWorkedDaysSinceHireByEmployee(
   workDate: Date,
   employeeIds: string[],
-  hireDateByEmployeeId: Map<string, Date>
-): Promise<Map<string, number>> {
-  if (employeeIds.length === 0) return new Map();
+  hireDateByEmployeeId: Map<string, Date>,
+  dataStartDate: Date
+): Promise<{ totalByEmployeeId: Map<string, number>; beforeStartByEmployeeId: Map<string, number> }> {
+  if (employeeIds.length === 0) {
+    return { totalByEmployeeId: new Map(), beforeStartByEmployeeId: new Map() };
+  }
   const d = toStartOfDay(workDate);
 
   const earliestHireDate = Array.from(hireDateByEmployeeId.values()).reduce<Date | null>(
@@ -35,7 +38,9 @@ async function computeWorkedDaysSinceHireByEmployee(
     },
     null
   );
-  if (!earliestHireDate) return new Map();
+  if (!earliestHireDate) {
+    return { totalByEmployeeId: new Map(), beforeStartByEmployeeId: new Map() };
+  }
 
   const rows = await prisma.attendanceRecord.findMany({
     where: {
@@ -48,6 +53,8 @@ async function computeWorkedDaysSinceHireByEmployee(
   });
 
   const dateSetByEmployeeId = new Map<string, Set<string>>();
+  const beforeStartSetByEmployeeId = new Map<string, Set<string>>();
+  const dataStartYmd = formatDateOnly(dataStartDate);
   for (const r of rows) {
     const hire = hireDateByEmployeeId.get(r.employeeId);
     if (!hire) continue;
@@ -55,13 +62,19 @@ async function computeWorkedDaysSinceHireByEmployee(
     const dayStr = formatDateOnly(r.workDate);
     if (!dateSetByEmployeeId.has(r.employeeId)) dateSetByEmployeeId.set(r.employeeId, new Set());
     dateSetByEmployeeId.get(r.employeeId)!.add(dayStr);
+    if (dayStr < dataStartYmd) {
+      if (!beforeStartSetByEmployeeId.has(r.employeeId)) beforeStartSetByEmployeeId.set(r.employeeId, new Set());
+      beforeStartSetByEmployeeId.get(r.employeeId)!.add(dayStr);
+    }
   }
 
-  const dayCountByEmployeeId = new Map<string, number>();
+  const totalByEmployeeId = new Map<string, number>();
+  const beforeStartByEmployeeId = new Map<string, number>();
   for (const [empId, set] of dateSetByEmployeeId.entries()) {
-    dayCountByEmployeeId.set(empId, set.size);
+    totalByEmployeeId.set(empId, set.size);
+    beforeStartByEmployeeId.set(empId, beforeStartSetByEmployeeId.get(empId)?.size ?? 0);
   }
-  return dayCountByEmployeeId;
+  return { totalByEmployeeId, beforeStartByEmployeeId };
 }
 
 /**
@@ -257,10 +270,12 @@ export async function computeStoreHoursByEmployee(
     newHireCandidateIds.push(att.employeeId);
     hireDateByEmployeeId.set(att.employeeId, att.employee.hireDate);
   }
-  const workedDaysByEmployeeId = await computeWorkedDaysSinceHireByEmployee(
+  const { totalByEmployeeId: workedDaysByEmployeeId, beforeStartByEmployeeId } =
+    await computeWorkedDaysSinceHireByEmployee(
     d,
     Array.from(new Set(newHireCandidateIds)),
-    hireDateByEmployeeId
+    hireDateByEmployeeId,
+    attendanceDataStartDate
   );
 
   for (const att of attendances) {
@@ -313,21 +328,33 @@ export async function computeStoreHoursByEmployee(
     // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
     if (!isTrial && att.employee.hireDate && Number(att.workHours) > 0) {
-      const assumedOffset = resolveAssumedWorkedDayOffset({
-        employeeCode: att.employee.employeeCode,
+      const empCode = (att.employee.employeeCode || "").trim();
+      const hasOverride = empCode ? newHireOffsetOverridesByEmployeeCode.has(empCode) : false;
+      let assumedOffset = resolveAssumedWorkedDayOffset({
+        employeeCode: empCode,
         hireDate: att.employee.hireDate,
         dataStartDate: attendanceDataStartDate,
         overridesByEmployeeCode: newHireOffsetOverridesByEmployeeCode,
       });
       const workedDayCount = workedDaysByEmployeeId.get(att.employeeId);
-      // 若拿不到索引且也沒有 offset，才視為無法判定（保留原工時，避免誤套 0%）
+      const actualBeforeStart = beforeStartByEmployeeId.get(att.employeeId) ?? 0;
+
+      // 若資料庫中其實已經有 dataStartDate 以前的出勤日，表示「缺資料」前提不成立：
+      // 這時不該再套用 assumedOffset（否則會把 dayNo 又往上推），除非使用者明確設定 override。
+      if (!hasOverride && actualBeforeStart > 0) {
+        assumedOffset = 0;
+      }
+
+      // 若拿不到索引且也沒有 assumedBeforeStart，才視為無法判定（保留原工時，避免誤套 0%）
       if (workedDayCount == null && assumedOffset === 0) {
         const hours = new Decimal(hoursValue);
         const storeHours: StoreHoursMap = { [origStoreId]: hours.toNumber() };
         employeeStores.set(att.employeeId, storeHours);
         continue;
       }
-      const dayNo = (workedDayCount ?? 0) + assumedOffset;
+      // 覆寫/補正語意：assumedOffset 代表「資料開始日前應算的累計天數」，用它取代實際資料開始日前的累計，避免雙重計算。
+      const total = workedDayCount ?? 0;
+      const dayNo = (total - actualBeforeStart) + assumedOffset;
       const percent = newHirePercentByDays(dayNo <= 0 ? 1 : dayNo);
       if (percent !== 1) {
         hoursValue = new Decimal(hoursValue).mul(percent).toNumber();

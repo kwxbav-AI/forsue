@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
+import { parseDateOnlyUTC } from "@/lib/date";
 import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
@@ -52,10 +52,11 @@ export async function GET(request: NextRequest) {
   if (startDate && endDate) {
     where.workDate = {
       gte: parseDateOnlyUTC(startDate),
-      lte: endOfDayUTC(endDate),
+      lte: parseDateOnlyUTC(endDate),
     };
   } else if (startDate) {
-    where.workDate = { gte: parseDateOnlyUTC(startDate), lte: endOfDayUTC(startDate) };
+    const d = parseDateOnlyUTC(startDate);
+    where.workDate = { gte: d, lte: d };
   }
 
   const list = await prisma.contentEntry.findMany({

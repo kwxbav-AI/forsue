@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, endOfDayUTC } from "@/lib/date";
+import { parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   }
 
   const start = parseDateOnlyUTC(startDate);
-  const end = endOfDayUTC(endDate);
+  const end = parseDateOnlyUTC(endDate);
 
   const grouped = await prisma.performanceDaily.groupBy({
     by: ["storeId"],

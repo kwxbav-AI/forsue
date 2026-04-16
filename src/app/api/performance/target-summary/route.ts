@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, endOfDayUTC, formatDateOnly } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     );
   }
   const start = parseDateOnlyUTC(startDate);
-  const end = endOfDayUTC(endDate);
+  const end = parseDateOnlyUTC(endDate);
 
   const [list, holidays] = await Promise.all([
     prisma.performanceDaily.findMany({
