@@ -92,6 +92,22 @@ export async function computeStoreHoursByEmployee(
     where: { workDate: d },
     include: { employee: true },
   });
+  // 同一員工同一日可能有多筆出勤（中間請假二段卡、或跨天拆分）。
+  // 績效/工時計算必須以「當日總出勤工時」套用折算規則（新進/儲備/後勤/試作），而不是只取其中一筆。
+  const aggregatedAttendanceByEmployeeId = new Map<
+    string,
+    { employeeId: string; employee: (typeof attendances)[number]["employee"]; originalStoreId: string | null; workHours: number }
+  >();
+  for (const a of attendances) {
+    const prev = aggregatedAttendanceByEmployeeId.get(a.employeeId);
+    const origStoreId = prev?.originalStoreId ?? a.originalStoreId ?? null;
+    aggregatedAttendanceByEmployeeId.set(a.employeeId, {
+      employeeId: a.employeeId,
+      employee: a.employee,
+      originalStoreId: origStoreId,
+      workHours: (prev?.workHours ?? 0) + Number(a.workHours),
+    });
+  }
 
   const dispatches = await prisma.dispatchRecord.findMany({
     where: { workDate: d, confirmStatus: "已確認" },
@@ -188,6 +204,9 @@ export async function computeStoreHoursByEmployee(
   const dispatchOutEmployeeIds = new Set(
     dispatches.filter((d) => !!d.fromStoreId).map((d) => d.employeeId)
   );
+  // 規則：儲備人力只要當天有「已確認調度」（不論 fromStoreId 是否有填），就不應再做儲備人力折算
+  // 目的：避免被調去他店支援時仍被打折，導致原店變成負工時或支援工時被折算。
+  const hasConfirmedDispatchByEmployeeId = new Set(dispatches.map((d) => d.employeeId));
 
   function extractDispatchReason(remark: string | null): string {
     if (!remark) return "";
@@ -278,7 +297,7 @@ export async function computeStoreHoursByEmployee(
     attendanceDataStartDate
   );
 
-  for (const att of attendances) {
+  for (const att of aggregatedAttendanceByEmployeeId.values()) {
     const origStoreId = att.originalStoreId ?? att.employee.defaultStoreId ?? "unknown";
     let hoursValue = Number(att.workHours);
 
@@ -317,6 +336,7 @@ export async function computeStoreHoursByEmployee(
       if (
         !isTrial &&
         !backofficeConfirmedByEmployeeId.has(att.employeeId) &&
+        !hasConfirmedDispatchByEmployeeId.has(att.employeeId) &&
         shouldPartial &&
         percent != null &&
         Number.isFinite(percent)

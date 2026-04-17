@@ -87,17 +87,18 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
     });
-    // 同一員工同一日可能有多筆上傳（重複上傳），只取一筆與「人員出勤表」一致，取最新一筆
+    // 同一員工同一日可能有多筆（例如中間請假、跨天拆分），需加總工時
     for (const a of attendances) {
       const key = `${formatDateOnlyTaipei(a.workDate)}_${a.employeeId}`;
-      if (!attendanceByKey.has(key)) {
-        attendanceByKey.set(key, {
-          workHours: Number(a.workHours),
-          locationMatchStatus: a.locationMatchStatus ?? null,
-          clockInStoreText: a.clockInStoreText ?? null,
-          clockOutStoreText: a.clockOutStoreText ?? null,
-        });
-      }
+      const prev = attendanceByKey.get(key);
+      const nextHours = (prev?.workHours ?? 0) + Number(a.workHours);
+      attendanceByKey.set(key, {
+        workHours: nextHours,
+        // 多筆時狀態/地點資訊可能不一致，避免誤導：維持第一筆（最新）顯示即可
+        locationMatchStatus: prev?.locationMatchStatus ?? a.locationMatchStatus ?? null,
+        clockInStoreText: prev?.clockInStoreText ?? a.clockInStoreText ?? null,
+        clockOutStoreText: prev?.clockOutStoreText ?? a.clockOutStoreText ?? null,
+      });
     }
   }
 

@@ -1,4 +1,4 @@
-import { parseISO, isValid, parse } from "date-fns";
+import { parseISO, isValid, parse, addDays } from "date-fns";
 import Decimal from "decimal.js";
 import { parseExcelBuffer, getCell, validateRequiredColumns } from "./base.parser";
 import {
@@ -49,9 +49,11 @@ function computeWorkHoursFromTimes(startTime: string | null, endTime: string | n
   const endMin = parseTimeToMinutes(endTime);
   if (startMin == null || endMin == null) return null;
   const diff = endMin - startMin;
-  if (diff <= 0) return null;
+  // 跨日（例如 16:00-00:30）在這裡先視為「總時數」可計算；是否要拆成兩天在 parseAttendanceSheet 做。
+  const effectiveDiff = diff > 0 ? diff : diff < 0 ? (24 * 60 - startMin) + endMin : 0;
+  if (effectiveDiff <= 0) return null;
   // 與 Excel ROUND(..., 2) 一致：算出小時後四捨五入到小數第 2 位
-  return new Decimal(diff).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  return new Decimal(effectiveDiff).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 }
 
 export interface AttendanceRow {
@@ -231,20 +233,58 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const employeeName = headerMap.employeeName !== undefined ? getCell(row, headerMap.employeeName) || "" : "";
     const shiftType = headerMap.shiftType !== undefined ? getCell(row, headerMap.shiftType) || null : null;
 
-    data.push({
-      workDate,
-      employeeCode,
-      employeeName: employeeName || undefined,
-      storeCode: storeCode || null,
-      department: department || null,
-      workHours,
-      scheduledWorkHours,
-      startTime: startTimeStr || null,
-      endTime: endTimeStr || null,
-      clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
-      clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
-      shiftType: shiftType || null,
-    } as AttendanceRow);
+    const startMin = startTimeStr ? parseTimeToMinutes(startTimeStr) : null;
+    const endMin = endTimeStr ? parseTimeToMinutes(endTimeStr) : null;
+    const isCrossDay =
+      startMin != null && endMin != null && Number.isFinite(startMin) && Number.isFinite(endMin) && endMin < startMin;
+
+    // 若跨天，拆成兩筆：當天到 24:00 + 次日 00:00 到 endTime
+    // 這樣可解決 16:00-24:00、00:00-00:30 這種「二段卡」只算到一段的問題。
+    if (isCrossDay) {
+      const firstMinutes = 24 * 60 - startMin!;
+      const secondMinutes = endMin!;
+      const firstHours = new Decimal(firstMinutes).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const secondHours = new Decimal(secondMinutes).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const common = {
+        employeeCode,
+        employeeName: employeeName || undefined,
+        storeCode: storeCode || null,
+        department: department || null,
+        scheduledWorkHours,
+        clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
+        clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
+        shiftType: shiftType || null,
+      };
+      data.push({
+        workDate,
+        ...common,
+        workHours: firstHours,
+        startTime: startTimeStr || null,
+        endTime: "24:00",
+      } as AttendanceRow);
+      data.push({
+        workDate: addDays(workDate, 1),
+        ...common,
+        workHours: secondHours,
+        startTime: "00:00",
+        endTime: endTimeStr || null,
+      } as AttendanceRow);
+    } else {
+      data.push({
+        workDate,
+        employeeCode,
+        employeeName: employeeName || undefined,
+        storeCode: storeCode || null,
+        department: department || null,
+        workHours,
+        scheduledWorkHours,
+        startTime: startTimeStr || null,
+        endTime: endTimeStr || null,
+        clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
+        clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
+        shiftType: shiftType || null,
+      } as AttendanceRow);
+    }
   }
 
   return { data, errors };

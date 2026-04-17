@@ -522,10 +522,49 @@ export async function GET(request: Request) {
       dispatches.push(...dispatchInOnly);
     }
 
-    const attByEmpDate = new Map<string, typeof records[0]>();
+    // 同一員工同一日可能有多筆出勤（中間請假二段卡、跨天拆分或重複上傳）。
+    // 報表以「同日總工時」呈現，避免只抓到其中一段。
+    const attByEmpDate = new Map<
+      string,
+      {
+        employeeId: string;
+        workDate: Date;
+        originalStoreId: string | null;
+        department: string | null;
+        workHours: number;
+        locationMatchStatus: string | null;
+        clockInStoreText: string | null;
+        clockOutStoreText: string | null;
+        shiftType: string | null;
+        employee: (typeof records)[number]["employee"];
+        id: string; // 取第一筆 id 作為穩定 key
+      }
+    >();
     for (const r of records) {
       const k = `${r.employeeId}|${formatDateOnly(r.workDate)}`;
-      attByEmpDate.set(k, r);
+      const prev = attByEmpDate.get(k);
+      if (!prev) {
+        attByEmpDate.set(k, {
+          employeeId: r.employeeId,
+          workDate: r.workDate,
+          originalStoreId: r.originalStoreId ?? null,
+          department: r.department ?? null,
+          workHours: Number(r.workHours),
+          locationMatchStatus: (r as any).locationMatchStatus ?? null,
+          clockInStoreText: (r as any).clockInStoreText ?? null,
+          clockOutStoreText: (r as any).clockOutStoreText ?? null,
+          shiftType: (r as any).shiftType ?? null,
+          employee: r.employee,
+          id: r.id,
+        });
+      } else {
+        attByEmpDate.set(k, {
+          ...prev,
+          // 以總和為準
+          workHours: prev.workHours + Number(r.workHours),
+          // 多筆時打卡地點狀態可能不一致；保留原本（最新/第一筆）顯示即可，避免誤導
+        });
+      }
     }
     const adjByEmpDate = new Map<string, typeof adjustments>();
     for (const a of adjustments) {
@@ -602,9 +641,9 @@ export async function GET(request: Request) {
           workDate: dateStr,
           workHours: baseHours,
           adjustmentReason: null,
-          locationMatchStatus: (att as any).locationMatchStatus ?? null,
-          clockInStoreText: (att as any).clockInStoreText ?? null,
-          clockOutStoreText: (att as any).clockOutStoreText ?? null,
+          locationMatchStatus: att.locationMatchStatus ?? null,
+          clockInStoreText: att.clockInStoreText ?? null,
+          clockOutStoreText: att.clockOutStoreText ?? null,
         });
 
         // 試作規則：員工編號開頭為 A/B（不分大小寫）時，小計固定為 -3
@@ -657,7 +696,10 @@ export async function GET(request: Request) {
         }
 
         // 儲備人力：保留原工時一行，另新增「儲備人力」調整行（負數），小計才會是折算後工時
-        if (!isTrial && !hasBackofficeConfirmed && emp.isReserveStaff) {
+        // 規則：儲備人力若當天有已確認調度（被調去他店支援/調出），則不套用儲備人力折算
+        // 目的：原店出勤工時會被調度調出抵銷，支援店以 dispatch_in 計入；不應再額外打折造成負工時。
+        const hasAnyConfirmedDispatch = dispList.length > 0;
+        if (!isTrial && !hasBackofficeConfirmed && emp.isReserveStaff && !hasAnyConfirmedDispatch) {
           const homeStoreId =
             emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
           if (homeStoreId) {

@@ -232,6 +232,8 @@ export default function AttendanceReportPage() {
                 const isSubRow = isChangeRow || r.type === "subtotal";
                 const isSubtotal = r.type === "subtotal";
                 const isNegative = Number.isFinite(r.workHours) && r.workHours < 0;
+                // 調入/調出工時必須顯示「支援者」資訊，否則看起來會像是被上一位員工吃到工時
+                const showEmployeeOnThisRow = r.type === "dispatch_in" || r.type === "dispatch_out";
                 const statusLabel =
                   r.locationMatchStatus === "MATCH"
                     ? "相符"
@@ -260,14 +262,20 @@ export default function AttendanceReportPage() {
                     }`}
                   >
                     <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
-                      {isSubtotal ? "小計" : isSubRow ? "" : r.employeeCode}
+                      {isSubtotal ? "小計" : isSubRow && !showEmployeeOnThisRow ? "" : r.employeeCode}
                     </td>
                     <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
-                      {!isSubRow && !isSubtotal ? r.name : ""}
+                      {isSubtotal ? "" : isSubRow && !showEmployeeOnThisRow ? "" : r.name}
                     </td>
-                    <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.department || "—")}</td>
-                    <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : (r.position || "—")}</td>
-                    <td className="px-4 py-2">{isSubRow && !isSubtotal ? "" : r.workDate}</td>
+                    <td className="px-4 py-2">
+                      {isSubRow && !isSubtotal && !showEmployeeOnThisRow ? "" : (r.department || "—")}
+                    </td>
+                    <td className="px-4 py-2">
+                      {isSubRow && !isSubtotal && !showEmployeeOnThisRow ? "" : (r.position || "—")}
+                    </td>
+                    <td className="px-4 py-2">
+                      {isSubRow && !isSubtotal && !showEmployeeOnThisRow ? "" : r.workDate}
+                    </td>
                     <td className={`px-4 py-2 text-right ${isNegative ? "font-medium text-red-700" : ""}`}>
                       {r.workHours}
                     </td>
