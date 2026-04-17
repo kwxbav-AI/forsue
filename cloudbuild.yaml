@@ -135,6 +135,28 @@ steps:
           node -p "process.cwd()"
           node -p "require.resolve('@prisma/client')"
           node /workspace/db_readonly_check.js || echo "readonly check failed but continuing"
+
+          echo "=== index definition ==="
+          cat > /workspace/check_revenue_index_def.js <<'NODE'
+          const { PrismaClient } = require("@prisma/client");
+          const prisma = new PrismaClient();
+          (async () => {
+            const rows = await prisma.$queryRawUnsafe(`
+              SELECT indexname, indexdef
+              FROM pg_indexes
+              WHERE schemaname = 'public'
+                AND indexname = 'RevenueRecord_revenueDate_storeId_key';
+            `);
+            console.log(JSON.stringify(rows, null, 2));
+            await prisma.$disconnect();
+          })().catch((e) => {
+            console.error(e);
+            process.exit(1);
+          });
+          NODE
+
+          node /workspace/check_revenue_index_def.js
+
           echo "DEBUG_FINISHED_READONLY_CHECK"
 
           cat > /workspace/check_migration.js <<'NODE'
