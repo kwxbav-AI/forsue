@@ -203,8 +203,8 @@ model RevenueRecord {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   store         Store    @relation(fields: [storeId], references: [id])
-  @@unique([revenueDate, storeId])
   @@index([revenueDate])
+  @@index([revenueDate, storeId])
 }
 
 enum AdjustmentType {

@@ -92,17 +92,17 @@ steps:
               console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
 
               // 檢查欄位型別是否都已經是 DATE
-              const colRows = await prisma.$queryRaw`
+              const tupleSql = expectedDateColumns
+                .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
+                .join(", ");
+              const colRows = await prisma.$queryRawUnsafe(
+                `
                 SELECT table_name, column_name, data_type
                 FROM information_schema.columns
-                WHERE (${PrismaClient.sql.join(
-                  expectedDateColumns.map(([t, c]) =>
-                    PrismaClient.sql`(table_name = ${t} AND column_name = ${c})`
-                  ),
-                  PrismaClient.sql` OR `
-                )})
+                WHERE (table_name, column_name) IN (${tupleSql})
                 ORDER BY table_name ASC, column_name ASC
-              `;
+                `
+              );
               const colList = Array.isArray(colRows) ? colRows : [];
               console.log("Date column types:", colList);
 
