@@ -62,10 +62,25 @@ steps:
           echo "DEBUG_NODE_ENV=$${NODE_ENV:-<unset>}"
           echo "DEBUG_NPM_CONFIG_OMIT=$${NPM_CONFIG_OMIT:-<unset>}"
           echo "DEBUG_NPM_CONFIG_PRODUCTION=$${NPM_CONFIG_PRODUCTION:-<unset>}"
+          echo "DEBUG_COMMIT_SHA=$COMMIT_SHA"
           npm ls @prisma/client || true
           ls node_modules || true
           ls node_modules/@prisma || true
           cat package.json
+
+          echo "DEBUG_AFTER_NPM_CI"
+          cd /workspace
+          pwd
+          ls
+          test -d node_modules && echo "node_modules exists" || echo "node_modules missing"
+          test -d node_modules/@prisma && echo "@prisma dir exists" || echo "@prisma dir missing"
+          test -d node_modules/@prisma/client && echo "@prisma/client exists" || echo "@prisma/client missing"
+          npm ls @prisma/client || true
+          node -p "process.cwd()"
+          node -p "require.resolve('@prisma/client')" || true
+
+          cd /workspace
+          pwd
           node -e "require('@prisma/client'); console.log('prisma-client-ok')"
           npx prisma -v
 
