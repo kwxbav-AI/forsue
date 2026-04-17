@@ -27,7 +27,7 @@ steps:
           npm ci
 
           # --- DB readonly debug (must always run; must not fail the build) ---
-          cat > /tmp/db_readonly_check.js <<'NODE'
+          cat > /workspace/db_readonly_check.js <<'NODE'
           const { PrismaClient } = require("@prisma/client");
           const prisma = new PrismaClient();
           
@@ -80,7 +80,7 @@ steps:
           NODE
 
           echo "DEBUG_RUNNING_READONLY_CHECK"
-          node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
+          node /workspace/db_readonly_check.js || echo "readonly check failed but continuing"
           echo "DEBUG_FINISHED_READONLY_CHECK"
           # --- end DB readonly debug ---
 

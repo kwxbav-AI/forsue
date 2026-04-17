@@ -77,7 +77,7 @@ steps:
           node -e "require('@prisma/client'); console.log('prisma-client-ok')"
           npx prisma -v
 
-          cat > /tmp/db_readonly_check.js <<'NODE'
+          cat > /workspace/db_readonly_check.js <<'NODE'
           const { PrismaClient } = require("@prisma/client");
           const prisma = new PrismaClient();
           
@@ -134,10 +134,10 @@ steps:
           pwd
           node -p "process.cwd()"
           node -p "require.resolve('@prisma/client')"
-          node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
+          node /workspace/db_readonly_check.js || echo "readonly check failed but continuing"
           echo "DEBUG_FINISHED_READONLY_CHECK"
 
-          cat > /tmp/check_migration.js <<'NODE'
+          cat > /workspace/check_migration.js <<'NODE'
           const { PrismaClient } = require("@prisma/client");
           
           const MIGRATION = "20260416000000_use_date_for_calendar_fields";
@@ -222,7 +222,7 @@ steps:
           pwd
           node -p "process.cwd()"
           node -p "require.resolve('@prisma/client')"
-          node /tmp/check_migration.js
+          node /workspace/check_migration.js
           CHECK_EXIT=$$?
 
           if [ "$$CHECK_EXIT" = "2" ]; then
