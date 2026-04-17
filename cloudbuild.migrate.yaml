@@ -4,7 +4,8 @@ steps:
     args:
       - -lc
       - |
-          echo "🔥 DEBUG: start migrate step"
+          echo "DEBUG_START_MIGRATE_STEP"
+          date -u +"DEBUG_UTC_NOW %Y-%m-%dT%H:%M:%SZ"
           set -euo pipefail
           set -x
 
@@ -78,9 +79,9 @@ steps:
             });
           NODE
 
-          echo "🔥 DEBUG: running readonly check"
+          echo "DEBUG_RUNNING_READONLY_CHECK"
           node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
-          echo "🔥 DEBUG: finished readonly check"
+          echo "DEBUG_FINISHED_READONLY_CHECK"
           # --- end DB readonly debug ---
 
           npx prisma migrate deploy

@@ -24,7 +24,8 @@ steps:
           set -euo pipefail
           set -x
 
-          echo "🔥 DEBUG: start migrate step"
+          echo "DEBUG_START_MIGRATE_STEP"
+          date -u +"DEBUG_UTC_NOW %Y-%m-%dT%H:%M:%SZ"
 
           cleanup() {
             if [ "${PROXY_PID:-}" != "" ]; then
@@ -113,9 +114,9 @@ steps:
             });
           NODE
 
-          echo "🔥 DEBUG: running readonly check"
+          echo "DEBUG_RUNNING_READONLY_CHECK"
           node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
-          echo "🔥 DEBUG: finished readonly check"
+          echo "DEBUG_FINISHED_READONLY_CHECK"
           # --- end DB readonly debug ---
 
           # 若資料庫中有「已失敗」的 migration，prisma migrate deploy 會直接拒絕執行（P3009）。
