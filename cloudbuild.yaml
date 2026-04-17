@@ -24,6 +24,8 @@ steps:
           set -euo pipefail
           set -x
 
+          echo "🔥 DEBUG: start migrate step"
+
           cleanup() {
             if [ "${PROXY_PID:-}" != "" ]; then
               kill "$PROXY_PID" || true
@@ -57,6 +59,64 @@ steps:
 
           npm ci --no-audit --no-fund
           npx prisma -v
+
+          # --- DB readonly debug (must always run; must not fail the build) ---
+          cat > /tmp/db_readonly_check.js <<'NODE'
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+const MIG = "20260416000000_use_date_for_calendar_fields";
+const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
+
+async function main() {
+  const migRows = await prisma.$queryRaw`
+    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+    FROM _prisma_migrations
+    WHERE migration_name = ${MIG}
+    LIMIT 1
+  `;
+  console.log("=== _prisma_migrations row ===");
+  console.log(JSON.stringify(migRows, null, 2));
+
+  const colRows = await prisma.$queryRaw`
+    SELECT table_name, column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
+  `;
+  console.log("=== RevenueRecord.revenueDate type ===");
+  console.log(JSON.stringify(colRows, null, 2));
+
+  const constraintRows = await prisma.$queryRaw`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = ${UNIQUE_NAME}
+  `;
+  const indexRows = await prisma.$queryRaw`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+  `;
+  console.log("=== unique constraint exists? ===");
+  console.log(JSON.stringify(constraintRows, null, 2));
+  console.log("=== unique index exists? ===");
+  console.log(JSON.stringify(indexRows, null, 2));
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("DB readonly check failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+NODE
+
+          echo "🔥 DEBUG: running readonly check"
+          node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
+          echo "🔥 DEBUG: finished readonly check"
+          # --- end DB readonly debug ---
 
           # 若資料庫中有「已失敗」的 migration，prisma migrate deploy 會直接拒絕執行（P3009）。
           # 針對已知的 20260416000000_use_date_for_calendar_fields：
@@ -150,59 +210,6 @@ steps:
             process.exit(1);
           });
 NODE
-cat > /tmp/db_readonly_check.js <<'NODE'
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-
-const MIG = "20260416000000_use_date_for_calendar_fields";
-const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
-
-async function main() {
-  const migRows = await prisma.$queryRaw`
-    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-    FROM _prisma_migrations
-    WHERE migration_name = ${MIG}
-    LIMIT 1
-  `;
-  console.log("=== _prisma_migrations row ===");
-  console.log(JSON.stringify(migRows, null, 2));
-
-  const colRows = await prisma.$queryRaw`
-    SELECT table_name, column_name, data_type
-    FROM information_schema.columns
-    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
-  `;
-  console.log("=== RevenueRecord.revenueDate type ===");
-  console.log(JSON.stringify(colRows, null, 2));
-
-  const constraintRows = await prisma.$queryRaw`
-    SELECT conname
-    FROM pg_constraint
-    WHERE conname = ${UNIQUE_NAME}
-  `;
-  const indexRows = await prisma.$queryRaw`
-    SELECT indexname
-    FROM pg_indexes
-    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
-  `;
-  console.log("=== unique constraint exists? ===");
-  console.log(JSON.stringify(constraintRows, null, 2));
-  console.log("=== unique index exists? ===");
-  console.log(JSON.stringify(indexRows, null, 2));
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((e) => {
-    console.error("DB readonly check failed:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
-NODE
-
-node /tmp/db_readonly_check.js
           node /tmp/check_migration.js
           CHECK_EXIT=$?
           if [ "$CHECK_EXIT" = "2" ]; then
