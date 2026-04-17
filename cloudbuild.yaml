@@ -214,9 +214,9 @@ NODE
           node /tmp/check_migration.js
           CHECK_EXIT=$?
           if [ "$CHECK_EXIT" = "2" ]; then
-  echo "Migration check returned 2; skipping auto-resolve for now"
-  exit 1
-fi
+            echo "Migration check returned 2; skipping auto-resolve for now"
+            exit 1
+          fi
 
           npx prisma migrate deploy
           npm run db:sync-permissions
