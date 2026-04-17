@@ -150,12 +150,65 @@ steps:
             process.exit(1);
           });
 NODE
+cat > /tmp/db_readonly_check.js <<'NODE'
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
+const MIG = "20260416000000_use_date_for_calendar_fields";
+const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
+
+async function main() {
+  const migRows = await prisma.$queryRaw`
+    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+    FROM _prisma_migrations
+    WHERE migration_name = ${MIG}
+    LIMIT 1
+  `;
+  console.log("=== _prisma_migrations row ===");
+  console.log(JSON.stringify(migRows, null, 2));
+
+  const colRows = await prisma.$queryRaw`
+    SELECT table_name, column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
+  `;
+  console.log("=== RevenueRecord.revenueDate type ===");
+  console.log(JSON.stringify(colRows, null, 2));
+
+  const constraintRows = await prisma.$queryRaw`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = ${UNIQUE_NAME}
+  `;
+  const indexRows = await prisma.$queryRaw`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+  `;
+  console.log("=== unique constraint exists? ===");
+  console.log(JSON.stringify(constraintRows, null, 2));
+  console.log("=== unique index exists? ===");
+  console.log(JSON.stringify(indexRows, null, 2));
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("DB readonly check failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+NODE
+
+node /tmp/db_readonly_check.js
           node /tmp/check_migration.js
           CHECK_EXIT=$?
           if [ "$CHECK_EXIT" = "2" ]; then
-            npx prisma migrate resolve --applied 20260416000000_use_date_for_calendar_fields
-          fi
+  echo "Migration check returned 2; skipping auto-resolve for now"
+  exit 1
+fi
 
           npx prisma migrate deploy
           npm run db:sync-permissions
