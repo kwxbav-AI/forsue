@@ -69,18 +69,11 @@ steps:
           cat package.json
 
           echo "DEBUG_AFTER_NPM_CI"
-          cd /workspace
           pwd
-          ls
-          test -d node_modules && echo "node_modules exists" || echo "node_modules missing"
-          test -d node_modules/@prisma && echo "@prisma dir exists" || echo "@prisma dir missing"
           test -d node_modules/@prisma/client && echo "@prisma/client exists" || echo "@prisma/client missing"
-          npm ls @prisma/client || true
           node -p "process.cwd()"
-          node -p "require.resolve('@prisma/client')" || true
+          node -p "require.resolve('@prisma/client')"
 
-          cd /workspace
-          pwd
           node -e "require('@prisma/client'); console.log('prisma-client-ok')"
           npx prisma -v
 
@@ -137,6 +130,10 @@ steps:
           NODE
 
           echo "DEBUG_RUNNING_READONLY_CHECK"
+          cd /workspace
+          pwd
+          node -p "process.cwd()"
+          node -p "require.resolve('@prisma/client')"
           node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
           echo "DEBUG_FINISHED_READONLY_CHECK"
 
@@ -221,6 +218,10 @@ steps:
           });
           NODE
 
+          cd /workspace
+          pwd
+          node -p "process.cwd()"
+          node -p "require.resolve('@prisma/client')"
           node /tmp/check_migration.js
           CHECK_EXIT=$$?
 
