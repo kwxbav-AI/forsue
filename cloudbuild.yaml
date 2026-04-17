@@ -19,13 +19,12 @@ steps:
     id: Migrate
     entrypoint: bash
     args:
-      - -lc
+      - -c
       - |
           set -euo pipefail
           set -x
 
           echo "DEBUG_START_MIGRATE_STEP"
-          date -u +"DEBUG_UTC_NOW %Y-%m-%dT%H:%M:%SZ"
 
           cleanup() {
             if [ "${PROXY_PID:-}" != "" ]; then
@@ -39,12 +38,8 @@ steps:
           curl -fsSL -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.10.0/cloud-sql-proxy.linux.amd64
           chmod +x /usr/local/bin/cloud-sql-proxy
 
-          # 直接寫死 instance 連線名稱（與你現有 migrate yaml 一致）
           /usr/local/bin/cloud-sql-proxy "inventory-dev-kwxbav:asia-east1:daily-performance-system" --port 5432 &
           PROXY_PID=$!
-
-          node -v
-          npm -v
 
           for i in {1..40}; do
             (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break || true
@@ -55,164 +50,151 @@ steps:
             exit 1
           }
 
-          # 注意：這裡仍沿用你現有設定；若要更安全，建議改用 Secret Manager 注入
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
           npm ci --no-audit --no-fund
           npx prisma -v
 
-          # --- DB readonly debug (must always run; must not fail the build) ---
           cat > /tmp/db_readonly_check.js <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
-          const prisma = new PrismaClient();
-          
-          const MIG = "20260416000000_use_date_for_calendar_fields";
-          const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
-          
-          async function main() {
-            const migRows = await prisma.$queryRaw`
-              SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-              FROM _prisma_migrations
-              WHERE migration_name = ${MIG}
-              LIMIT 1
-            `;
-            console.log("=== _prisma_migrations row ===");
-            console.log(JSON.stringify(migRows, null, 2));
-          
-            const colRows = await prisma.$queryRaw`
-              SELECT table_name, column_name, data_type
-              FROM information_schema.columns
-              WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
-            `;
-            console.log("=== RevenueRecord.revenueDate type ===");
-            console.log(JSON.stringify(colRows, null, 2));
-          
-            const constraintRows = await prisma.$queryRaw`
-              SELECT conname
-              FROM pg_constraint
-              WHERE conname = ${UNIQUE_NAME}
-            `;
-            const indexRows = await prisma.$queryRaw`
-              SELECT indexname
-              FROM pg_indexes
-              WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
-            `;
-            console.log("=== unique constraint exists? ===");
-            console.log(JSON.stringify(constraintRows, null, 2));
-            console.log("=== unique index exists? ===");
-            console.log(JSON.stringify(indexRows, null, 2));
-          }
-          
-          main()
-            .then(() => process.exit(0))
-            .catch((e) => {
-              console.error("DB readonly check failed:", e);
-              process.exit(1);
-            })
-            .finally(async () => {
-              await prisma.$disconnect();
-            });
-          NODE
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+const MIG = "20260416000000_use_date_for_calendar_fields";
+const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
+
+async function main() {
+  const migRows = await prisma.$queryRaw`
+    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+    FROM _prisma_migrations
+    WHERE migration_name = ${MIG}
+    LIMIT 1
+  `;
+  console.log("=== _prisma_migrations row ===");
+  console.log(JSON.stringify(migRows, null, 2));
+
+  const colRows = await prisma.$queryRaw`
+    SELECT table_name, column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
+  `;
+  console.log("=== RevenueRecord.revenueDate type ===");
+  console.log(JSON.stringify(colRows, null, 2));
+
+  const constraintRows = await prisma.$queryRaw`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = ${UNIQUE_NAME}
+  `;
+  const indexRows = await prisma.$queryRaw`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+  `;
+  console.log("=== unique constraint exists? ===");
+  console.log(JSON.stringify(constraintRows, null, 2));
+  console.log("=== unique index exists? ===");
+  console.log(JSON.stringify(indexRows, null, 2));
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("DB readonly check failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+NODE
 
           echo "DEBUG_RUNNING_READONLY_CHECK"
           node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
           echo "DEBUG_FINISHED_READONLY_CHECK"
-          # --- end DB readonly debug ---
 
-          # 若資料庫中有「已失敗」的 migration，prisma migrate deploy 會直接拒絕執行（P3009）。
-          # 針對已知的 20260416000000_use_date_for_calendar_fields：
-          # - 若欄位型別其實都已經是 DATE（代表 DDL 已完成或已被手動修復），就自動 resolve，讓後續 deploy 繼續。
-          # - 若欄位仍不是 DATE，表示真的沒跑完，直接 fail 並印出診斷，避免誤標。
           cat > /tmp/check_migration.js <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
+const { PrismaClient } = require("@prisma/client");
 
-          const MIGRATION = "20260416000000_use_date_for_calendar_fields";
-          const expectedDateColumns = [
-            ["AttendanceRecord", "workDate"],
-            ["DispatchRecord", "workDate"],
-            ["WorkhourAdjustment", "workDate"],
-            ["StoreHourDeduction", "workDate"],
-            ["RevenueRecord", "revenueDate"],
-            ["PerformanceDaily", "workDate"],
-            ["PerformanceTargetSetting", "effectiveStartDate"],
-            ["PerformanceTargetSetting", "effectiveEndDate"],
-            ["Holiday", "date"],
-            ["ContentEntry", "workDate"],
-          ];
+const MIGRATION = "20260416000000_use_date_for_calendar_fields";
+const expectedDateColumns = [
+  ["AttendanceRecord", "workDate"],
+  ["DispatchRecord", "workDate"],
+  ["WorkhourAdjustment", "workDate"],
+  ["StoreHourDeduction", "workDate"],
+  ["RevenueRecord", "revenueDate"],
+  ["PerformanceDaily", "workDate"],
+  ["PerformanceTargetSetting", "effectiveStartDate"],
+  ["PerformanceTargetSetting", "effectiveEndDate"],
+  ["Holiday", "date"],
+  ["ContentEntry", "workDate"],
+];
 
-          async function main() {
-            const prisma = new PrismaClient();
-            try {
-              const rows = await prisma.$queryRaw`
-                SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-                FROM _prisma_migrations
-                WHERE migration_name = ${MIGRATION}
-                LIMIT 1
-              `;
-              const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
-              console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
+async function main() {
+  const prisma = new PrismaClient();
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+      FROM _prisma_migrations
+      WHERE migration_name = ${MIGRATION}
+      LIMIT 1
+    `;
+    const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
+    console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
 
-              // 檢查欄位型別是否都已經是 DATE
-              const tupleSql = expectedDateColumns
-                .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
-                .join(", ");
-              const colRows = await prisma.$queryRawUnsafe(
-                `
-                SELECT table_name, column_name, data_type
-                FROM information_schema.columns
-                WHERE (table_name, column_name) IN (${tupleSql})
-                ORDER BY table_name ASC, column_name ASC
-                `
-              );
-              const colList = Array.isArray(colRows) ? colRows : [];
-              console.log("Date column types:", colList);
+    const tupleSql = expectedDateColumns
+      .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
+      .join(", ");
+    const colRows = await prisma.$queryRawUnsafe(
+      `
+      SELECT table_name, column_name, data_type
+      FROM information_schema.columns
+      WHERE (table_name, column_name) IN (${tupleSql})
+      ORDER BY table_name ASC, column_name ASC
+      `
+    );
+    const colList = Array.isArray(colRows) ? colRows : [];
+    const typeByKey = new Map(
+      colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
+    );
 
-              const typeByKey = new Map(
-                colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
-              );
-              const missing = [];
-              const notDate = [];
-              for (const [t, c] of expectedDateColumns) {
-                const k = `${t}.${c}`;
-                const dt = typeByKey.get(k);
-                if (!dt) missing.push(k);
-                else if (dt !== "date") notDate.push({ key: k, data_type: dt });
-              }
-              if (missing.length) {
-                throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
-              }
+    const missing = [];
+    const notDate = [];
+    for (const [t, c] of expectedDateColumns) {
+      const k = `${t}.${c}`;
+      const dt = typeByKey.get(k);
+      if (!dt) missing.push(k);
+      else if (dt !== "date") notDate.push({ key: k, data_type: dt });
+    }
+    if (missing.length) {
+      throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
+    }
 
-              const hasFailedOrIncomplete =
-                mig && mig.finished_at == null && mig.rolled_back_at == null;
-              const allAreDate = notDate.length === 0;
+    const hasFailedOrIncomplete = mig && mig.finished_at == null && mig.rolled_back_at == null;
+    const allAreDate = notDate.length === 0;
+    console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
 
-              console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
+    if (hasFailedOrIncomplete && allAreDate) {
+      process.exit(2);
+    }
+    if (hasFailedOrIncomplete && !allAreDate) {
+      console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
+      process.exit(1);
+    }
 
-              if (hasFailedOrIncomplete && allAreDate) {
-                console.log(
-                  `All target columns are DATE but migration is failed/incomplete. Safe to resolve as applied: ${MIGRATION}`
-                );
-                process.exit(2); // special code: tell bash to run resolve
-              }
+    process.exit(0);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
 
-              if (hasFailedOrIncomplete && !allAreDate) {
-                console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
-                process.exit(1);
-              }
-
-              process.exit(0);
-            } finally {
-              await prisma.$disconnect();
-            }
-          }
-
-          main().catch((e) => {
-            console.error(e);
-            process.exit(1);
-          });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
 NODE
+
           node /tmp/check_migration.js
           CHECK_EXIT=$?
+
           if [ "$CHECK_EXIT" = "2" ]; then
             echo "Migration check returned 2; skipping auto-resolve for now"
             exit 1
@@ -220,7 +202,6 @@ NODE
 
           npx prisma migrate deploy
           npm run db:sync-permissions
-          # cleanup handled by trap
 
   # Deploy to Cloud Run
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
