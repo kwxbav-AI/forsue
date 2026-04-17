@@ -56,141 +56,141 @@ steps:
           npx prisma -v
 
           cat > /tmp/db_readonly_check.js <<'NODE'
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-
-const MIG = "20260416000000_use_date_for_calendar_fields";
-const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
-
-async function main() {
-  const migRows = await prisma.$queryRaw`
-    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-    FROM _prisma_migrations
-    WHERE migration_name = ${MIG}
-    LIMIT 1
-  `;
-  console.log("=== _prisma_migrations row ===");
-  console.log(JSON.stringify(migRows, null, 2));
-
-  const colRows = await prisma.$queryRaw`
-    SELECT table_name, column_name, data_type
-    FROM information_schema.columns
-    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
-  `;
-  console.log("=== RevenueRecord.revenueDate type ===");
-  console.log(JSON.stringify(colRows, null, 2));
-
-  const constraintRows = await prisma.$queryRaw`
-    SELECT conname
-    FROM pg_constraint
-    WHERE conname = ${UNIQUE_NAME}
-  `;
-  const indexRows = await prisma.$queryRaw`
-    SELECT indexname
-    FROM pg_indexes
-    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
-  `;
-  console.log("=== unique constraint exists? ===");
-  console.log(JSON.stringify(constraintRows, null, 2));
-  console.log("=== unique index exists? ===");
-  console.log(JSON.stringify(indexRows, null, 2));
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((e) => {
-    console.error("DB readonly check failed:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
-NODE
+          const { PrismaClient } = require("@prisma/client");
+          const prisma = new PrismaClient();
+          
+          const MIG = "20260416000000_use_date_for_calendar_fields";
+          const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
+          
+          async function main() {
+            const migRows = await prisma.$queryRaw`
+              SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+              FROM _prisma_migrations
+              WHERE migration_name = ${MIG}
+              LIMIT 1
+            `;
+            console.log("=== _prisma_migrations row ===");
+            console.log(JSON.stringify(migRows, null, 2));
+          
+            const colRows = await prisma.$queryRaw`
+              SELECT table_name, column_name, data_type
+              FROM information_schema.columns
+              WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
+            `;
+            console.log("=== RevenueRecord.revenueDate type ===");
+            console.log(JSON.stringify(colRows, null, 2));
+          
+            const constraintRows = await prisma.$queryRaw`
+              SELECT conname
+              FROM pg_constraint
+              WHERE conname = ${UNIQUE_NAME}
+            `;
+            const indexRows = await prisma.$queryRaw`
+              SELECT indexname
+              FROM pg_indexes
+              WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+            `;
+            console.log("=== unique constraint exists? ===");
+            console.log(JSON.stringify(constraintRows, null, 2));
+            console.log("=== unique index exists? ===");
+            console.log(JSON.stringify(indexRows, null, 2));
+          }
+          
+          main()
+            .then(() => process.exit(0))
+            .catch((e) => {
+              console.error("DB readonly check failed:", e);
+              process.exit(1);
+            })
+            .finally(async () => {
+              await prisma.$disconnect();
+            });
+          NODE
 
           echo "DEBUG_RUNNING_READONLY_CHECK"
           node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
           echo "DEBUG_FINISHED_READONLY_CHECK"
 
           cat > /tmp/check_migration.js <<'NODE'
-const { PrismaClient } = require("@prisma/client");
-
-const MIGRATION = "20260416000000_use_date_for_calendar_fields";
-const expectedDateColumns = [
-  ["AttendanceRecord", "workDate"],
-  ["DispatchRecord", "workDate"],
-  ["WorkhourAdjustment", "workDate"],
-  ["StoreHourDeduction", "workDate"],
-  ["RevenueRecord", "revenueDate"],
-  ["PerformanceDaily", "workDate"],
-  ["PerformanceTargetSetting", "effectiveStartDate"],
-  ["PerformanceTargetSetting", "effectiveEndDate"],
-  ["Holiday", "date"],
-  ["ContentEntry", "workDate"],
-];
-
-async function main() {
-  const prisma = new PrismaClient();
-  try {
-    const rows = await prisma.$queryRaw`
-      SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-      FROM _prisma_migrations
-      WHERE migration_name = ${MIGRATION}
-      LIMIT 1
-    `;
-    const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
-    console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
-
-    const tupleSql = expectedDateColumns
-      .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
-      .join(", ");
-    const colRows = await prisma.$queryRawUnsafe(
-      `
-      SELECT table_name, column_name, data_type
-      FROM information_schema.columns
-      WHERE (table_name, column_name) IN (${tupleSql})
-      ORDER BY table_name ASC, column_name ASC
-      `
-    );
-    const colList = Array.isArray(colRows) ? colRows : [];
-    const typeByKey = new Map(
-      colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
-    );
-
-    const missing = [];
-    const notDate = [];
-    for (const [t, c] of expectedDateColumns) {
-      const k = `${t}.${c}`;
-      const dt = typeByKey.get(k);
-      if (!dt) missing.push(k);
-      else if (dt !== "date") notDate.push({ key: k, data_type: dt });
-    }
-    if (missing.length) {
-      throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
-    }
-
-    const hasFailedOrIncomplete = mig && mig.finished_at == null && mig.rolled_back_at == null;
-    const allAreDate = notDate.length === 0;
-    console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
-
-    if (hasFailedOrIncomplete && allAreDate) {
-      process.exit(2);
-    }
-    if (hasFailedOrIncomplete && !allAreDate) {
-      console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
-      process.exit(1);
-    }
-
-    process.exit(0);
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
-NODE
+          const { PrismaClient } = require("@prisma/client");
+          
+          const MIGRATION = "20260416000000_use_date_for_calendar_fields";
+          const expectedDateColumns = [
+            ["AttendanceRecord", "workDate"],
+            ["DispatchRecord", "workDate"],
+            ["WorkhourAdjustment", "workDate"],
+            ["StoreHourDeduction", "workDate"],
+            ["RevenueRecord", "revenueDate"],
+            ["PerformanceDaily", "workDate"],
+            ["PerformanceTargetSetting", "effectiveStartDate"],
+            ["PerformanceTargetSetting", "effectiveEndDate"],
+            ["Holiday", "date"],
+            ["ContentEntry", "workDate"],
+          ];
+          
+          async function main() {
+            const prisma = new PrismaClient();
+            try {
+              const rows = await prisma.$queryRaw`
+                SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+                FROM _prisma_migrations
+                WHERE migration_name = ${MIGRATION}
+                LIMIT 1
+              `;
+              const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
+              console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
+          
+              const tupleSql = expectedDateColumns
+                .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
+                .join(", ");
+              const colRows = await prisma.$queryRawUnsafe(
+                `
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE (table_name, column_name) IN (${tupleSql})
+                ORDER BY table_name ASC, column_name ASC
+                `
+              );
+              const colList = Array.isArray(colRows) ? colRows : [];
+              const typeByKey = new Map(
+                colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
+              );
+          
+              const missing = [];
+              const notDate = [];
+              for (const [t, c] of expectedDateColumns) {
+                const k = `${t}.${c}`;
+                const dt = typeByKey.get(k);
+                if (!dt) missing.push(k);
+                else if (dt !== "date") notDate.push({ key: k, data_type: dt });
+              }
+              if (missing.length) {
+                throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
+              }
+          
+              const hasFailedOrIncomplete = mig && mig.finished_at == null && mig.rolled_back_at == null;
+              const allAreDate = notDate.length === 0;
+              console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
+          
+              if (hasFailedOrIncomplete && allAreDate) {
+                process.exit(2);
+              }
+              if (hasFailedOrIncomplete && !allAreDate) {
+                console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
+                process.exit(1);
+              }
+          
+              process.exit(0);
+            } finally {
+              await prisma.$disconnect();
+            }
+          }
+          
+          main().catch((e) => {
+            console.error(e);
+            process.exit(1);
+          });
+          NODE
 
           node /tmp/check_migration.js
           CHECK_EXIT=$?
