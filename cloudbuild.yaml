@@ -27,9 +27,9 @@ steps:
           echo "DEBUG_START_MIGRATE_STEP"
 
           cleanup() {
-            if [ "${PROXY_PID:-}" != "" ]; then
-              kill "$PROXY_PID" || true
-              wait "$PROXY_PID" 2>/dev/null || true
+            if [ "$${PROXY_PID:-}" != "" ]; then
+              kill "$$PROXY_PID" || true
+              wait "$$PROXY_PID" 2>/dev/null || true
             fi
           }
           trap cleanup EXIT
@@ -39,7 +39,7 @@ steps:
           chmod +x /usr/local/bin/cloud-sql-proxy
 
           /usr/local/bin/cloud-sql-proxy "inventory-dev-kwxbav:asia-east1:daily-performance-system" --port 5432 &
-          PROXY_PID=$!
+          PROXY_PID=$$!
 
           for i in {1..40}; do
             (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break || true
@@ -66,7 +66,7 @@ steps:
             const migRows = await prisma.$queryRaw`
               SELECT migration_name, started_at, finished_at, rolled_back_at, logs
               FROM _prisma_migrations
-              WHERE migration_name = ${MIG}
+              WHERE migration_name = $${MIG}
               LIMIT 1
             `;
             console.log("=== _prisma_migrations row ===");
@@ -83,12 +83,12 @@ steps:
             const constraintRows = await prisma.$queryRaw`
               SELECT conname
               FROM pg_constraint
-              WHERE conname = ${UNIQUE_NAME}
+              WHERE conname = $${UNIQUE_NAME}
             `;
             const indexRows = await prisma.$queryRaw`
               SELECT indexname
               FROM pg_indexes
-              WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+              WHERE schemaname = 'public' AND indexname = $${UNIQUE_NAME}
             `;
             console.log("=== unique constraint exists? ===");
             console.log(JSON.stringify(constraintRows, null, 2));
@@ -134,7 +134,7 @@ steps:
               const rows = await prisma.$queryRaw`
                 SELECT migration_name, started_at, finished_at, rolled_back_at, logs
                 FROM _prisma_migrations
-                WHERE migration_name = ${MIGRATION}
+                WHERE migration_name = $${MIGRATION}
                 LIMIT 1
               `;
               const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
@@ -147,25 +147,25 @@ steps:
                 `
                 SELECT table_name, column_name, data_type
                 FROM information_schema.columns
-                WHERE (table_name, column_name) IN (${tupleSql})
+                WHERE (table_name, column_name) IN ($${tupleSql})
                 ORDER BY table_name ASC, column_name ASC
                 `
               );
               const colList = Array.isArray(colRows) ? colRows : [];
               const typeByKey = new Map(
-                colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
+                colList.map((r) => [`$${r.table_name}.$${r.column_name}`, String(r.data_type || "")])
               );
           
               const missing = [];
               const notDate = [];
               for (const [t, c] of expectedDateColumns) {
-                const k = `${t}.${c}`;
+                const k = `$${t}.$${c}`;
                 const dt = typeByKey.get(k);
                 if (!dt) missing.push(k);
                 else if (dt !== "date") notDate.push({ key: k, data_type: dt });
               }
               if (missing.length) {
-                throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
+                throw new Error(`Cannot verify column types, missing: $${missing.join(", ")}`);
               }
           
               const hasFailedOrIncomplete = mig && mig.finished_at == null && mig.rolled_back_at == null;
@@ -193,9 +193,9 @@ steps:
           NODE
 
           node /tmp/check_migration.js
-          CHECK_EXIT=$?
+          CHECK_EXIT=$$?
 
-          if [ "$CHECK_EXIT" = "2" ]; then
+          if [ "$$CHECK_EXIT" = "2" ]; then
             echo "Migration check returned 2; skipping auto-resolve for now"
             exit 1
           fi
