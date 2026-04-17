@@ -8,6 +8,7 @@ COPY package.json package-lock.json ./
 # Prisma postinstall runs `prisma generate` which needs the schema present.
 COPY prisma ./prisma
 RUN npm ci
+RUN node -e "require('@prisma/client'); console.log('prisma-client-ok')"
 
 # Build
 FROM base AS build
