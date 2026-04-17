@@ -679,18 +679,17 @@ export async function uploadDailyRevenue(
 
   const storeLookup = await buildStoreCodeLookup();
 
-  // 先依 (日期, 門市) 彙總各 POS (A/B/C...) 的金額，再寫入資料庫
-  const aggregated = new Map<
-    string,
-    {
-      revenueDate: Date;
-      storeId: string;
-      amount: Decimal;
-      cashIncome: Decimal;
-      linePayAmount: Decimal;
-      expenseAmount: Decimal;
-    }
-  >();
+  // 業務規則：同一間店在同一天可能會日結多次，因此不能再以 (日期, 門市) 做唯一 upsert。
+  // 這裡改為「逐筆新增」；若需要去重/覆蓋，應以檔案本身提供的日結序號或時間戳來建模。
+  const rowsToCreate: {
+    revenueDate: Date;
+    storeId: string;
+    revenueAmount: number;
+    cashIncome: number;
+    linePayAmount: number;
+    expenseAmount: number;
+    uploadBatchId: string;
+  }[] = [];
 
   for (const row of parsed.data) {
     const storeId = storeLookup.get(row.storeCode.trim()) ?? null;
@@ -698,60 +697,21 @@ export async function uploadDailyRevenue(
       errors.push({ row: 0, field: "storeCode", message: `找不到門市：${row.storeCode}` });
       continue;
     }
-
-    const revenueDate = toStartOfDay(row.revenueDate);
-    const key = `${revenueDate.toISOString()}:${storeId}`;
-    const existing = aggregated.get(key);
-    if (existing) {
-      existing.amount = existing.amount.plus(row.revenueAmount);
-      existing.cashIncome = existing.cashIncome.plus(row.cashIncome);
-      existing.linePayAmount = existing.linePayAmount.plus(row.linePayAmount);
-      existing.expenseAmount = existing.expenseAmount.plus(row.expenseAmount);
-    } else {
-      aggregated.set(key, {
-        revenueDate,
-        storeId,
-        amount: row.revenueAmount,
-        cashIncome: row.cashIncome,
-        linePayAmount: row.linePayAmount,
-        expenseAmount: row.expenseAmount,
-      });
-    }
+    rowsToCreate.push({
+      revenueDate: toStartOfDay(row.revenueDate),
+      storeId,
+      revenueAmount: row.revenueAmount.toNumber(),
+      cashIncome: row.cashIncome.toNumber(),
+      linePayAmount: row.linePayAmount.toNumber(),
+      expenseAmount: row.expenseAmount.toNumber(),
+      uploadBatchId: batch.id,
+    });
   }
 
-  const aggList: any[] = [];
-  aggregated.forEach((v) => aggList.push(v));
-  const UPSERT_CHUNK = 32;
-  for (let i = 0; i < aggList.length; i += UPSERT_CHUNK) {
-    const chunk = aggList.slice(i, i + UPSERT_CHUNK);
-    await Promise.all(
-      chunk.map(({ revenueDate, storeId, amount, cashIncome, linePayAmount, expenseAmount }) =>
-        prisma.revenueRecord.upsert({
-          where: {
-            revenueDate_storeId: {
-              revenueDate,
-              storeId,
-            },
-          },
-          create: {
-            revenueDate,
-            storeId,
-            revenueAmount: amount.toNumber(),
-            cashIncome: cashIncome.toNumber(),
-            linePayAmount: linePayAmount.toNumber(),
-            expenseAmount: expenseAmount.toNumber(),
-            uploadBatchId: batch.id,
-          },
-          update: {
-            revenueAmount: amount.toNumber(),
-            cashIncome: cashIncome.toNumber(),
-            linePayAmount: linePayAmount.toNumber(),
-            expenseAmount: expenseAmount.toNumber(),
-            uploadBatchId: batch.id,
-          },
-        })
-      )
-    );
+  const CREATE_CHUNK = 128;
+  for (let i = 0; i < rowsToCreate.length; i += CREATE_CHUNK) {
+    const chunk = rowsToCreate.slice(i, i + CREATE_CHUNK);
+    await prisma.revenueRecord.createMany({ data: chunk });
     imported += chunk.length;
   }
 
