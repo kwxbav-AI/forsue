@@ -680,10 +680,11 @@ export async function uploadDailyRevenue(
   const storeLookup = await buildStoreCodeLookup();
 
   // 業務規則：同一間店在同一天可能會日結多次，因此不能再以 (日期, 門市) 做唯一 upsert。
-  // 這裡改為「逐筆新增」；若需要去重/覆蓋，應以檔案本身提供的日結序號或時間戳來建模。
+  // 若檔案提供結帳單號（checkoutNo），則以 (storeId, revenueDate, checkoutNo) 做去重，讓重覆上傳同一筆日結保持冪等。
   const rowsToCreate: {
     revenueDate: Date;
     storeId: string;
+    checkoutNo: string | null;
     revenueAmount: number;
     cashIncome: number;
     linePayAmount: number;
@@ -700,6 +701,7 @@ export async function uploadDailyRevenue(
     rowsToCreate.push({
       revenueDate: toStartOfDay(row.revenueDate),
       storeId,
+      checkoutNo: row.checkoutNo ?? null,
       revenueAmount: row.revenueAmount.toNumber(),
       cashIncome: row.cashIncome.toNumber(),
       linePayAmount: row.linePayAmount.toNumber(),
@@ -711,7 +713,8 @@ export async function uploadDailyRevenue(
   const CREATE_CHUNK = 128;
   for (let i = 0; i < rowsToCreate.length; i += CREATE_CHUNK) {
     const chunk = rowsToCreate.slice(i, i + CREATE_CHUNK);
-    await prisma.revenueRecord.createMany({ data: chunk });
+    // 有唯一索引 (storeId, revenueDate, checkoutNo) 後，可用 skipDuplicates 避免重覆上傳同一筆日結。
+    await prisma.revenueRecord.createMany({ data: chunk, skipDuplicates: true });
     imported += chunk.length;
   }
 

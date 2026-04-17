@@ -40,6 +40,7 @@ export const EMPLOYEE_MASTER_COLUMNS = {
 export const REVENUE_COLUMNS = {
   revenueDate: ["營收日期", "交易日期", "交班日期", "日期", "revenueDate", "date", "Date"],
   storeCode: ["門市代碼", "門市", "storeCode", "店別", "店號", "櫃檯號碼", "櫃檯", "櫃號"],
+  checkoutNo: ["結帳單號", "結帳單號碼", "交班單號", "日結單號", "單號", "checkoutNo", "receiptNo"],
   revenueAmount: [
     "合計總額",
     "營收金額",

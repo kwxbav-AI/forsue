@@ -195,6 +195,7 @@ model RevenueRecord {
   id            String   @id @default(cuid())
   revenueDate   DateTime @db.Date
   storeId       String
+  checkoutNo    String?
   revenueAmount Decimal  @db.Decimal(12, 2)
   cashIncome    Decimal  @db.Decimal(12, 2) @default(0)
   linePayAmount Decimal  @db.Decimal(12, 2) @default(0)
@@ -205,6 +206,7 @@ model RevenueRecord {
   store         Store    @relation(fields: [storeId], references: [id])
   @@index([revenueDate])
   @@index([revenueDate, storeId])
+  @@unique([storeId, revenueDate, checkoutNo])
 }
 
 enum AdjustmentType {

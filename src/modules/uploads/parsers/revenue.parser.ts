@@ -14,6 +14,7 @@ import { toDecimal } from "@/lib/number";
 export interface RevenueRow {
   revenueDate: Date;
   storeCode: string;
+  checkoutNo: string | null;
   revenueAmount: Decimal;
   cashIncome: Decimal;
   linePayAmount: Decimal;
@@ -157,6 +158,8 @@ export function parseRevenueSheet(buffer: Buffer): ParseResult<RevenueRow> {
     const revenueDateRaw = headerMap.revenueDate !== undefined ? row[headerMap.revenueDate] : undefined;
     const revenueDateStr = getCell(row, headerMap.revenueDate);
     const storeCode = getCell(row, headerMap.storeCode);
+    const checkoutNo =
+      headerMap.checkoutNo !== undefined ? getCell(row, headerMap.checkoutNo) || "" : "";
     const revenueAmountStr = getCell(row, headerMap.revenueAmount);
     const cashIncomeStr =
       headerMap.cashIncome !== undefined ? getCell(row, headerMap.cashIncome) : "";
@@ -198,6 +201,7 @@ export function parseRevenueSheet(buffer: Buffer): ParseResult<RevenueRow> {
     data.push({
       revenueDate,
       storeCode,
+      checkoutNo: checkoutNo.trim() ? checkoutNo.trim() : null,
       revenueAmount,
       cashIncome,
       linePayAmount,
