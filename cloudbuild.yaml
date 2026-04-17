@@ -24,6 +24,12 @@ steps:
           set -euo pipefail
           set -x
 
+          cd /workspace
+          pwd
+          ls
+          test -f package.json
+          test -f prisma/schema.prisma
+
           echo "DEBUG_START_MIGRATE_STEP"
 
           cleanup() {
@@ -53,6 +59,7 @@ steps:
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
           npm ci --no-audit --no-fund
+          node -e "require('@prisma/client'); console.log('prisma-client-ok')"
           npx prisma -v
 
           cat > /tmp/db_readonly_check.js <<'NODE'
