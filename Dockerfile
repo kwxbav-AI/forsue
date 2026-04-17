@@ -24,7 +24,6 @@ ENV NODE_ENV=production
 # Cloud Run uses PORT env var; Next will respect it, but we pass -p explicitly in start script too.
 ENV PORT=8080
 
-COPY --from=build /app/public ./public
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
