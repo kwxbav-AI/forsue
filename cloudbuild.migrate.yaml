@@ -4,7 +4,9 @@ steps:
     args:
       - -lc
       - |
+          echo "🔥 DEBUG: start migrate step"
           set -euo pipefail
+          set -x
 
           apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
           curl -fsSL -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.10.0/cloud-sql-proxy.linux.amd64
@@ -22,6 +24,65 @@ steps:
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
           npm ci
+
+          # --- DB readonly debug (must always run; must not fail the build) ---
+          cat > /tmp/db_readonly_check.js <<'NODE'
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+const MIG = "20260416000000_use_date_for_calendar_fields";
+const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
+
+async function main() {
+  const migRows = await prisma.$queryRaw`
+    SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+    FROM _prisma_migrations
+    WHERE migration_name = ${MIG}
+    LIMIT 1
+  `;
+  console.log("=== _prisma_migrations row ===");
+  console.log(JSON.stringify(migRows, null, 2));
+
+  const colRows = await prisma.$queryRaw`
+    SELECT table_name, column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
+  `;
+  console.log("=== RevenueRecord.revenueDate type ===");
+  console.log(JSON.stringify(colRows, null, 2));
+
+  const constraintRows = await prisma.$queryRaw`
+    SELECT conname
+    FROM pg_constraint
+    WHERE conname = ${UNIQUE_NAME}
+  `;
+  const indexRows = await prisma.$queryRaw`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = ${UNIQUE_NAME}
+  `;
+  console.log("=== unique constraint exists? ===");
+  console.log(JSON.stringify(constraintRows, null, 2));
+  console.log("=== unique index exists? ===");
+  console.log(JSON.stringify(indexRows, null, 2));
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("DB readonly check failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+NODE
+
+          echo "🔥 DEBUG: running readonly check"
+          node /tmp/db_readonly_check.js || echo "readonly check failed but continuing"
+          echo "🔥 DEBUG: finished readonly check"
+          # --- end DB readonly debug ---
+
           npx prisma migrate deploy
 
           # 關閉 Cloud SQL Proxy（避免 build step 殘留背景程序）
