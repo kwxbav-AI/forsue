@@ -22,6 +22,15 @@ steps:
       - -lc
       - |
           set -euo pipefail
+          set -x
+
+          cleanup() {
+            if [ "${PROXY_PID:-}" != "" ]; then
+              kill "$PROXY_PID" || true
+              wait "$PROXY_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
 
           apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
           curl -fsSL -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.10.0/cloud-sql-proxy.linux.amd64
@@ -31,20 +40,126 @@ steps:
           /usr/local/bin/cloud-sql-proxy "inventory-dev-kwxbav:asia-east1:daily-performance-system" --port 5432 &
           PROXY_PID=$!
 
+          node -v
+          npm -v
+
           for i in {1..40}; do
             (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break || true
             sleep 0.5
           done
+          (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 || {
+            echo "Cloud SQL Proxy not ready on 127.0.0.1:5432" 1>&2
+            exit 1
+          }
 
           # 注意：這裡仍沿用你現有設定；若要更安全，建議改用 Secret Manager 注入
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
-          npm ci
+          npm ci --no-audit --no-fund
+          npx prisma -v
+
+          # 若資料庫中有「已失敗」的 migration，prisma migrate deploy 會直接拒絕執行（P3009）。
+          # 針對已知的 20260416000000_use_date_for_calendar_fields：
+          # - 若欄位型別其實都已經是 DATE（代表 DDL 已完成或已被手動修復），就自動 resolve，讓後續 deploy 繼續。
+          # - 若欄位仍不是 DATE，表示真的沒跑完，直接 fail 並印出診斷，避免誤標。
+          cat > /tmp/check_migration.js <<'NODE'
+          const { PrismaClient } = require("@prisma/client");
+
+          const MIGRATION = "20260416000000_use_date_for_calendar_fields";
+          const expectedDateColumns = [
+            ["AttendanceRecord", "workDate"],
+            ["DispatchRecord", "workDate"],
+            ["WorkhourAdjustment", "workDate"],
+            ["StoreHourDeduction", "workDate"],
+            ["RevenueRecord", "revenueDate"],
+            ["PerformanceDaily", "workDate"],
+            ["PerformanceTargetSetting", "effectiveStartDate"],
+            ["PerformanceTargetSetting", "effectiveEndDate"],
+            ["Holiday", "date"],
+            ["ContentEntry", "workDate"],
+          ];
+
+          async function main() {
+            const prisma = new PrismaClient();
+            try {
+              const rows = await prisma.$queryRaw`
+                SELECT migration_name, started_at, finished_at, rolled_back_at, logs
+                FROM _prisma_migrations
+                WHERE migration_name = ${MIGRATION}
+                LIMIT 1
+              `;
+              const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
+              console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
+
+              // 檢查欄位型別是否都已經是 DATE
+              const colRows = await prisma.$queryRaw`
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE (${PrismaClient.sql.join(
+                  expectedDateColumns.map(([t, c]) =>
+                    PrismaClient.sql`(table_name = ${t} AND column_name = ${c})`
+                  ),
+                  PrismaClient.sql` OR `
+                )})
+                ORDER BY table_name ASC, column_name ASC
+              `;
+              const colList = Array.isArray(colRows) ? colRows : [];
+              console.log("Date column types:", colList);
+
+              const typeByKey = new Map(
+                colList.map((r) => [`${r.table_name}.${r.column_name}`, String(r.data_type || "")])
+              );
+              const missing = [];
+              const notDate = [];
+              for (const [t, c] of expectedDateColumns) {
+                const k = `${t}.${c}`;
+                const dt = typeByKey.get(k);
+                if (!dt) missing.push(k);
+                else if (dt !== "date") notDate.push({ key: k, data_type: dt });
+              }
+              if (missing.length) {
+                throw new Error(`Cannot verify column types, missing: ${missing.join(", ")}`);
+              }
+
+              const hasFailedOrIncomplete =
+                mig && mig.finished_at == null && mig.rolled_back_at == null;
+              const allAreDate = notDate.length === 0;
+
+              console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
+
+              if (hasFailedOrIncomplete && allAreDate) {
+                console.log(
+                  `All target columns are DATE but migration is failed/incomplete. Safe to resolve as applied: ${MIGRATION}`
+                );
+                process.exit(2); // special code: tell bash to run resolve
+              }
+
+              if (hasFailedOrIncomplete && !allAreDate) {
+                console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
+                process.exit(1);
+              }
+
+              process.exit(0);
+            } finally {
+              await prisma.$disconnect();
+            }
+          }
+
+          main().catch((e) => {
+            console.error(e);
+            process.exit(1);
+          });
+NODE
+
+          node /tmp/check_migration.js
+          CHECK_EXIT=$?
+          if [ "$CHECK_EXIT" = "2" ]; then
+            npx prisma migrate resolve --applied 20260416000000_use_date_for_calendar_fields
+          fi
+
           npx prisma migrate deploy
           npm run db:sync-permissions
-
-          kill "$PROXY_PID" || true
-          wait "$PROXY_PID" 2>/dev/null || true
+          # cleanup handled by trap
 
   # Deploy to Cloud Run
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
