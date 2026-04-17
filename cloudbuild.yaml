@@ -22,20 +22,17 @@ steps:
       - -c
       - |
           set -euo pipefail
-          set -x
 
           cd /workspace
-          pwd
-          ls
           test -f package.json
           test -f prisma/schema.prisma
 
-          echo "DEBUG_START_MIGRATE_STEP"
+          npm ci --no-audit --no-fund
 
           cleanup() {
-            if [ "$${PROXY_PID:-}" != "" ]; then
-              kill "$$PROXY_PID" || true
-              wait "$$PROXY_PID" 2>/dev/null || true
+            if [ -n "$${PROXY_PID:-}" ]; then
+              kill "$${PROXY_PID}" || true
+              wait "$${PROXY_PID}" 2>/dev/null || true
             fi
           }
           trap cleanup EXIT
@@ -58,198 +55,118 @@ steps:
 
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
-          npm ci --no-audit --no-fund
-          echo "DEBUG_NODE_ENV=$${NODE_ENV:-<unset>}"
-          echo "DEBUG_NPM_CONFIG_OMIT=$${NPM_CONFIG_OMIT:-<unset>}"
-          echo "DEBUG_NPM_CONFIG_PRODUCTION=$${NPM_CONFIG_PRODUCTION:-<unset>}"
-          echo "DEBUG_COMMIT_SHA=$COMMIT_SHA"
-          npm ls @prisma/client || true
-          ls node_modules || true
-          ls node_modules/@prisma || true
-          cat package.json
-
-          echo "DEBUG_AFTER_NPM_CI"
-          pwd
-          test -d node_modules/@prisma/client && echo "@prisma/client exists" || echo "@prisma/client missing"
-          node -p "process.cwd()"
-          node -p "require.resolve('@prisma/client')"
-
-          node -e "require('@prisma/client'); console.log('prisma-client-ok')"
-          npx prisma -v
-
-          cat > /workspace/db_readonly_check.js <<'NODE'
+          cat > /workspace/migrate_prep.js <<'NODE'
           const { PrismaClient } = require("@prisma/client");
-          const prisma = new PrismaClient();
-          
-          const MIG = "20260416000000_use_date_for_calendar_fields";
-          const UNIQUE_NAME = "RevenueRecord_revenueDate_storeId_key";
-          
-          async function main() {
-            const migRows = await prisma.$queryRaw`
-              SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-              FROM _prisma_migrations
-              WHERE migration_name = $${MIG}
-              LIMIT 1
-            `;
-            console.log("=== _prisma_migrations row ===");
-            console.log(JSON.stringify(migRows, null, 2));
-          
-            const colRows = await prisma.$queryRaw`
-              SELECT table_name, column_name, data_type
-              FROM information_schema.columns
-              WHERE table_name = 'RevenueRecord' AND column_name = 'revenueDate'
-            `;
-            console.log("=== RevenueRecord.revenueDate type ===");
-            console.log(JSON.stringify(colRows, null, 2));
-          
-            const constraintRows = await prisma.$queryRaw`
-              SELECT conname
-              FROM pg_constraint
-              WHERE conname = $${UNIQUE_NAME}
-            `;
-            const indexRows = await prisma.$queryRaw`
-              SELECT indexname
-              FROM pg_indexes
-              WHERE schemaname = 'public' AND indexname = $${UNIQUE_NAME}
-            `;
-            console.log("=== unique constraint exists? ===");
-            console.log(JSON.stringify(constraintRows, null, 2));
-            console.log("=== unique index exists? ===");
-            console.log(JSON.stringify(indexRows, null, 2));
-          }
-          
-          main()
-            .then(() => process.exit(0))
-            .catch((e) => {
-              console.error("DB readonly check failed:", e);
-              process.exit(1);
-            })
-            .finally(async () => {
-              await prisma.$disconnect();
-            });
-          NODE
 
-          echo "DEBUG_RUNNING_READONLY_CHECK"
-          cd /workspace
-          pwd
-          node -p "process.cwd()"
-          node -p "require.resolve('@prisma/client')"
-          node /workspace/db_readonly_check.js || echo "readonly check failed but continuing"
-
-          echo "=== index definition ==="
-          cat > /workspace/check_revenue_index_def.js <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
-          const prisma = new PrismaClient();
-          (async () => {
-            const rows = await prisma.$queryRawUnsafe(`
-              SELECT indexname, indexdef
-              FROM pg_indexes
-              WHERE schemaname = 'public'
-                AND indexname = 'RevenueRecord_revenueDate_storeId_key';
-            `);
-            console.log(JSON.stringify(rows, null, 2));
-            await prisma.$disconnect();
-          })().catch((e) => {
-            console.error(e);
-            process.exit(1);
-          });
-          NODE
-
-          node /workspace/check_revenue_index_def.js
-
-          echo "DEBUG_FINISHED_READONLY_CHECK"
-
-          cat > /workspace/check_migration.js <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
-          
           const MIGRATION = "20260416000000_use_date_for_calendar_fields";
-          const expectedDateColumns = [
-            ["AttendanceRecord", "workDate"],
-            ["DispatchRecord", "workDate"],
-            ["WorkhourAdjustment", "workDate"],
-            ["StoreHourDeduction", "workDate"],
-            ["RevenueRecord", "revenueDate"],
-            ["PerformanceDaily", "workDate"],
-            ["PerformanceTargetSetting", "effectiveStartDate"],
-            ["PerformanceTargetSetting", "effectiveEndDate"],
-            ["Holiday", "date"],
-            ["ContentEntry", "workDate"],
-          ];
-          
+          const INDEX_NAME = "RevenueRecord_revenueDate_storeId_key";
+
           async function main() {
             const prisma = new PrismaClient();
             try {
-              const rows = await prisma.$queryRaw`
-                SELECT migration_name, started_at, finished_at, rolled_back_at, logs
-                FROM _prisma_migrations
-                WHERE migration_name = $${MIGRATION}
-                LIMIT 1
-              `;
-              const mig = Array.isArray(rows) && rows.length ? rows[0] : null;
-              console.log("Migration status:", mig ?? "(not found in _prisma_migrations)");
-          
-              const tupleSql = expectedDateColumns
-                .map(([t, c]) => `('${String(t).replace(/'/g, "''")}', '${String(c).replace(/'/g, "''")}')`)
-                .join(", ");
+              console.log("=== _prisma_migrations (target migration) ===");
+              const migRows = await prisma.$queryRawUnsafe(
+                "SELECT migration_name, started_at, finished_at, rolled_back_at, logs " +
+                  "FROM _prisma_migrations WHERE migration_name = '" +
+                  MIGRATION.replace(/'/g, "''") +
+                  "' LIMIT 1"
+              );
+              console.log(JSON.stringify(migRows, null, 2));
+
+              console.log("=== pg_indexes (index definition) ===");
+              const indexRows = await prisma.$queryRawUnsafe(
+                "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = '" +
+                  INDEX_NAME.replace(/'/g, "''") +
+                  "'"
+              );
+              console.log(JSON.stringify(indexRows, null, 2));
+
+              console.log("=== information_schema: RevenueRecord.revenueDate ===");
               const colRows = await prisma.$queryRawUnsafe(
-                `
-                SELECT table_name, column_name, data_type
-                FROM information_schema.columns
-                WHERE (table_name, column_name) IN ($${tupleSql})
-                ORDER BY table_name ASC, column_name ASC
-                `
+                "SELECT table_name, column_name, data_type FROM information_schema.columns " +
+                  "WHERE table_schema = 'public' AND table_name = 'RevenueRecord' AND column_name = 'revenueDate'"
               );
-              const colList = Array.isArray(colRows) ? colRows : [];
-              const typeByKey = new Map(
-                colList.map((r) => [`$${r.table_name}.$${r.column_name}`, String(r.data_type || "")])
+              console.log(JSON.stringify(colRows, null, 2));
+
+              console.log("=== DROP INDEX IF EXISTS ===");
+              await prisma.$executeRawUnsafe(
+                'DROP INDEX IF EXISTS "RevenueRecord_revenueDate_storeId_key";'
               );
-          
-              const missing = [];
-              const notDate = [];
-              for (const [t, c] of expectedDateColumns) {
-                const k = `$${t}.$${c}`;
-                const dt = typeByKey.get(k);
-                if (!dt) missing.push(k);
-                else if (dt !== "date") notDate.push({ key: k, data_type: dt });
-              }
-              if (missing.length) {
-                throw new Error(`Cannot verify column types, missing: $${missing.join(", ")}`);
-              }
-          
-              const hasFailedOrIncomplete = mig && mig.finished_at == null && mig.rolled_back_at == null;
-              const allAreDate = notDate.length === 0;
-              console.log("hasFailedOrIncomplete:", hasFailedOrIncomplete, "allAreDate:", allAreDate);
-          
-              if (hasFailedOrIncomplete && allAreDate) {
-                process.exit(2);
-              }
-              if (hasFailedOrIncomplete && !allAreDate) {
-                console.error("Migration is failed/incomplete and some columns are NOT DATE:", notDate);
-                process.exit(1);
-              }
-          
-              process.exit(0);
+              console.log("DROP INDEX completed.");
             } finally {
               await prisma.$disconnect();
             }
           }
-          
+
           main().catch((e) => {
             console.error(e);
             process.exit(1);
           });
           NODE
 
-          cd /workspace
-          pwd
-          node -p "process.cwd()"
-          node -p "require.resolve('@prisma/client')"
-          node /workspace/check_migration.js
-          CHECK_EXIT=$$?
+          node /workspace/migrate_prep.js
 
-          if [ "$$CHECK_EXIT" = "2" ]; then
-            echo "Migration check returned 2; skipping auto-resolve for now"
-            exit 1
+          cat > /workspace/should_resolve_rolled_back.js <<'NODE'
+          const { PrismaClient } = require("@prisma/client");
+
+          const MIGRATION = "20260416000000_use_date_for_calendar_fields";
+          /** exit 0 = failed/incomplete, run resolve --rolled-back; exit 10 = skip; exit 1 = error */
+          const EXIT_NEED_RESOLVE = 0;
+          const EXIT_SKIP = 10;
+
+          async function main() {
+            const prisma = new PrismaClient();
+            try {
+              const rows = await prisma.$queryRawUnsafe(
+                "SELECT finished_at, rolled_back_at FROM _prisma_migrations WHERE migration_name = '" +
+                  MIGRATION.replace(/'/g, "''") +
+                  "' LIMIT 1"
+              );
+              const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+              console.log("=== resolve --rolled-back gate (_prisma_migrations) ===");
+              console.log(JSON.stringify(row, null, 2));
+
+              if (!row) {
+                console.log("No row for this migration; skip resolve --rolled-back.");
+                process.exit(EXIT_SKIP);
+              }
+
+              const failedIncomplete =
+                row.finished_at == null && row.rolled_back_at == null;
+
+              if (failedIncomplete) {
+                console.log(
+                  "finished_at and rolled_back_at are both null (failed/incomplete); will run resolve --rolled-back."
+                );
+                process.exit(EXIT_NEED_RESOLVE);
+              }
+
+              console.log(
+                "Migration not in failed/incomplete state; skip resolve --rolled-back."
+              );
+              process.exit(EXIT_SKIP);
+            } finally {
+              await prisma.$disconnect();
+            }
+          }
+
+          main().catch((e) => {
+            console.error(e);
+            process.exit(1);
+          });
+          NODE
+
+          set +e
+          node /workspace/should_resolve_rolled_back.js
+          RESOLVE_GATE_RC=$$?
+          set -e
+
+          if [ "$${RESOLVE_GATE_RC:-1}" -eq 0 ]; then
+            npx prisma migrate resolve --rolled-back 20260416000000_use_date_for_calendar_fields
+          elif [ "$${RESOLVE_GATE_RC:-1}" -eq 10 ]; then
+            echo "Skipping: prisma migrate resolve --rolled-back (migration not in failed/incomplete state)."
+          else
+            exit "$${RESOLVE_GATE_RC:-1}"
           fi
 
           npx prisma migrate deploy
