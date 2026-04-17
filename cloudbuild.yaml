@@ -59,9 +59,9 @@ steps:
           export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
 
           npm ci --no-audit --no-fund
-          echo "DEBUG_NODE_ENV=$$NODE_ENV"
-          echo "DEBUG_NPM_CONFIG_OMIT=$$NPM_CONFIG_OMIT"
-          echo "DEBUG_NPM_CONFIG_PRODUCTION=$$NPM_CONFIG_PRODUCTION"
+          echo "DEBUG_NODE_ENV=$${NODE_ENV:-<unset>}"
+          echo "DEBUG_NPM_CONFIG_OMIT=$${NPM_CONFIG_OMIT:-<unset>}"
+          echo "DEBUG_NPM_CONFIG_PRODUCTION=$${NPM_CONFIG_PRODUCTION:-<unset>}"
           npm ls @prisma/client || true
           ls node_modules || true
           ls node_modules/@prisma || true
