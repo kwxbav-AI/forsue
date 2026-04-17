@@ -3,7 +3,10 @@ WORKDIR /app
 
 # Install dependencies (including dev deps for build)
 FROM base AS deps
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
+# Prisma postinstall runs `prisma generate` which needs the schema present.
+COPY prisma ./prisma
 RUN npm ci
 
 # Build
