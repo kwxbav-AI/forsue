@@ -57,10 +57,6 @@ class PerformanceEngineService {
       }
     }
 
-    await prisma.performanceDaily.deleteMany({
-      where: { workDate: d, versionNo: 1 },
-    });
-
     const weekDay = d.getUTCDay();
     const rows = stores.map((store) => {
       const rawHours = storeHours[store.id] ?? 0;
@@ -90,9 +86,14 @@ class PerformanceEngineService {
       };
     });
 
-    if (rows.length > 0) {
-      await prisma.performanceDaily.createMany({ data: rows });
-    }
+    await prisma.$transaction(async (tx) => {
+      await tx.performanceDaily.deleteMany({
+        where: { workDate: d, versionNo: 1 },
+      });
+      if (rows.length > 0) {
+        await tx.performanceDaily.createMany({ data: rows });
+      }
+    });
   }
 
   /** 重算日期區間 */
