@@ -4,6 +4,7 @@ import { toStartOfDay, formatDateOnly } from "@/lib/date";
 import {
   getAttendanceDataStartDate,
   getNewHireOffsetOverridesByEmployeeCode,
+  isEligibleForNewHireWorkPercent,
   resolveAssumedWorkedDayOffset,
 } from "@/lib/attendance-data";
 
@@ -286,6 +287,7 @@ export async function computeStoreHoursByEmployee(
     if (isTrial) continue;
     if (!att.employee.hireDate) continue;
     if (!(Number(att.workHours) > 0)) continue;
+    if (!isEligibleForNewHireWorkPercent(att.employee.hireDate)) continue;
     newHireCandidateIds.push(att.employeeId);
     hireDateByEmployeeId.set(att.employeeId, att.employee.hireDate);
   }
@@ -347,7 +349,13 @@ export async function computeStoreHoursByEmployee(
 
     // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
-    if (!isTrial && att.employee.hireDate && Number(att.workHours) > 0) {
+    // 到職日在門檻日之前者不套用（與出勤報表一致）
+    if (
+      !isTrial &&
+      att.employee.hireDate &&
+      Number(att.workHours) > 0 &&
+      isEligibleForNewHireWorkPercent(att.employee.hireDate)
+    ) {
       const empCode = (att.employee.employeeCode || "").trim();
       const hasOverride = empCode ? newHireOffsetOverridesByEmployeeCode.has(empCode) : false;
       let assumedOffset = resolveAssumedWorkedDayOffset({

@@ -9,6 +9,7 @@ import {
 import {
   getAttendanceDataStartDate,
   getNewHireOffsetOverridesByEmployeeCode,
+  isEligibleForNewHireWorkPercent,
   resolveAssumedWorkedDayOffset,
 } from "@/lib/attendance-data";
 import Decimal from "decimal.js";
@@ -301,7 +302,9 @@ export async function GET(request: Request) {
     const hireDateByEmployeeId = new Map<string, Date>();
     const employeeCodeByEmployeeId = new Map<string, string>();
     for (const r of records) {
-      if (r.employee.hireDate) hireDateByEmployeeId.set(r.employeeId, r.employee.hireDate);
+      if (r.employee.hireDate && isEligibleForNewHireWorkPercent(r.employee.hireDate)) {
+        hireDateByEmployeeId.set(r.employeeId, r.employee.hireDate);
+      }
       if (r.employee.employeeCode) employeeCodeByEmployeeId.set(r.employeeId, r.employee.employeeCode);
     }
     const attendanceDataStartDate = await getAttendanceDataStartDate();
@@ -743,7 +746,8 @@ export async function GET(request: Request) {
         }
 
         // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
-        if (!isTrial && emp.hireDate && net > 0) {
+        // 到職日在門檻日之前者不套用（僅 >= NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD 才可能套用）
+        if (!isTrial && emp.hireDate && net > 0 && isEligibleForNewHireWorkPercent(emp.hireDate)) {
           const dayNo = workedDayNoIndexByEmployeeId.get(emp.id)?.get(dateStr);
           // 若拿不到「已上班日」天數索引，避免誤套用 0% 造成全員被當成新進員工
           if (dayNo == null) {

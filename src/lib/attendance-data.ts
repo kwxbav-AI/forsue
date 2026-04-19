@@ -1,6 +1,18 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateOnlyTaipei, parseTaipeiDateStartUTC, toStartOfDay } from "@/lib/date";
 
+/** 到職日（台北日曆）在此日「之前」者，不套用新進員工工時比例；≥ 此日才可能套用。 */
+export const NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD = "2026-03-24";
+
+/**
+ * 是否應套用「新進員工」工時比例（依到職日判定；無到職日則不套用）。
+ */
+export function isEligibleForNewHireWorkPercent(hireDate: Date | null | undefined): boolean {
+  if (!hireDate) return false;
+  const ymd = formatDateOnlyTaipei(hireDate);
+  return ymd >= NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD;
+}
+
 // 你提到 4/1 才開始上傳出勤表；在此之前沒有出勤記錄時，new hire dayNo 需要 offset 補正。
 // 可透過 AppSetting 調整（避免日後換系統啟用日又要改程式）。
 const KEY_ATTENDANCE_DATA_START = "attendance.dataStartDate";
