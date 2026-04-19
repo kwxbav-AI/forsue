@@ -1,7 +1,10 @@
 generator client {
   provider      = "prisma-client-js"
-  // Vercel 建置在 Linux；本機 Windows 用 native。兩者都產出可避免建置/執行找不到 query engine。
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  // native: 本機 Windows/mac
+  // debian-openssl-3.0.x: 與本專案 Dockerfile 的 node:20-bookworm-slim（Debian 12 + OpenSSL 3）一致
+  // rhel-openssl-3.0.x: 常見其他雲端建置執行環境（如 Vercel 等）使用
+  // 若建置/執行改用較舊 Debian（OpenSSL 1.1）或偵測為 debian-openssl-1.1.x，再補上 "debian-openssl-1.1.x"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
