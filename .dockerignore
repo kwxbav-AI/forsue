@@ -1,11 +1,34 @@
+# git / editor
 .git
+.vscode
+.idea
+
+# build outputs / deps
 .next
 node_modules
+
+# env / secrets
+.env
+.env.*
+
+# logs / caches
+*.log
 npm-debug.log
 yarn-debug.log
 yarn-error.log
-.env
-.env.*
-backup.sql
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# backups / local tools
+backup.sql
+cloud-sql-proxy.exe
+*.exe
+
+# windows helpers
 *.bat
+
+# docs usually not needed
+docs
+
+# scripts（保守處理：確認 runtime / build 不需要再打開）
+# scripts

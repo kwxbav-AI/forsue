@@ -13,11 +13,15 @@ RUN node -e "require('@prisma/client'); console.log('prisma-client-ok')"
 # Build
 FROM base AS build
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # 以最終進映像的 prisma schema 重新產出 client（含 binaryTargets 對應的全部 engines）
 RUN npx prisma generate
 RUN npm run build
+
+# 🔥 關鍵瘦身：移除 devDependencies（保留功能不變）
+RUN npm prune --omit=dev
 
 # Runtime
 FROM node:20-bookworm-slim AS runner
@@ -26,6 +30,7 @@ ENV NODE_ENV=production
 
 # Cloud Run uses PORT env var; Next will respect it, but we pass -p explicitly in start script too.
 ENV PORT=8080
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 

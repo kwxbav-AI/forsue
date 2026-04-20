@@ -1,7 +1,40 @@
+# dependencies
 node_modules
-.env
-.next
 
-# build cache
+# next.js
+.next
+out
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# build caches
 tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Vercel / misc
+.vercel
+
+# database backup (重要)
+backup.sql
+*.dump
+
+# local tools / binaries
+cloud-sql-proxy.exe
+*.exe
 
