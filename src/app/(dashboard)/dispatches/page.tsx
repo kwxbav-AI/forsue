@@ -68,6 +68,7 @@ export default function DispatchesPage() {
   const [editConfirmStatus, setEditConfirmStatus] = useState<string>("待確認");
   const [editRemark, setEditRemark] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
 
   type DispatchReason = (typeof DISPATCH_REASONS)[number];
 
@@ -195,21 +196,34 @@ export default function DispatchesPage() {
   }
 
   async function deleteRow(id: string) {
+    if (deletingIds.has(id)) {
+      setMessage("刪除申請送出中，請稍候…");
+      return;
+    }
     if (!confirm("確定刪除此筆調度？")) return;
-    const res = await fetch(`/api/dispatches/${id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 202) {
-      setMessage(data.message || "已送出刪除申請，待核准後生效");
+    setDeletingIds((s) => new Set(s).add(id));
+    try {
+      const res = await fetch(`/api/dispatches/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 202) {
+        setMessage(data.message || "已送出刪除申請，待核准後生效");
+        setPendingRefresh((k) => k + 1);
+        refresh();
+        return;
+      }
+      if (!res.ok) {
+        setMessage(data.error || "刪除失敗");
+        return;
+      }
       setPendingRefresh((k) => k + 1);
       refresh();
-      return;
+    } finally {
+      setDeletingIds((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
     }
-    if (!res.ok) {
-      setMessage(data.error || "刪除失敗");
-      return;
-    }
-    setPendingRefresh((k) => k + 1);
-    refresh();
   }
 
   function openEdit(row: DispatchRow) {
@@ -613,9 +627,10 @@ export default function DispatchesPage() {
                       <button
                         type="button"
                         onClick={() => deleteRow(r.id)}
-                        className="text-red-600 hover:underline"
+                        disabled={deletingIds.has(r.id)}
+                        className="text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        刪除
+                        {deletingIds.has(r.id) ? "送出中…" : "刪除"}
                       </button>
                     </td>
                   </tr>

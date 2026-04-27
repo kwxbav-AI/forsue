@@ -8,6 +8,14 @@ import type { DeletionRequestTargetType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
+function fmtDateOnly(d: Date): string {
+  try {
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return String(d);
+  }
+}
+
 const updateSchema = z.object({
   fromStoreId: z.string().optional().nullable(),
   toStoreId: z.string().optional(),
@@ -78,7 +86,18 @@ export async function DELETE(
       "write"
     );
 
-    const existing = await prisma.dispatchRecord.findUnique({ where: { id } });
+    const existing = await prisma.dispatchRecord.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        workDate: true,
+        dispatchHours: true,
+        actualHours: true,
+        employee: { select: { employeeCode: true, name: true } },
+        fromStoreId: true,
+        toStoreId: true,
+      },
+    });
     if (!existing) {
       return NextResponse.json({ error: "找不到該筆資料" }, { status: 404 });
     }
@@ -95,15 +114,33 @@ export async function DELETE(
     });
     if (dup) {
       return NextResponse.json(
-        { pending: true, requestId: dup.id, message: "已有待審刪除申請" },
+        { pending: true, requestId: dup.id, message: "已有待審刪除申請（申請中）" },
         { status: 202 }
       );
     }
+
+    const storeIds = Array.from(
+      new Set([existing.fromStoreId, existing.toStoreId].filter(Boolean) as string[])
+    );
+    const stores = await prisma.store.findMany({
+      where: { id: { in: storeIds } },
+      select: { id: true, name: true, code: true },
+    });
+    const storeMap = new Map<string, { name: string; code: string | null }>(
+      stores.map((s) => [s.id, { name: s.name, code: s.code }])
+    );
+    const from = existing.fromStoreId ? storeMap.get(existing.fromStoreId) : null;
+    const to = storeMap.get(existing.toStoreId);
+    const fromLabel = from ? `${from.name}${from.code ? `（${from.code}）` : ""}` : "—";
+    const toLabel = to ? `${to.name}${to.code ? `（${to.code}）` : ""}` : existing.toStoreId;
+    const h = existing.actualHours != null ? Number(existing.actualHours) : Number(existing.dispatchHours);
+    const targetSummary = `${fmtDateOnly(existing.workDate)}｜${existing.employee.employeeCode} ${existing.employee.name}｜${fromLabel} → ${toLabel}｜${h} 小時`;
 
     const created = await prisma.deletionRequest.create({
       data: {
         targetType,
         targetId: id,
+        targetSummary,
         status: "PENDING",
         requestedByUserId: session.userId,
         requestedByUsername: session.username,
@@ -116,6 +153,19 @@ export async function DELETE(
     );
   } catch (e) {
     console.error(e);
+    // 若 DB 已加上 pending unique index，並發連點可能會撞到 unique
+    // 這裡把它視為「已有待審申請」的正常情境
+    if (
+      typeof e === "object" &&
+      e &&
+      "code" in e &&
+      (e as { code?: string }).code === "P2002"
+    ) {
+      return NextResponse.json(
+        { pending: true, requestId: null, message: "已有待審刪除申請（申請中）" },
+        { status: 202 }
+      );
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "刪除失敗" },
       { status: 500 }

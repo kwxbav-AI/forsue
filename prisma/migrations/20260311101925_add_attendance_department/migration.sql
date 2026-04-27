@@ -204,7 +204,10 @@ CREATE INDEX "DispatchRecord_employeeId_workDate_idx" ON "DispatchRecord"("emplo
 CREATE INDEX "RevenueRecord_revenueDate_idx" ON "RevenueRecord"("revenueDate");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RevenueRecord_revenueDate_storeId_key" ON "RevenueRecord"("revenueDate", "storeId");
+-- NOTE: This unique index blocks multiple settlements per store per day.
+-- The business rule is "allow multiple RevenueRecord per store per day".
+-- Keep a non-unique index for query performance instead.
+CREATE INDEX "RevenueRecord_revenueDate_storeId_idx" ON "RevenueRecord"("revenueDate", "storeId");
 
 -- CreateIndex
 CREATE INDEX "WorkhourAdjustment_workDate_idx" ON "WorkhourAdjustment"("workDate");

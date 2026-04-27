@@ -133,7 +133,7 @@ export async function GET(
     targetType,
     requests: rows.map((r) => ({
       ...r,
-      targetSummary: summariesByTargetId.get(r.targetId) ?? null,
+      targetSummary: (r as { targetSummary?: string | null }).targetSummary ?? summariesByTargetId.get(r.targetId) ?? null,
     })),
   });
 }

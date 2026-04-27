@@ -124,7 +124,18 @@ export function PendingDeletionPanel({
                   {r.targetSummary ? (
                     <span>{r.targetSummary}</span>
                   ) : (
-                    <span className="font-mono">標的 {r.targetId.slice(0, 12)}…</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-slate-600">
+                        標的資料不存在（ID: {r.targetId.slice(0, 12)}…）
+                      </span>
+                      <button
+                        type="button"
+                        className="text-xs text-amber-800 underline"
+                        onClick={() => void navigator.clipboard.writeText(r.targetId)}
+                      >
+                        複製ID
+                      </button>
+                    </span>
                   )}
                 </div>
                 <span className="mx-2 text-slate-300">|</span>

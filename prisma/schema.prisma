@@ -208,7 +208,6 @@ model RevenueRecord {
   updatedAt     DateTime @updatedAt
   store         Store    @relation(fields: [storeId], references: [id])
   @@index([revenueDate])
-  @@index([revenueDate, storeId])
   @@unique([storeId, revenueDate, checkoutNo])
 }
 
@@ -411,6 +410,7 @@ model DeletionRequest {
   id                  String                   @id @default(cuid())
   targetType          DeletionRequestTargetType
   targetId            String
+  targetSummary       String?
   status              DeletionRequestStatus    @default(PENDING)
   reason              String?
   requestedByUserId   String?
