@@ -311,10 +311,7 @@ export async function computeStoreHoursByEmployee(
       hoursValue = -3;
     }
 
-    // 後勤支援門市：調度事由為「後勤支援門市」且已確認時，出勤工時以 70% 計
-    if (!isTrial && backofficeConfirmedByEmployeeId.has(att.employeeId)) {
-      hoursValue = new Decimal(hoursValue).mul(0.7).toNumber();
-    }
+    // 後勤支援門市：不在出勤工時階段折算，改在調度拆分時處理（原店扣全額、支援店加 70%）
 
     if (att.employee.isReserveStaff) {
       const homeStoreId =
@@ -337,7 +334,6 @@ export async function computeStoreHoursByEmployee(
       // 後勤支援門市（70%）也不再疊加儲備人力折算
       if (
         !isTrial &&
-        !backofficeConfirmedByEmployeeId.has(att.employeeId) &&
         !hasConfirmedDispatchByEmployeeId.has(att.employeeId) &&
         shouldPartial &&
         percent != null &&
@@ -403,6 +399,14 @@ export async function computeStoreHoursByEmployee(
     // 績效計算：有填實際時數則用實際時數，否則用預申請時數
     const dispatchH =
       disp.actualHours != null ? Number(disp.actualHours) : Number(disp.dispatchHours);
+    const reason = extractDispatchReason(disp.remark ?? null);
+    const isBackoffice = reason === "後勤支援門市" && disp.confirmStatus === "已確認";
+    if (isBackoffice && disp.actualHours == null) {
+      const dateStr = formatDateOnly(d);
+      throw new Error(
+        `後勤支援門市已確認但未填調度工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}`
+      );
+    }
 
     const fromCurrent = storeHours[fromStoreId] ?? 0;
     if (fromCurrent < dispatchH) {
@@ -414,7 +418,8 @@ export async function computeStoreHoursByEmployee(
 
     storeHours[fromStoreId] = fromCurrent - dispatchH;
     if (storeHours[fromStoreId] < 0) storeHours[fromStoreId] = 0;
-    storeHours[toStoreId] = (storeHours[toStoreId] ?? 0) + dispatchH;
+    const toAdd = isBackoffice ? new Decimal(dispatchH).mul(0.7).toNumber() : dispatchH;
+    storeHours[toStoreId] = (storeHours[toStoreId] ?? 0) + toAdd;
   }
 
   for (const adj of adjustments) {

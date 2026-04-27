@@ -96,11 +96,7 @@ function resolveStoreIdFromDepartment(
   const exact = candidates.find((c) => c.depKey === key);
   if (exact) return exact.id;
 
-  // 2) 互相包含（取最長匹配，避免「宜蘭區」誤配多店）
-  const contains = candidates
-    .filter((c) => c.depKey.includes(key) || key.includes(c.depKey))
-    .sort((a, b) => b.depKey.length - a.depKey.length)[0];
-  return contains?.id ?? null;
+  return null;
 }
 
 function parseClockInfoTimeToMinutes(raw: string | null): number | null {
@@ -724,7 +720,17 @@ export async function uploadDailyRevenue(
   });
 
   for (const d of uniqueCalendarDates(parsed.data.map((r) => r.revenueDate))) {
-    await performanceEngineService.recalculateDailyPerformance(d);
+    try {
+      await performanceEngineService.recalculateDailyPerformance(d);
+    } catch (e) {
+      // 營收匯入成功不應被「績效重算」中斷；重算失敗改以警示回傳，讓使用者後續修正資料再重算即可。
+      errors.push({
+        row: 0,
+        message: `警示：${formatDateOnly(d)} 績效重算失敗（不影響營收匯入）：${
+          e instanceof Error ? e.message : "未知錯誤"
+        }`,
+      });
+    }
   }
 
   return {

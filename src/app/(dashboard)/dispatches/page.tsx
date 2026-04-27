@@ -240,6 +240,11 @@ export default function DispatchesPage() {
       setMessage("實際時數請輸入大於等於 0 的數字");
       return;
     }
+    const isBackoffice = (editRow.remark ?? "").trim().startsWith("後勤支援門市");
+    if (isBackoffice && editConfirmStatus === "已確認" && (actual == null || actual <= 0)) {
+      setMessage("後勤支援門市在「已確認」時必須填寫調度工時（> 0）");
+      return;
+    }
     setEditSaving(true);
     setMessage(null);
     const res = await fetch(`/api/dispatches/${editRow.id}`, {
@@ -658,7 +663,11 @@ export default function DispatchesPage() {
             </p>
             <label className="mb-2 block">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">實際時數</span>
+                <span className="text-sm text-slate-600">
+                  {(editRow.remark ?? "").trim().startsWith("後勤支援門市") && editConfirmStatus === "已確認"
+                    ? "調度工時（必填）"
+                    : "實際時數"}
+                </span>
                 <span className="text-sm text-slate-500">
                   出勤時數：{editRow.attendanceHours != null ? editRow.attendanceHours : "—"}
                 </span>
@@ -673,7 +682,9 @@ export default function DispatchesPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
               />
               <p className="mt-1 text-xs text-slate-400">
-                留空時以「預申請時數」計算（非出勤時數）；填寫後績效以實際時數計算。
+                {(editRow.remark ?? "").trim().startsWith("後勤支援門市") && editConfirmStatus === "已確認"
+                  ? "後勤支援門市：此處填寫調度工時；原店扣全額、支援店以 70% 計入。"
+                  : "留空時以「預申請時數」計算（非出勤時數）；填寫後績效以實際時數計算。"}
               </p>
             </label>
             <label className="mb-4 block">

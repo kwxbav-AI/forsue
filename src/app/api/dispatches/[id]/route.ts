@@ -42,6 +42,19 @@ export async function PUT(
       );
     }
 
+    // 後勤支援門市：已確認時必填調度工時（actualHours）
+    const incomingRemark = parsed.data.remark;
+    const incomingConfirm = parsed.data.confirmStatus;
+    const incomingActual = parsed.data.actualHours;
+    const isBackoffice =
+      typeof incomingRemark === "string" && incomingRemark.trim().startsWith("後勤支援門市");
+    if (isBackoffice && incomingConfirm === "已確認" && (incomingActual == null || incomingActual <= 0)) {
+      return NextResponse.json(
+        { error: "後勤支援門市在「已確認」時必須填寫調度工時（> 0）" },
+        { status: 400 }
+      );
+    }
+
     const data: Record<string, unknown> = {};
     if (parsed.data.fromStoreId !== undefined) data.fromStoreId = parsed.data.fromStoreId;
     if (parsed.data.toStoreId !== undefined) data.toStoreId = parsed.data.toStoreId;

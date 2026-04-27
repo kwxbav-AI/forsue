@@ -673,36 +673,16 @@ export async function GET(request: Request) {
           });
         }
 
-        // 後勤支援門市（已確認）：出勤工時以 70% 計，顯示「-30%」調整行
         const hasBackofficeConfirmed = dispList.some((d) => {
           const reason = extractDispatchReason(d.remark ?? null);
           return reason === "後勤支援門市" && d.confirmStatus === "已確認";
         });
-        if (!isTrial && hasBackofficeConfirmed) {
-          const delta = new Decimal(baseHours).mul(-0.3).toNumber();
-          net += delta;
-          rows.push({
-            type: "adjustment",
-            id: `backoffice-${att.id}`,
-            employeeId: emp.id,
-            employeeCode: empCode,
-            name: empName,
-            department: deptForAtt,
-            position,
-            workDate: dateStr,
-            workHours: Math.round(delta * 100) / 100,
-            adjustmentReason: "後勤支援門市以70%工時",
-            locationMatchStatus: null,
-            clockInStoreText: null,
-            clockOutStoreText: null,
-          });
-        }
 
         // 儲備人力：保留原工時一行，另新增「儲備人力」調整行（負數），小計才會是折算後工時
         // 規則：儲備人力若當天有已確認調度（被調去他店支援/調出），則不套用儲備人力折算
         // 目的：原店出勤工時會被調度調出抵銷，支援店以 dispatch_in 計入；不應再額外打折造成負工時。
         const hasAnyConfirmedDispatch = dispList.length > 0;
-        if (!isTrial && !hasBackofficeConfirmed && emp.isReserveStaff && !hasAnyConfirmedDispatch) {
+        if (!isTrial && emp.isReserveStaff && !hasAnyConfirmedDispatch) {
           const homeStoreId =
             emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
           if (homeStoreId) {
@@ -810,6 +790,27 @@ export async function GET(request: Request) {
           if (!fromId) continue;
           if (storeIdsForFilter && storeIdsForFilter.length > 0 && !storeIdsForFilter.includes(fromId)) continue;
           const h = d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
+          const reason = extractDispatchReason(d.remark ?? null);
+          const isBackoffice = reason === "後勤支援門市" && d.confirmStatus === "已確認";
+          if (isBackoffice && d.actualHours == null) {
+            // 已確認後勤支援若未填調度工時，避免報表顯示錯誤數字，改以明確訊息呈現
+            rows.push({
+              type: "dispatch_out",
+              id: `backoffice-missing-${d.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: deptForAtt,
+              position,
+              workDate: dateStr,
+              workHours: 0,
+              adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+            continue;
+          }
           net -= h;
           const toStore = storeById.get(d.toStoreId);
           const toName = toStore?.name ?? toStore?.department ?? d.toStoreId;
@@ -823,7 +824,7 @@ export async function GET(request: Request) {
             position,
             workDate: dateStr,
             workHours: -h,
-            adjustmentReason: d.remark?.trim() || "支援",
+            adjustmentReason: isBackoffice ? `後勤支援門市（調出 ${h}h）` : (d.remark?.trim() || "支援"),
             locationMatchStatus: null,
             clockInStoreText: null,
             clockOutStoreText: null,
@@ -849,6 +850,27 @@ export async function GET(request: Request) {
         for (const d of dispList) {
           if (!storeIdsForFilter.includes(d.toStoreId)) continue;
           const h = d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
+          const reason = extractDispatchReason(d.remark ?? null);
+          const isBackoffice = reason === "後勤支援門市" && d.confirmStatus === "已確認";
+          if (isBackoffice && d.actualHours == null) {
+            rows.push({
+              type: "dispatch_in",
+              id: `backoffice-missing-${d.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: "—",
+              position,
+              workDate: dateStr,
+              workHours: 0,
+              adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+            continue;
+          }
+          const hIn = isBackoffice ? new Decimal(h).mul(0.7).toNumber() : h;
           const toStore = storeById.get(d.toStoreId);
           const toDept = toStore ? (toStore.department || toStore.name || "").trim() : "—";
           rows.push({
@@ -860,8 +882,10 @@ export async function GET(request: Request) {
             department: toDept,
             position,
             workDate: dateStr,
-            workHours: h,
-            adjustmentReason: d.remark?.trim() || "支援",
+            workHours: Math.round(hIn * 100) / 100,
+            adjustmentReason: isBackoffice
+              ? `後勤支援門市（70%：${Math.round(hIn * 100) / 100}h）`
+              : (d.remark?.trim() || "支援"),
             locationMatchStatus: null,
             clockInStoreText: null,
             clockOutStoreText: null,
