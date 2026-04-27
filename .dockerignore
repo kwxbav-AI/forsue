@@ -27,8 +27,10 @@ cloud-sql-proxy.exe
 # windows helpers
 *.bat
 
-# docs usually not needed
+# docs usually not needed (but permission modules are required at build time)
 docs
+!docs/permission-modules.json
+!docs/permission-modules.csv
 
 # scripts（保守處理：確認 runtime / build 不需要再打開）
 # scripts
