@@ -26,6 +26,12 @@ export default async function ReportsHubPage() {
       title: "達標次數統計",
       desc: "期間內各門市達標天數、達標率、平均工效比",
     },
+    {
+      key: "store-target-card",
+      href: "/reports/store-target-card",
+      title: "門市達標（新的名片）",
+      desc: "依月份分週，產出可複製的門市達標訊息稿",
+    },
   ] as const;
 
   const visible = !authOn

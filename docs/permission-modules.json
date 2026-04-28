@@ -272,6 +272,18 @@
         { "kind": "API", "pathPattern": "/api/reports/charts", "method": "GET" }
       ]
     },
+    {
+      "key": "reports-store-target-card",
+      "label": "門市達標（新的名片）",
+      "description": "依月份分週，產出可複製的門市達標訊息稿",
+      "group": "報表",
+      "sortOrder": 345,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/reports/store-target-card", "method": null },
+        { "kind": "API", "pathPattern": "/api/reports/store-target-card", "method": "GET" }
+      ]
+    },
 
     {
       "key": "performance-daily",
