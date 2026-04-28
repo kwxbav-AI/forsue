@@ -17,9 +17,18 @@ class PerformanceEngineService {
     const targetValue = await getTargetForDate(d);
     const storeHours = await computeTotalWorkHoursByStore(d);
 
+    const revenueGrouped = await prisma.revenueRecord.groupBy({
+      by: ["storeId"],
+      where: { revenueDate: d },
+      _sum: { revenueAmount: true },
+    });
+    const revenueSumByStoreId = new Map<string, number>();
+    for (const g of revenueGrouped) {
+      revenueSumByStoreId.set(g.storeId, Number(g._sum.revenueAmount ?? 0));
+    }
+
     const stores = await prisma.store.findMany({
       where: { isActive: true },
-      include: { revenues: { where: { revenueDate: d }, take: 1 } },
     });
 
     // 內容篇數填報的扣工時：依分店（門市名稱）彙總，從該門市總工時中扣除
@@ -63,8 +72,7 @@ class PerformanceEngineService {
       const contentDeduction = contentDeductionHoursByStore[store.id] ?? 0;
       const storeDeduction = storeDeductionHoursByStore[store.id] ?? 0;
       const totalWorkHours = Math.max(0, rawHours - contentDeduction - storeDeduction);
-      const revenueRecord = store.revenues[0];
-      const revenueAmount = revenueRecord ? Number(revenueRecord.revenueAmount) : 0;
+      const revenueAmount = revenueSumByStoreId.get(store.id) ?? 0;
       let efficiencyRatio = 0;
       if (totalWorkHours > 0) {
         efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
