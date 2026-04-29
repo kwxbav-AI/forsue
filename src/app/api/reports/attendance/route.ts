@@ -7,81 +7,15 @@ import {
   parseDateOnlyUTC,
 } from "@/lib/date";
 import {
+  buildNewHireWorkedDayNoIndex,
   getAttendanceDataStartDate,
   getNewHireOffsetOverridesByEmployeeCode,
   isEligibleForNewHireWorkPercent,
-  resolveAssumedWorkedDayOffset,
+  newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
-
-function newHirePercentByDays(dayNo: number): number {
-  if (!Number.isFinite(dayNo) || dayNo <= 0) return 1;
-  if (dayNo >= 1 && dayNo <= 5) return 0;
-  if (dayNo >= 6 && dayNo <= 10) return 0.5;
-  if (dayNo >= 11 && dayNo <= 15) return 0.7;
-  if (dayNo >= 16 && dayNo <= 20) return 0.9;
-  return 1;
-}
-
-function buildWorkedDayNoIndex(
-  attendanceRows: { employeeId: string; workDate: Date }[],
-  hireDateByEmployeeId: Map<string, Date>,
-  attendanceDataStartDate: Date,
-  employeeCodeByEmployeeId: Map<string, string>,
-  overridesByEmployeeCode: Map<string, number>
-): Map<string, Map<string, number>> {
-  const dateSetByEmp = new Map<string, Set<string>>();
-  for (const r of attendanceRows) {
-    const hire = hireDateByEmployeeId.get(r.employeeId);
-    if (!hire) continue;
-    // 以日曆日比較，避免時區/時間戳造成邊界誤判
-    if (formatDateOnly(r.workDate) < formatDateOnly(hire)) continue;
-    const dayStr = formatDateOnly(r.workDate);
-    if (!dateSetByEmp.has(r.employeeId)) dateSetByEmp.set(r.employeeId, new Set());
-    dateSetByEmp.get(r.employeeId)!.add(dayStr);
-  }
-
-  const index = new Map<string, Map<string, number>>();
-  const dataStartYmd = formatDateOnly(attendanceDataStartDate);
-  for (const [empId, set] of dateSetByEmp.entries()) {
-    const hire = hireDateByEmployeeId.get(empId);
-    const empCode = employeeCodeByEmployeeId.get(empId) ?? "";
-    const hasOverride = empCode ? overridesByEmployeeCode.has(empCode) : false;
-    let assumedBeforeStart =
-      hire != null
-        ? resolveAssumedWorkedDayOffset({
-            employeeCode: empCode,
-            hireDate: hire,
-            dataStartDate: attendanceDataStartDate,
-            overridesByEmployeeCode,
-          })
-        : 0;
-    const sorted = Array.from(set).sort();
-    const actualBeforeStart = sorted.filter((d) => d < dataStartYmd).length;
-
-    // 若資料庫中其實已經有 dataStartDate 以前的出勤日，代表不是「缺資料」情境；
-    // 不該套用 assumedBeforeStart（會把 dayNo 再往上推），除非使用者明確設定 override。
-    if (!hasOverride && actualBeforeStart > 0) {
-      assumedBeforeStart = 0;
-    }
-    const byDate = new Map<string, number>();
-    for (let i = 0; i < sorted.length; i++) {
-      const dayStr = sorted[i];
-      // 覆寫值的語意：代表「資料開始日前」應算的累計天數（取代實際資料開始日前的累計，避免雙重計算）
-      if (dayStr >= dataStartYmd && assumedBeforeStart > 0) {
-        const afterIndex = i - actualBeforeStart; // 從資料開始日後的第幾個「有上班日」
-        byDate.set(dayStr, assumedBeforeStart + afterIndex + 1);
-      } else {
-        // 資料開始日前：仍用實際資料順序（或未設定覆寫時）
-        byDate.set(dayStr, i + 1);
-      }
-    }
-    index.set(empId, byDate);
-  }
-  return index;
-}
 
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
   STAFF_SHORTAGE: "人力不足",
@@ -333,7 +267,7 @@ export async function GET(request: Request) {
             orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
           })
         : [];
-    const workedDayNoIndexByEmployeeId = buildWorkedDayNoIndex(
+    const workedDayNoIndexByEmployeeId = buildNewHireWorkedDayNoIndex(
       workedAttendanceRows,
       hireDateByEmployeeId,
       attendanceDataStartDate,
@@ -733,7 +667,7 @@ export async function GET(request: Request) {
           if (dayNo == null) {
             // 不做新進員工折算
           } else {
-          const percent = newHirePercentByDays(dayNo);
+          const percent = newHirePercentByWorkedDays(dayNo);
           if (percent !== 1) {
             const adjusted = new Decimal(net).mul(percent).toNumber();
             const delta = new Decimal(adjusted).minus(net).toNumber();

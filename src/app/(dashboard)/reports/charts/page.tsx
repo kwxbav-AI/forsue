@@ -221,7 +221,6 @@ export default function ReportsChartsPage() {
                   <tr key={r.storeId} className="border-b border-slate-100">
                     <td className="sticky left-0 z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 font-medium">
                       {r.storeName}
-                      {r.storeCode ? <span className="ml-2 text-xs text-slate-400">{r.storeCode}</span> : null}
                     </td>
                     <td className="px-4 py-2 text-right">{Math.round(r.revenueSum).toLocaleString("zh-TW")}</td>
                     <td className="px-4 py-2 text-right">{round2(r.hoursSum).toLocaleString("zh-TW")}</td>

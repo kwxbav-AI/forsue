@@ -29,7 +29,7 @@ export default async function ReportsHubPage() {
     {
       key: "store-target-card",
       href: "/reports/store-target-card",
-      title: "門市達標（新的名片）",
+      title: "門市達標",
       desc: "依月份分週，產出可複製的門市達標訊息稿",
     },
   ] as const;

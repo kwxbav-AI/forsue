@@ -21,6 +21,10 @@ type DailyRow = {
 type SortKey = "storeName" | "revenueAmount" | "totalWorkHours" | "efficiencyRatio" | "targetValue" | "status";
 type SortDir = "asc" | "desc";
 
+function isSaturdayYmd(ymd: string): boolean {
+  return new Date(`${ymd}T00:00:00.000Z`).getUTCDay() === 6;
+}
+
 export default function PerformanceDailyPage() {
   const [date, setDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<DailyRow[]>([]);
@@ -44,7 +48,7 @@ export default function PerformanceDailyPage() {
   const sortedList = useMemo(() => {
     const statusRank = (row: DailyRow) => {
       if (row.totalWorkHours === 0) return -1; // 無資料
-      if (row.efficiencyRatio >= 6000) return 2; // 超標
+      if (!isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000) return 2; // 超標
       return row.isTargetMet ? 1 : 0; // 達標 / 未達標
     };
 
@@ -197,7 +201,7 @@ export default function PerformanceDailyPage() {
                     <td className="px-4 py-2 text-center">
                       {row.totalWorkHours === 0 ? (
                         <span className="text-slate-400">—</span>
-                      ) : row.efficiencyRatio >= 6000 ? (
+                      ) : !isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000 ? (
                         <span className="rounded bg-red-50 px-2 py-0.5 text-red-700 font-semibold">
                           超標
                         </span>

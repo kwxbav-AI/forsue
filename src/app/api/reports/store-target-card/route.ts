@@ -172,6 +172,7 @@ export async function GET(request: NextRequest) {
   for (const p of list) {
     const ymd = formatDateOnly(p.workDate);
     const isSunday = p.workDate.getUTCDay() === 0;
+    const isSaturday = p.workDate.getUTCDay() === 6;
     if (isSunday) continue;
     if (holidaySet.has(ymd)) continue;
 
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
     const row = byStoreId.get(p.storeId);
     if (!row) continue;
 
-    const exceed = Number(p.efficiencyRatio) >= 6000;
+    const exceed = !isSaturday && Number(p.efficiencyRatio) >= 6000;
     if (exceed) row.byWeek[weekIdx0].exceedDays += 1;
     else if (p.isTargetMet) row.byWeek[weekIdx0].metDays += 1;
   }

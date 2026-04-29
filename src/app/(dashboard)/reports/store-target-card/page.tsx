@@ -114,7 +114,7 @@ export default function StoreTargetCardReportPage() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-800">門市達標（新的名片）</h1>
+        <h1 className="text-xl font-bold text-slate-800">門市達標</h1>
         <Link
           href="/reports"
           className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
@@ -222,11 +222,6 @@ export default function StoreTargetCardReportPage() {
                     <td className="sticky left-0 z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 font-medium text-slate-800">
                       <div className="flex items-center justify-between gap-2">
                         <span>{row.storeName}</span>
-                        {row.storeCode ? (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600">
-                            {row.storeCode}
-                          </span>
-                        ) : null}
                       </div>
                     </td>
                     {data.weeks.map((w, i) => {

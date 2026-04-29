@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatDateOnlyTaipei, parseTaipeiDateStartUTC, toStartOfDay } from "@/lib/date";
+import { formatDateOnly, formatDateOnlyTaipei, parseTaipeiDateStartUTC, toStartOfDay } from "@/lib/date";
 
 /** 到職日（台北日曆）在此日「之前」者，不套用新進員工工時比例；≥ 此日才可能套用。 */
 export const NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD = "2026-03-24";
@@ -11,6 +11,15 @@ export function isEligibleForNewHireWorkPercent(hireDate: Date | null | undefine
   if (!hireDate) return false;
   const ymd = formatDateOnlyTaipei(hireDate);
   return ymd >= NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD;
+}
+
+export function newHirePercentByWorkedDays(dayNo: number): number {
+  if (!Number.isFinite(dayNo) || dayNo <= 0) return 1;
+  if (dayNo >= 1 && dayNo <= 5) return 0;
+  if (dayNo >= 6 && dayNo <= 10) return 0.5;
+  if (dayNo >= 11 && dayNo <= 15) return 0.7;
+  if (dayNo >= 16 && dayNo <= 20) return 0.9;
+  return 1;
 }
 
 // 你提到 4/1 才開始上傳出勤表；在此之前沒有出勤記錄時，new hire dayNo 需要 offset 補正。
@@ -82,5 +91,63 @@ export function resolveAssumedWorkedDayOffset(args: {
   const overridden = code ? args.overridesByEmployeeCode.get(code) : undefined;
   if (overridden != null) return overridden;
   return calcAssumedWorkedDayOffsetByCalendar({ hireDate: args.hireDate, dataStartDate: args.dataStartDate });
+}
+
+export function buildNewHireWorkedDayNoIndex(
+  attendanceRows: { employeeId: string; workDate: Date }[],
+  hireDateByEmployeeId: Map<string, Date>,
+  attendanceDataStartDate: Date,
+  employeeCodeByEmployeeId: Map<string, string>,
+  overridesByEmployeeCode: Map<string, number>
+): Map<string, Map<string, number>> {
+  const dateSetByEmp = new Map<string, Set<string>>();
+  for (const r of attendanceRows) {
+    const hire = hireDateByEmployeeId.get(r.employeeId);
+    if (!hire) continue;
+    // 以日曆日比較，避免時區/時間戳造成邊界誤判。
+    if (formatDateOnly(r.workDate) < formatDateOnly(hire)) continue;
+    const dayStr = formatDateOnly(r.workDate);
+    if (!dateSetByEmp.has(r.employeeId)) dateSetByEmp.set(r.employeeId, new Set());
+    dateSetByEmp.get(r.employeeId)!.add(dayStr);
+  }
+
+  const index = new Map<string, Map<string, number>>();
+  const dataStartYmd = formatDateOnly(attendanceDataStartDate);
+  for (const [empId, set] of dateSetByEmp.entries()) {
+    const hire = hireDateByEmployeeId.get(empId);
+    const empCode = employeeCodeByEmployeeId.get(empId) ?? "";
+    const hasOverride = empCode ? overridesByEmployeeCode.has(empCode) : false;
+    let assumedBeforeStart =
+      hire != null
+        ? resolveAssumedWorkedDayOffset({
+            employeeCode: empCode,
+            hireDate: hire,
+            dataStartDate: attendanceDataStartDate,
+            overridesByEmployeeCode,
+          })
+        : 0;
+    const sorted = Array.from(set).sort();
+    const actualBeforeStart = sorted.filter((d) => d < dataStartYmd).length;
+
+    // 若資料庫中其實已經有 dataStartDate 以前的出勤日，代表不是「缺資料」情境；
+    // 不該套用 assumedBeforeStart（會把 dayNo 再往上推），除非使用者明確設定 override。
+    if (!hasOverride && actualBeforeStart > 0) {
+      assumedBeforeStart = 0;
+    }
+
+    const byDate = new Map<string, number>();
+    for (let i = 0; i < sorted.length; i++) {
+      const dayStr = sorted[i];
+      // 覆寫值語意：代表「資料開始日前」應算的累計天數，取代實際資料開始日前的累計。
+      if (dayStr >= dataStartYmd && assumedBeforeStart > 0) {
+        const afterIndex = i - actualBeforeStart;
+        byDate.set(dayStr, assumedBeforeStart + afterIndex + 1);
+      } else {
+        byDate.set(dayStr, i + 1);
+      }
+    }
+    index.set(empId, byDate);
+  }
+  return index;
 }
 

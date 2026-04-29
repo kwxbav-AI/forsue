@@ -274,7 +274,7 @@
     },
     {
       "key": "reports-store-target-card",
-      "label": "門市達標（新的名片）",
+      "label": "門市達標",
       "description": "依月份分週，產出可複製的門市達標訊息稿",
       "group": "報表",
       "sortOrder": 345,
