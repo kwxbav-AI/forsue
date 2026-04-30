@@ -80,6 +80,10 @@ export default function WorkhourAdjustmentsPage() {
     () => stores.filter((s) => s.isActive !== false),
     [stores]
   );
+  const storeNameById = useMemo(
+    () => new Map(stores.map((s) => [s.id, s.name])),
+    [stores]
+  );
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);
@@ -406,6 +410,9 @@ export default function WorkhourAdjustmentsPage() {
                   員工
                 </th>
                 <th className="sticky left-[200px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  門市
+                </th>
+                <th className="sticky left-[340px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                   類型
                 </th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">調整時數</th>
@@ -420,6 +427,9 @@ export default function WorkhourAdjustmentsPage() {
                     {a.employee.employeeCode} {a.employee.name}
                   </td>
                   <td className="sticky left-[200px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
+                    {a.storeId ? storeNameById.get(a.storeId) ?? a.storeId : "—"}
+                  </td>
+                  <td className="sticky left-[340px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                     {ADJUSTMENT_TYPE_LABELS[a.adjustmentType] ?? a.adjustmentType}
                   </td>
                   <td className="px-4 py-2 text-right">{a.adjustmentHours}</td>

@@ -68,7 +68,18 @@ export async function POST(request: NextRequest) {
       include: { employee: true },
     });
 
-    await performanceEngineService.recalculateDailyPerformance(d);
+    try {
+      await performanceEngineService.recalculateDailyPerformance(d);
+    } catch (recalculateError) {
+      await prisma.workhourAdjustment
+        .delete({ where: { id: created.id } })
+        .catch((rollbackError) => {
+          console.error("rollback workhour adjustment failed", rollbackError);
+        });
+      const recalculateMessage =
+        recalculateError instanceof Error ? recalculateError.message : "工效比重算失敗";
+      throw new Error(`工時異動未儲存：${recalculateMessage}`);
+    }
     return NextResponse.json(created);
   } catch (e) {
     console.error(e);

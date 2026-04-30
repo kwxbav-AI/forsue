@@ -276,15 +276,16 @@ export async function GET(request: Request) {
     );
 
     const [adjustments, dispatches] = await Promise.all([
-      employeeIds.length > 0
-        ? prisma.workhourAdjustment.findMany({
-            where: {
-              AND: [adjustmentWorkDateWhere, { employeeId: { in: employeeIds } }],
-            },
-            include: { employee: true },
-            orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
-          })
-        : ([] as any[]),
+      prisma.workhourAdjustment.findMany({
+        where: {
+          AND: [
+            adjustmentWorkDateWhere,
+            ...(empWhere ? [{ employee: empWhere }] : []),
+          ],
+        },
+        include: { employee: { include: { defaultStore: true } } },
+        orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
+      }),
       prisma.dispatchRecord.findMany({
         where: {
           AND: [
@@ -303,6 +304,10 @@ export async function GET(request: Request) {
       const s = remark.trim();
       if (!s) return "";
       return s.split("/")[0].trim();
+    };
+    const formatAdjustmentReason = (adjustmentType: string, note: string | null): string => {
+      const label = ADJUSTMENT_TYPE_LABELS[adjustmentType] ?? adjustmentType;
+      return note ? `${label}，${note}` : label;
     };
 
     // 針對「儲備人力」計算：判定「全店到齊」與「加班總時數」必須看整間店的資料，
@@ -529,10 +534,29 @@ export async function GET(request: Request) {
       const def = emp.defaultStore;
       return (def?.department || def?.name || "").trim() || "—";
     };
+    const getAdjustmentStoreId = (
+      adjustment: (typeof adjustments)[number],
+      attStoreId: string | null = null
+    ): string | null =>
+      adjustment.storeId ??
+      attStoreId ??
+      adjustment.employee.defaultStoreId ??
+      fallbackHomeStoreByEmployee.get(adjustment.employeeId) ??
+      null;
+    const storeMatchesFilter = (sid: string | null): boolean => {
+      if (!storeIdsForFilter) return true;
+      if (storeIdsForFilter.length === 0) return false;
+      return sid !== null && storeIdsForFilter.includes(sid);
+    };
 
     const sortedKeys = new Set<string>();
     for (const r of records) {
       sortedKeys.add(`${r.employeeId}|${formatDateOnly(r.workDate)}`);
+    }
+    for (const a of adjustments) {
+      if (storeMatchesFilter(getAdjustmentStoreId(a))) {
+        sortedKeys.add(`${a.employeeId}|${formatDateOnly(a.workDate)}`);
+      }
     }
     for (const d of dispatches) {
       if (storeIdsForFilter && storeIdsForFilter.includes(d.toStoreId))
@@ -557,8 +581,7 @@ export async function GET(request: Request) {
       const deptForAtt = getDept(storeIdForAtt, emp);
 
       const applyToThisStore = (sid: string | null): boolean => {
-        if (!storeIdsForFilter || storeIdsForFilter.length === 0) return true;
-        return sid !== null && storeIdsForFilter.includes(sid);
+        return storeMatchesFilter(sid);
       };
 
       const attStoreOk = !storeIdsForFilter || (storeIdForAtt && storeIdsForFilter.includes(storeIdForAtt));
@@ -695,20 +718,18 @@ export async function GET(request: Request) {
         }
 
         for (const a of adjList) {
-          const adjStoreId = a.storeId || storeIdForAtt;
+          const adjStoreId = getAdjustmentStoreId(a, storeIdForAtt);
           if (!applyToThisStore(adjStoreId)) continue;
           const h = Number(a.adjustmentHours);
           net += h;
-          const reason =
-            ADJUSTMENT_TYPE_LABELS[a.adjustmentType] ?? a.adjustmentType +
-              (a.note ? `, ${a.note}` : "");
+          const reason = formatAdjustmentReason(a.adjustmentType, a.note);
           rows.push({
             type: "adjustment",
             id: a.id,
             employeeId: emp.id,
             employeeCode: empCode,
             name: empName,
-            department: deptForAtt,
+            department: getDept(adjStoreId, emp),
             position,
             workDate: dateStr,
             workHours: h,
@@ -780,6 +801,52 @@ export async function GET(request: Request) {
           clockInStoreText: null,
           clockOutStoreText: null,
         });
+      } else if (adjList.length > 0) {
+        let net = 0;
+        let emitted = false;
+        let deptForAdj = "—";
+
+        for (const a of adjList) {
+          const adjStoreId = getAdjustmentStoreId(a, storeIdForAtt);
+          if (!applyToThisStore(adjStoreId)) continue;
+          const h = Number(a.adjustmentHours);
+          net += h;
+          if (!emitted) deptForAdj = getDept(adjStoreId, emp);
+          emitted = true;
+          rows.push({
+            type: "adjustment",
+            id: a.id,
+            employeeId: emp.id,
+            employeeCode: empCode,
+            name: empName,
+            department: getDept(adjStoreId, emp),
+            position,
+            workDate: dateStr,
+            workHours: h,
+            adjustmentReason: formatAdjustmentReason(a.adjustmentType, a.note),
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
+          });
+        }
+
+        if (emitted) {
+          rows.push({
+            type: "subtotal",
+            id: `sub-adj-${emp.id}-${dateStr}`,
+            employeeId: emp.id,
+            employeeCode: empCode,
+            name: empName,
+            department: deptForAdj,
+            position,
+            workDate: dateStr,
+            workHours: Math.round(net * 100) / 100,
+            adjustmentReason: null,
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
+          });
+        }
       } else if (storeIdsForFilter && storeIdsForFilter.length > 0) {
         for (const d of dispList) {
           if (!storeIdsForFilter.includes(d.toStoreId)) continue;
