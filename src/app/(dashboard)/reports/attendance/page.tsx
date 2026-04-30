@@ -226,14 +226,24 @@ export default function AttendanceReportPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {rows.map((r, index) => {
                 const isChangeRow =
                   r.type === "adjustment" || r.type === "dispatch_out" || r.type === "dispatch_in";
                 const isSubRow = isChangeRow || r.type === "subtotal";
                 const isSubtotal = r.type === "subtotal";
                 const isNegative = Number.isFinite(r.workHours) && r.workHours < 0;
+                const previousRow = rows[index - 1];
+                const isStandaloneAdjustment =
+                  r.type === "adjustment" &&
+                  !(
+                    previousRow &&
+                    previousRow.type !== "subtotal" &&
+                    previousRow.employeeCode === r.employeeCode &&
+                    previousRow.workDate === r.workDate
+                  );
                 // 調入/調出工時必須顯示「支援者」資訊，否則看起來會像是被上一位員工吃到工時
-                const showEmployeeOnThisRow = r.type === "dispatch_in" || r.type === "dispatch_out";
+                const showEmployeeOnThisRow =
+                  r.type === "dispatch_in" || r.type === "dispatch_out" || isStandaloneAdjustment;
                 const statusLabel =
                   r.locationMatchStatus === "MATCH"
                     ? "相符"
