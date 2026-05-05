@@ -21,18 +21,31 @@ export async function GET(request: NextRequest) {
   const date = searchParams.get("date");
   const storeId = searchParams.get("storeId");
   const employeeId = searchParams.get("employeeId");
-  if (!date) {
+  const latest = searchParams.get("latest");
+  const takeParam = searchParams.get("take");
+  const isLatestMode = !date && latest === "1";
+  if (!date && !isLatestMode) {
     return NextResponse.json({ error: "請提供 date (YYYY-MM-DD)" }, { status: 400 });
   }
-  const workDate = toStartOfDay(date);
-  const where: { workDate: Date; storeId?: string; employeeId?: string } = { workDate };
+
+  const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
+  const take =
+    Number.isFinite(takeRequested) && takeRequested > 0
+      ? Math.min(500, Math.max(1, takeRequested))
+      : isLatestMode
+        ? 50
+        : undefined;
+
+  const where: { workDate?: Date; storeId?: string; employeeId?: string } = {};
+  if (date) where.workDate = toStartOfDay(date);
   if (storeId) where.storeId = storeId;
   if (employeeId) where.employeeId = employeeId;
 
   const list = await prisma.workhourAdjustment.findMany({
     where,
     include: { employee: true },
-    orderBy: [{ employeeId: "asc" }, { createdAt: "asc" }],
+    orderBy: isLatestMode ? [{ workDate: "desc" }, { createdAt: "desc" }] : [{ employeeId: "asc" }, { createdAt: "asc" }],
+    ...(take ? { take } : {}),
   });
   return NextResponse.json(list);
 }

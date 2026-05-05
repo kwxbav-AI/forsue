@@ -35,7 +35,7 @@ const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function WorkhourAdjustmentsPage() {
-  const [date, setDate] = useState(() => formatLocalDateInput());
+  const [date, setDate] = useState<string>("");
   const [storeId, setStoreId] = useState("");
   const [stores, setStores] = useState<Store[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -66,7 +66,8 @@ export default function WorkhourAdjustmentsPage() {
   }, []);
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
-    let url = `/api/workhour-adjustments?date=${date}`;
+    const hasDate = Boolean(date);
+    let url = hasDate ? `/api/workhour-adjustments?date=${date}` : `/api/workhour-adjustments?latest=1&take=50`;
     if (storeId) url += `&storeId=${storeId}`;
     const res = await fetch(url);
     if (res.ok) setAdjustments(await res.json());

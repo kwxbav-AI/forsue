@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
+  const latest = searchParams.get("latest");
+  const takeParam = searchParams.get("take");
 
   const where: { workDate?: { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
@@ -59,9 +61,19 @@ export async function GET(request: NextRequest) {
     where.workDate = { gte: d, lte: d };
   }
 
+  const isLatestMode = !where.workDate && latest === "1";
+  const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
+  const take =
+    Number.isFinite(takeRequested) && takeRequested > 0
+      ? Math.min(500, Math.max(1, takeRequested))
+      : isLatestMode
+        ? 50
+        : undefined;
+
   const list = await prisma.contentEntry.findMany({
     where,
     orderBy: [{ workDate: "desc" }, { branch: "asc" }],
+    ...(take ? { take } : {}),
   });
   const canSee = await canSeeDeductedMinutes(request);
   return NextResponse.json(canSee ? list : list.map((r) => maskDeductedMinutes(r)));

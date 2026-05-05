@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
 import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
@@ -53,8 +53,8 @@ function minutesDiff(start: string, end: string): number | null {
 export default function DispatchesPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
-  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [list, setList] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,6 +69,10 @@ export default function DispatchesPage() {
   const [editRemark, setEditRemark] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const bottomScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState<number>(0);
 
   type DispatchReason = (typeof DISPATCH_REASONS)[number];
 
@@ -92,12 +96,16 @@ export default function DispatchesPage() {
     note: "",
   });
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/dispatches?startDate=${startDate}&endDate=${endDate}`);
+    const hasDates = Boolean(startDate && endDate);
+    const url = hasDates
+      ? `/api/dispatches?startDate=${startDate}&endDate=${endDate}`
+      : `/api/dispatches?latest=1&take=50`;
+    const res = await fetch(url);
     if (res.ok) setList(await res.json());
     setLoading(false);
-  }
+  }, [startDate, endDate]);
 
   useEffect(() => {
     fetch("/api/stores")
@@ -129,16 +137,36 @@ export default function DispatchesPage() {
     };
     window.addEventListener("pending-deletions-changed", onPending);
     return () => window.removeEventListener("pending-deletions-changed", onPending);
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
-  }, [startDate, endDate]);
+  }, [refresh]);
 
   const filteredList = useMemo(() => {
     if (!locationFilter) return list;
     return list.filter((r) => (r.locationMatchStatus ?? "") === locationFilter);
   }, [list, locationFilter]);
+
+  useEffect(() => {
+    const el = tableRef.current;
+    if (!el) return;
+
+    const update = () => setTableScrollWidth(el.scrollWidth || 0);
+    update();
+
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [list.length, locationFilter]);
+
+  function syncScroll(source: "table" | "bottom") {
+    const tableEl = tableContainerRef.current;
+    const bottomEl = bottomScrollRef.current;
+    if (!tableEl || !bottomEl) return;
+    if (source === "table") bottomEl.scrollLeft = tableEl.scrollLeft;
+    else tableEl.scrollLeft = bottomEl.scrollLeft;
+  }
 
   const activeStores = useMemo(
     () => stores.filter((s) => s.isActive !== false),
@@ -509,8 +537,13 @@ export default function DispatchesPage() {
         ) : filteredList.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">此區間沒有調度資料</p>
         ) : (
-          <div className="relative max-h-[70vh] overflow-auto">
-            <table className="w-full text-sm">
+          <>
+            <div
+              ref={tableContainerRef}
+              className="relative max-h-[calc(100vh-520px)] min-h-[320px] overflow-y-auto overflow-x-auto"
+              onScroll={() => syncScroll("table")}
+            >
+              <table ref={tableRef} className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
                   <th className="sticky left-0 z-20 w-[120px] min-w-[120px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
@@ -644,6 +677,15 @@ export default function DispatchesPage() {
               </tbody>
             </table>
           </div>
+            <div
+              ref={bottomScrollRef}
+              className="h-4 overflow-x-auto overflow-y-hidden border-t border-slate-200"
+              onScroll={() => syncScroll("bottom")}
+              aria-label="左右捲動"
+            >
+              <div style={{ width: tableScrollWidth, height: 1 }} />
+            </div>
+          </>
         )}
       </div>
 

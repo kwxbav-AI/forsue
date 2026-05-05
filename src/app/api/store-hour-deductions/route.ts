@@ -18,16 +18,29 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
+  const latest = searchParams.get("latest");
+  const takeParam = searchParams.get("take");
   const where: { workDate?: { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
     const start = parseDateOnlyUTC(startDate);
     const end = parseDateOnlyUTC(endDate);
     where.workDate = { gte: start, lte: end };
   }
+
+  const isLatestMode = !where.workDate && latest === "1";
+  const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
+  const take =
+    Number.isFinite(takeRequested) && takeRequested > 0
+      ? Math.min(500, Math.max(1, takeRequested))
+      : isLatestMode
+        ? 50
+        : undefined;
+
   const list = await prisma.storeHourDeduction.findMany({
     where,
     include: { store: { select: { id: true, name: true, code: true } } },
     orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
+    ...(take ? { take } : {}),
   });
   return NextResponse.json(
     list.map((r) => ({

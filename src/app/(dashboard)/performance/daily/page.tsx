@@ -21,6 +21,25 @@ type DailyRow = {
 type SortKey = "storeName" | "revenueAmount" | "totalWorkHours" | "efficiencyRatio" | "targetValue" | "status";
 type SortDir = "asc" | "desc";
 
+type StoreDetailRow = {
+  type: "attendance" | "adjustment" | "dispatch_out" | "dispatch_in" | "subtotal";
+  id: string;
+  employeeId: string;
+  employeeCode: string;
+  name: string;
+  workDate: string;
+  storeId: string;
+  workHours: number;
+  adjustmentReason: string | null;
+};
+
+type StoreDetailPayload = {
+  workDate: string;
+  storeId: string;
+  storeName: string | null;
+  rows: StoreDetailRow[];
+};
+
 function isSaturdayYmd(ymd: string): boolean {
   return new Date(`${ymd}T00:00:00.000Z`).getUTCDay() === 6;
 }
@@ -30,7 +49,7 @@ export default function PerformanceDailyPage() {
   const [list, setList] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailStoreId, setDetailStoreId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<{ workDate: string; storeId: string; detail: { employeeCode: string; name: string; workHours: number }[] } | null>(null);
+  const [detail, setDetail] = useState<StoreDetailPayload | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("storeName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -104,7 +123,7 @@ export default function PerformanceDailyPage() {
     }
     fetch(`/api/performance/daily/detail?date=${date}&storeId=${detailStoreId}`)
       .then((r) => r.json())
-      .then((d) => setDetail(d))
+      .then((d: StoreDetailPayload) => setDetail(d))
       .catch(() => setDetail(null));
   }, [date, detailStoreId]);
 
@@ -233,32 +252,89 @@ export default function PerformanceDailyPage() {
               <h3 className="mb-2 font-medium text-slate-800">
                 {list.find((r) => r.storeId === detailStoreId)?.storeName} 當日工時明細
               </h3>
-              <div className="relative max-h-[50vh] overflow-auto">
+              <div className="relative max-h-[55vh] overflow-auto">
                 <table className="w-full text-sm">
-                <thead>
-                  <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left">
-                    <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
-                      員工代碼
-                    </th>
-                    <th className="sticky left-[140px] z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
-                      姓名
-                    </th>
-                    <th className="py-1.5 text-right font-medium text-slate-700">工時</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.detail.map((d, i) => (
-                    <tr key={i} className="border-b border-slate-100">
-                      <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
-                        {d.employeeCode}
-                      </td>
-                      <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
-                        {d.name}
-                      </td>
-                      <td className="py-1.5 text-right">{d.workHours}</td>
+                  <thead>
+                    <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left">
+                      <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
+                        員工代碼
+                      </th>
+                      <th className="sticky left-[140px] z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
+                        姓名
+                      </th>
+                      <th className="py-1.5 text-right font-medium text-slate-700">工時</th>
+                      <th className="py-1.5 pl-4 font-medium text-slate-700">原因</th>
                     </tr>
-                  ))}
-                </tbody>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const rows = Array.isArray(detail.rows) ? detail.rows : [];
+                      const byEmp = new Map<string, StoreDetailRow[]>();
+                      for (const r of rows) {
+                        const list = byEmp.get(r.employeeId) ?? [];
+                        list.push(r);
+                        byEmp.set(r.employeeId, list);
+                      }
+                      const sortedEmpIds = Array.from(byEmp.keys()).sort((a, b) => {
+                        const ac = (byEmp.get(a)?.find((x) => x.employeeCode)?.employeeCode ?? "").toLowerCase();
+                        const bc = (byEmp.get(b)?.find((x) => x.employeeCode)?.employeeCode ?? "").toLowerCase();
+                        return ac.localeCompare(bc, "zh-Hant");
+                      });
+
+                      const priority = (t: StoreDetailRow["type"]) =>
+                        t === "attendance" ? 0 : t === "dispatch_out" ? 1 : t === "dispatch_in" ? 2 : t === "adjustment" ? 3 : 9;
+
+                      const flat: { key: string; row: StoreDetailRow; kind: "main" | "detail" | "subtotal" }[] = [];
+                      for (const empId of sortedEmpIds) {
+                        const group = byEmp.get(empId) ?? [];
+                        const att = group.filter((r) => r.type === "attendance");
+                        const subtotal = group.filter((r) => r.type === "subtotal");
+                        const others = group.filter((r) => r.type !== "attendance" && r.type !== "subtotal");
+                        others.sort((a, b) => priority(a.type) - priority(b.type));
+                        for (const r of att) flat.push({ key: r.id, row: r, kind: "main" });
+                        for (const r of others) flat.push({ key: r.id, row: r, kind: "detail" });
+                        for (const r of subtotal) flat.push({ key: r.id, row: r, kind: "subtotal" });
+                      }
+
+                      if (flat.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={4} className="py-4 text-center text-slate-500">
+                              此門市當日無工時明細
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return flat.map(({ key, row, kind }) => {
+                        const isNegative = Number.isFinite(row.workHours) && row.workHours < 0;
+                        const hoursClass = isNegative ? "text-red-700 font-medium" : "text-slate-800";
+                        const trClass =
+                          kind === "subtotal"
+                            ? "border-b border-slate-100 bg-slate-50 font-medium"
+                            : kind === "detail"
+                              ? "border-b border-slate-100 text-slate-600"
+                              : "border-b border-slate-100";
+                        const showEmp = kind === "main";
+                        return (
+                          <tr key={key} className={trClass}>
+                            <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
+                              {kind === "subtotal" ? "小計" : showEmp ? row.employeeCode : ""}
+                            </td>
+                            <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
+                              {kind === "subtotal" ? "" : showEmp ? row.name : ""}
+                            </td>
+                            <td className={`py-1.5 text-right ${hoursClass}`}>
+                              {row.workHours}
+                            </td>
+                            <td className="py-1.5 pl-4">
+                              {kind === "main" ? "" : (row.adjustmentReason ?? "—")}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
                 </table>
               </div>
             </div>

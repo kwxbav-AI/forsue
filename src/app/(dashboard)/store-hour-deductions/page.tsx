@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
 import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
@@ -39,8 +39,8 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export default function StoreHourDeductionsPage() {
-  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
-  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [list, setList] = useState<Row[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,20 +58,22 @@ export default function StoreHourDeductionsPage() {
     note: "",
   });
 
-  const fetchList = () => {
+  const fetchList = useCallback(() => {
     setLoading(true);
-    fetch(
-      `/api/store-hour-deductions?startDate=${startDate}&endDate=${endDate}`
-    )
+    const hasDates = Boolean(startDate && endDate);
+    const url = hasDates
+      ? `/api/store-hour-deductions?startDate=${startDate}&endDate=${endDate}`
+      : `/api/store-hour-deductions?latest=1&take=50`;
+    fetch(url)
       .then((r) => r.json())
       .then((data: Row[]) => setList(Array.isArray(data) ? data : []))
       .catch(() => setList([]))
       .finally(() => setLoading(false));
-  };
+  }, [startDate, endDate]);
 
   useEffect(() => {
     fetchList();
-  }, [startDate, endDate]);
+  }, [fetchList]);
 
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" })
@@ -92,7 +94,7 @@ export default function StoreHourDeductionsPage() {
     };
     window.addEventListener("pending-deletions-changed", onPending);
     return () => window.removeEventListener("pending-deletions-changed", onPending);
-  }, [startDate, endDate]);
+  }, [fetchList]);
 
   useEffect(() => {
     fetch("/api/stores")

@@ -84,7 +84,13 @@ export default function AttendanceReportPage() {
 
   const totalHours = useMemo(() => {
     return rows.reduce((sum, r) => {
-      if (r.type === "subtotal" || r.type === "dispatch_in") return sum + (Number.isFinite(r.workHours) ? r.workHours : 0);
+      if (r.type === "subtotal") return sum + (Number.isFinite(r.workHours) ? r.workHours : 0);
+      if (r.type === "dispatch_in") {
+        const hasSubtotal = rows.some(
+          (x) => x.type === "subtotal" && x.workDate === r.workDate && x.employeeCode === r.employeeCode
+        );
+        if (!hasSubtotal) return sum + (Number.isFinite(r.workHours) ? r.workHours : 0);
+      }
       if (r.type === "attendance") {
         const hasSubtotal = rows.some(
           (x) => x.type === "subtotal" && x.workDate === r.workDate && x.employeeCode === r.employeeCode

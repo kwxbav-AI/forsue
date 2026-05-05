@@ -42,8 +42,8 @@ const CONTENT_OPTIONS = [
 ];
 
 export default function ContentEntriesPage() {
-  const [startDate, setStartDate] = useState(() => formatLocalDateInput());
-  const [endDate, setEndDate] = useState(() => formatLocalDateInput());
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [list, setList] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -81,9 +81,11 @@ export default function ContentEntriesPage() {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(
-      `/api/content-entries?startDate=${startDate}&endDate=${endDate}`
-    );
+    const hasDates = Boolean(startDate && endDate);
+    const url = hasDates
+      ? `/api/content-entries?startDate=${startDate}&endDate=${endDate}`
+      : `/api/content-entries?latest=1&take=50`;
+    const res = await fetch(url);
     if (res.ok) setList(await res.json());
     setLoading(false);
   }, [startDate, endDate]);

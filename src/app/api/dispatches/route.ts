@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
   const date = searchParams.get("date"); // backward compatible
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
+  const latest = searchParams.get("latest");
+  const takeParam = searchParams.get("take");
   const where: { workDate?: Date | { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
     const start = parseDateOnlyUTC(startDate);
@@ -45,6 +47,15 @@ export async function GET(request: NextRequest) {
   } else if (date) {
     where.workDate = parseDateOnlyUTC(date);
   }
+
+  const isLatestMode = !where.workDate && latest === "1";
+  const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
+  const take =
+    Number.isFinite(takeRequested) && takeRequested > 0
+      ? Math.min(500, Math.max(1, takeRequested))
+      : isLatestMode
+        ? 50
+        : 500;
 
   const stores = await prisma.store.findMany({
     select: { id: true, name: true },
@@ -57,7 +68,7 @@ export async function GET(request: NextRequest) {
       employee: { select: { id: true, employeeCode: true, name: true } },
     },
     orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
-    take: 500,
+    take,
   });
 
   // 避免 TypeScript 在非 ES2015 目標下對 Set 可迭代展開（...）的限制
@@ -71,10 +82,15 @@ export async function GET(request: NextRequest) {
       clockOutStoreText: string | null;
     }
   >();
-  if (where.workDate && employeeIds.length > 0) {
+  if (employeeIds.length > 0 && list.length > 0) {
+    const ymdSet = new Set<string>();
+    for (const d of list) {
+      ymdSet.add(formatDateOnlyTaipei(d.workDate));
+    }
+    const dates = Array.from(ymdSet).map((ymd) => parseDateOnlyUTC(ymd));
     const attendances = await prisma.attendanceRecord.findMany({
       where: {
-        workDate: where.workDate,
+        workDate: { in: dates },
         employeeId: { in: employeeIds },
       },
       select: {

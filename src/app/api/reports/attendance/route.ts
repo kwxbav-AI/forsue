@@ -806,6 +806,55 @@ export async function GET(request: Request) {
         let emitted = false;
         let deptForAdj = "—";
 
+        for (const d of dispList) {
+          if (!storeIdsForFilter || !storeIdsForFilter.includes(d.toStoreId)) continue;
+          const h = d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
+          const reason = extractDispatchReason(d.remark ?? null);
+          const isBackoffice = reason === "後勤支援門市" && d.confirmStatus === "已確認";
+          const toStore = storeById.get(d.toStoreId);
+          const toDept = toStore ? (toStore.department || toStore.name || "").trim() : "—";
+          if (!emitted) deptForAdj = toDept;
+          emitted = true;
+          if (isBackoffice && d.actualHours == null) {
+            rows.push({
+              type: "dispatch_in",
+              id: `backoffice-missing-${d.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: toDept,
+              position,
+              workDate: dateStr,
+              workHours: 0,
+              adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+            continue;
+          }
+          const hIn = isBackoffice ? new Decimal(h).mul(0.7).toNumber() : h;
+          const roundedHIn = Math.round(hIn * 100) / 100;
+          net += roundedHIn;
+          rows.push({
+            type: "dispatch_in",
+            id: d.id,
+            employeeId: emp.id,
+            employeeCode: empCode,
+            name: empName,
+            department: toDept,
+            position,
+            workDate: dateStr,
+            workHours: roundedHIn,
+            adjustmentReason: isBackoffice
+              ? `後勤支援門市（70%：${roundedHIn}h）`
+              : (d.remark?.trim() || "支援"),
+            locationMatchStatus: null,
+            clockInStoreText: null,
+            clockOutStoreText: null,
+          });
+        }
+
         for (const a of adjList) {
           const adjStoreId = getAdjustmentStoreId(a, storeIdForAtt);
           if (!applyToThisStore(adjStoreId)) continue;
