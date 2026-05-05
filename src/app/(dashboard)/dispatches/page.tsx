@@ -540,7 +540,7 @@ export default function DispatchesPage() {
           <>
             <div
               ref={tableContainerRef}
-              className="relative max-h-[calc(100vh-520px)] min-h-[320px] overflow-y-auto overflow-x-auto"
+              className="relative max-h-[70vh] min-h-[480px] overflow-y-auto overflow-x-auto"
               onScroll={() => syncScroll("table")}
             >
               <table ref={tableRef} className="w-full text-sm">
@@ -552,25 +552,25 @@ export default function DispatchesPage() {
                   <th className="sticky left-[120px] z-20 w-[180px] min-w-[180px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                     員工
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">調出</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">調入</th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">預申請時數</th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">實際時數</th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">差異</th>
-                  <th className="px-4 py-2 text-center font-medium text-slate-700">狀態</th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">出勤時數</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">調出</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">調入</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">預申請時數</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">實際時數</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">差異</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-center font-medium text-slate-700">狀態</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">出勤時數</th>
                   <th
-                    className="px-4 py-2 text-center font-medium text-slate-700"
+                    className="whitespace-nowrap px-4 py-2 text-center font-medium text-slate-700"
                     title="以差異（實際－預申請）判定"
                   >
                     與預申請比對
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">時間</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">打卡地點</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">上班地點</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">下班地點</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
-                  <th className="px-4 py-2"></th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">時間</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">打卡地點</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">上班地點</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">下班地點</th>
+                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">備註</th>
+                  <th className="whitespace-nowrap px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -601,13 +601,13 @@ export default function DispatchesPage() {
                     <td className="sticky left-[120px] z-[5] w-[180px] min-w-[180px] bg-white px-4 py-2">
                       {r.employeeCode} {r.employeeName}
                     </td>
-                    <td className="px-4 py-2 text-slate-600">{r.fromStoreName ?? "—"}</td>
-                    <td className="px-4 py-2 text-slate-600">{r.toStoreName ?? "—"}</td>
-                    <td className="px-4 py-2 text-right">{r.dispatchHours}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="min-w-[160px] whitespace-nowrap px-4 py-2 text-slate-600">{r.fromStoreName ?? "—"}</td>
+                    <td className="min-w-[160px] whitespace-nowrap px-4 py-2 text-slate-600">{r.toStoreName ?? "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right">{r.dispatchHours}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right">
                       {r.actualHours != null ? r.actualHours : "—"}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="whitespace-nowrap px-4 py-2 text-right">
                       {r.hoursDiff != null ? (
                         <span className={r.hoursDiff > 0 ? "text-green-600" : r.hoursDiff < 0 ? "text-amber-600" : "text-slate-600"}>
                           {r.hoursDiff > 0 ? "+" : ""}{r.hoursDiff}
@@ -616,7 +616,7 @@ export default function DispatchesPage() {
                         "—"
                       )}
                     </td>
-                    <td className="px-4 py-2 text-center">
+                    <td className="whitespace-nowrap px-4 py-2 text-center">
                       <span
                         className={
                           r.confirmStatus === "已確認"
@@ -627,10 +627,10 @@ export default function DispatchesPage() {
                         {r.confirmStatus === "已確認" ? "已確認" : "待確認"}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-right text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-2 text-right text-slate-600">
                       {r.attendanceHours != null ? r.attendanceHours : "—"}
                     </td>
-                    <td className="px-4 py-2 text-center">
+                    <td className="whitespace-nowrap px-4 py-2 text-center">
                       {r.comparisonResult == null ? (
                         <span className="text-slate-400">—</span>
                       ) : (
@@ -647,14 +647,16 @@ export default function DispatchesPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                       {r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}
                     </td>
-                    <td className="px-4 py-2">{statusLabel}</td>
-                    <td className="px-4 py-2 text-slate-600">{r.clockInStoreText ?? "—"}</td>
-                    <td className="px-4 py-2 text-slate-600">{r.clockOutStoreText ?? "—"}</td>
-                    <td className="px-4 py-2 text-slate-600">{r.remark ?? "—"}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="whitespace-nowrap px-4 py-2">{statusLabel}</td>
+                    <td className="min-w-[140px] whitespace-nowrap px-4 py-2 text-slate-600">{r.clockInStoreText ?? "—"}</td>
+                    <td className="min-w-[140px] whitespace-nowrap px-4 py-2 text-slate-600">{r.clockOutStoreText ?? "—"}</td>
+                    <td className="min-w-[220px] max-w-[360px] whitespace-nowrap px-4 py-2 text-slate-600" title={r.remark ?? ""}>
+                      {r.remark ?? "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right">
                       <button
                         type="button"
                         onClick={() => openEdit(r)}
