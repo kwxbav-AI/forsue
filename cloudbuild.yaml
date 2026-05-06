@@ -109,12 +109,15 @@ steps:
           cat > /workspace/should_resolve_rolled_back.js <<'NODE'
           const { PrismaClient } = require("@prisma/client");
 
-          const MIGRATION = "20260416000000_use_date_for_calendar_fields";
+          const MIGRATION = process.argv[2];
           /** exit 0 = failed/incomplete, run resolve --rolled-back; exit 10 = skip; exit 1 = error */
           const EXIT_NEED_RESOLVE = 0;
           const EXIT_SKIP = 10;
 
           async function main() {
+            if (!MIGRATION) {
+              throw new Error("Migration name argument is required");
+            }
             const prisma = new PrismaClient();
             try {
               const rows = await prisma.$queryRawUnsafe(
@@ -156,18 +159,24 @@ steps:
           });
           NODE
 
-          set +e
-          node /workspace/should_resolve_rolled_back.js
-          RESOLVE_GATE_RC=$$?
-          set -e
+          resolve_rolled_back_if_failed() {
+            local migration_name="$$1"
+            set +e
+            node /workspace/should_resolve_rolled_back.js "$${migration_name}"
+            RESOLVE_GATE_RC=$$?
+            set -e
 
-          if [ "$${RESOLVE_GATE_RC:-1}" -eq 0 ]; then
-            npx prisma migrate resolve --rolled-back 20260416000000_use_date_for_calendar_fields
-          elif [ "$${RESOLVE_GATE_RC:-1}" -eq 10 ]; then
-            echo "Skipping: prisma migrate resolve --rolled-back (migration not in failed/incomplete state)."
-          else
-            exit "$${RESOLVE_GATE_RC:-1}"
-          fi
+            if [ "$${RESOLVE_GATE_RC:-1}" -eq 0 ]; then
+              npx prisma migrate resolve --rolled-back "$${migration_name}"
+            elif [ "$${RESOLVE_GATE_RC:-1}" -eq 10 ]; then
+              echo "Skipping: prisma migrate resolve --rolled-back $${migration_name} (migration not in failed/incomplete state)."
+            else
+              exit "$${RESOLVE_GATE_RC:-1}"
+            fi
+          }
+
+          resolve_rolled_back_if_failed 20260416000000_use_date_for_calendar_fields
+          resolve_rolled_back_if_failed 20260506103000_add_employee_reserve_staff_period
 
           npx prisma migrate deploy
           npm run db:sync-permissions
