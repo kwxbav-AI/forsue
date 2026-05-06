@@ -10,6 +10,7 @@ import {
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
 import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
+import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
 
 export const dynamic = "force-dynamic";
 
@@ -260,6 +261,10 @@ export async function GET(request: NextRequest) {
   const employeeStores: Map<string, StoreHoursMap> = new Map();
   const events: DetailRow[] = [];
   const ymd = formatDateOnly(workDate);
+  const reserveSettingsByEmployee = await getReserveStaffSettingsForDate(
+    workDate,
+    Array.from(aggregatedAttendanceByEmployeeId.keys())
+  );
 
   for (const att of aggregatedAttendanceByEmployeeId.values()) {
     const emp = employeeById.get(att.employeeId) ?? att.employee;
@@ -306,13 +311,18 @@ export async function GET(request: NextRequest) {
     }
 
     // 儲備人力折算
-    if (emp?.isReserveStaff) {
+    const reserveSetting = reserveSettingsByEmployee.get(att.employeeId) ?? {
+      isReserveStaff: !!emp?.isReserveStaff,
+      reserveWorkPercent:
+        emp?.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent),
+    };
+    if (reserveSetting.isReserveStaff) {
       const homeStoreId = emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(att.employeeId) ?? null;
       if (homeStoreId) {
         const storeFull = storeFullByStoreId.get(homeStoreId) ?? false;
         const overtimeTotal = storeOvertimeByStoreId.get(homeStoreId) ?? 0;
         const shouldPartial = storeFull && overtimeTotal <= 3;
-        const percent = emp.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent);
+        const percent = reserveSetting.reserveWorkPercent;
         if (
           !isTrial &&
           !hasConfirmedDispatchByEmployeeId.has(att.employeeId) &&

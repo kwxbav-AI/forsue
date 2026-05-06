@@ -88,6 +88,22 @@ model Employee {
   attendances      AttendanceRecord[]
   dispatches       DispatchRecord[]
   adjustments      WorkhourAdjustment[]
+  reserveStaffPeriods EmployeeReserveStaffPeriod[]
+}
+
+model EmployeeReserveStaffPeriod {
+  id                 String    @id @default(cuid())
+  employeeId         String
+  effectiveFrom      DateTime  @db.Date
+  effectiveTo        DateTime? @db.Date
+  isReserveStaff     Boolean
+  reserveWorkPercent Decimal?  @db.Decimal(5, 2)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
 }
 
 model Role {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { addCalendarDaysUTC, formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
+import { parseEffectiveFrom } from "@/lib/reserve-staff-periods";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,22 @@ export async function PATCH(
     const body = await request.json().catch(() => ({}));
     const isReserveStaff =
       typeof body.isReserveStaff === "boolean" ? body.isReserveStaff : undefined;
+    if (isReserveStaff === undefined) {
+      return NextResponse.json(
+        { error: "請提供是否為儲備人力" },
+        { status: 400 }
+      );
+    }
     const reserveWorkPercentRaw = body.reserveWorkPercent;
+    let effectiveFrom: Date;
+    try {
+      effectiveFrom = parseEffectiveFrom(body.effectiveFrom);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "請提供生效日期" },
+        { status: 400 }
+      );
+    }
 
     let reserveWorkPercent: number | null | undefined = undefined;
     if (reserveWorkPercentRaw === null) reserveWorkPercent = null;
@@ -37,28 +54,57 @@ export async function PATCH(
         );
       }
     }
+    if (isReserveStaff === true && reserveWorkPercent == null) {
+      return NextResponse.json(
+        { error: "儲備人力必須填寫工時計算%" },
+        { status: 400 }
+      );
+    }
 
-    const updated = await prisma.employee.update({
-      where: { id },
-      data: {
-        ...(isReserveStaff !== undefined ? { isReserveStaff } : {}),
-        ...(reserveWorkPercent !== undefined
-          ? { reserveWorkPercent: reserveWorkPercent }
-          : {}),
-        // 若取消儲備人力，比例一併清空，避免誤用
-        ...(isReserveStaff === false ? { reserveWorkPercent: null } : {}),
-      },
-      select: {
-        id: true,
-        employeeCode: true,
-        name: true,
-        isReserveStaff: true,
-        reserveWorkPercent: true,
-      },
+    const nextIsReserveStaff = isReserveStaff;
+    const nextReserveWorkPercent: number | null = nextIsReserveStaff ? reserveWorkPercent! : null;
+    const effectiveFromStr = formatDateOnly(effectiveFrom);
+    const previousEffectiveTo = parseDateOnlyUTC(addCalendarDaysUTC(effectiveFromStr, -1));
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.employeeReserveStaffPeriod.deleteMany({
+        where: { employeeId: id, effectiveFrom: { gte: effectiveFrom } },
+      });
+      await tx.employeeReserveStaffPeriod.updateMany({
+        where: {
+          employeeId: id,
+          effectiveFrom: { lt: effectiveFrom },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveFrom } }],
+        },
+        data: { effectiveTo: previousEffectiveTo },
+      });
+      await tx.employeeReserveStaffPeriod.create({
+        data: {
+          employeeId: id,
+          effectiveFrom,
+          isReserveStaff: nextIsReserveStaff,
+          reserveWorkPercent: nextReserveWorkPercent,
+        },
+      });
+      return tx.employee.update({
+        where: { id },
+        data: {
+          isReserveStaff: nextIsReserveStaff,
+          reserveWorkPercent: nextReserveWorkPercent,
+        },
+        select: {
+          id: true,
+          employeeCode: true,
+          name: true,
+          isReserveStaff: true,
+          reserveWorkPercent: true,
+        },
+      });
     });
 
     return NextResponse.json({
       ...updated,
+      effectiveFrom: effectiveFromStr,
       reserveWorkPercent:
         updated.reserveWorkPercent == null ? null : Number(updated.reserveWorkPercent),
     });

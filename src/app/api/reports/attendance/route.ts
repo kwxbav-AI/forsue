@@ -13,6 +13,10 @@ import {
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
+import {
+  getReserveStaffSettingForEmployeeDate,
+  getReserveStaffSettingsByEmployeeDate,
+} from "@/lib/reserve-staff-periods";
 import Decimal from "decimal.js";
 
 export const dynamic = "force-dynamic";
@@ -230,6 +234,11 @@ export async function GET(request: Request) {
     const employeeIds = Array.from(
       new Set(records.map((r) => r.employeeId))
     ) as string[];
+    const reserveSettingsByEmployeeDate = await getReserveStaffSettingsByEmployeeDate(
+      start,
+      end,
+      employeeIds
+    );
 
     // 新進員工折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日）。
     // 為避免在迴圈中逐筆查 DB，先把本次報表涉及的員工在日期區間內的「有上班」出勤日一次撈出來做索引。
@@ -316,10 +325,19 @@ export async function GET(request: Request) {
     const overtimeByDateStore = new Map<string, number>();
 
     const reserveHomeStoreIds = new Set<string>();
-    const reserveEmployeeIds = new Set<string>();
     for (const r of records) {
-      if (!r.employee.isReserveStaff) continue;
-      reserveEmployeeIds.add(r.employeeId);
+      const dateStr = formatDateOnly(r.workDate);
+      const reserveSetting = getReserveStaffSettingForEmployeeDate(
+        reserveSettingsByEmployeeDate,
+        r.employeeId,
+        dateStr,
+        {
+          isReserveStaff: r.employee.isReserveStaff,
+          reserveWorkPercent:
+            r.employee.reserveWorkPercent == null ? null : Number(r.employee.reserveWorkPercent),
+        }
+      );
+      if (!reserveSetting.isReserveStaff) continue;
       const homeStoreId =
         r.employee.defaultStoreId ??
         fallbackHomeStoreByEmployee.get(r.employeeId) ??
@@ -639,15 +657,24 @@ export async function GET(request: Request) {
         // 規則：儲備人力若當天有已確認調度（被調去他店支援/調出），則不套用儲備人力折算
         // 目的：原店出勤工時會被調度調出抵銷，支援店以 dispatch_in 計入；不應再額外打折造成負工時。
         const hasAnyConfirmedDispatch = dispList.length > 0;
-        if (!isTrial && emp.isReserveStaff && !hasAnyConfirmedDispatch) {
+        const reserveSetting = getReserveStaffSettingForEmployeeDate(
+          reserveSettingsByEmployeeDate,
+          emp.id,
+          dateStr,
+          {
+            isReserveStaff: emp.isReserveStaff,
+            reserveWorkPercent:
+              emp.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent),
+          }
+        );
+        if (!isTrial && reserveSetting.isReserveStaff && !hasAnyConfirmedDispatch) {
           const homeStoreId =
             emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
           if (homeStoreId) {
             const k = `${dateStr}|${homeStoreId}`;
             const storeFull = storeFullByDateStore.get(k) ?? false;
             const overtimeTotal = overtimeByDateStore.get(k) ?? 0;
-            const percent =
-              emp.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent);
+            const percent = reserveSetting.reserveWorkPercent;
             if (
               storeFull &&
               overtimeTotal <= 3 &&

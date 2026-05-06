@@ -8,6 +8,7 @@ import {
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
+import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
 
 /** 單一員工單日、依門市拆分後的工時 { storeId: hours } */
 export type StoreHoursMap = Record<string, number>;
@@ -208,6 +209,10 @@ export async function computeStoreHoursByEmployee(
   }
 
   const employeeStores: Map<string, StoreHoursMap> = new Map();
+  const reserveSettingsByEmployee = await getReserveStaffSettingsForDate(
+    d,
+    Array.from(aggregatedAttendanceByEmployeeId.keys())
+  );
 
   // 新進員工工時折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日），而非日曆天。
   // dayNo = 從到職日起算至當日（含當日）累計的「有上班日」天數。
@@ -270,7 +275,12 @@ export async function computeStoreHoursByEmployee(
 
     // 後勤支援門市：不在出勤工時階段折算，改在調度拆分時處理（原店扣全額、支援店加 70%）
 
-    if (att.employee.isReserveStaff) {
+    const reserveSetting = reserveSettingsByEmployee.get(att.employeeId) ?? {
+      isReserveStaff: att.employee.isReserveStaff,
+      reserveWorkPercent:
+        att.employee.reserveWorkPercent == null ? null : Number(att.employee.reserveWorkPercent),
+    };
+    if (reserveSetting.isReserveStaff) {
       const homeStoreId =
         att.employee.defaultStoreId ?? fallbackHomeStoreByEmployee.get(att.employeeId);
       if (!homeStoreId) {
@@ -283,10 +293,7 @@ export async function computeStoreHoursByEmployee(
       const storeFull = storeFullByStoreId.get(homeStoreId) ?? false;
       const overtimeTotal = storeOvertimeByStoreId.get(homeStoreId) ?? 0;
       const shouldPartial = storeFull && overtimeTotal <= 3;
-      const percent =
-        att.employee.reserveWorkPercent == null
-          ? null
-          : Number(att.employee.reserveWorkPercent);
+      const percent = reserveSetting.reserveWorkPercent;
       // 試作人員不套用儲備人力折算
       // 後勤支援門市（70%）也不再疊加儲備人力折算
       if (

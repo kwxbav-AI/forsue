@@ -15,13 +15,23 @@ type EmployeeRow = {
   reserveWorkPercent: number | null;
 };
 
+type DraftRow = { isReserveStaff: boolean; reserveWorkPercent: string; effectiveFrom: string };
+
+function todayInputValue(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function ReserveStaffPage() {
   const [list, setList] = useState<EmployeeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, { isReserveStaff: boolean; reserveWorkPercent: string }>>({});
+  const [draft, setDraft] = useState<Record<string, DraftRow>>({});
 
   async function refresh() {
     setLoading(true);
@@ -37,11 +47,13 @@ export default function ReserveStaffPage() {
 
   useEffect(() => {
     // 初始化 draft
-    const next: Record<string, { isReserveStaff: boolean; reserveWorkPercent: string }> = {};
+    const today = todayInputValue();
+    const next: Record<string, DraftRow> = {};
     for (const e of list) {
       next[e.id] = {
         isReserveStaff: !!e.isReserveStaff,
         reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
+        effectiveFrom: today,
       };
     }
     setDraft(next);
@@ -77,6 +89,10 @@ export default function ReserveStaffPage() {
         return;
       }
     }
+    if (!d.effectiveFrom) {
+      setMessage("請選擇生效日期");
+      return;
+    }
 
     setSavingId(id);
     const res = await fetch(`/api/employees/${id}`, {
@@ -85,6 +101,7 @@ export default function ReserveStaffPage() {
       body: JSON.stringify({
         isReserveStaff: d.isReserveStaff,
         reserveWorkPercent: d.isReserveStaff ? Number(d.reserveWorkPercent) : null,
+        effectiveFrom: d.effectiveFrom,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -93,7 +110,7 @@ export default function ReserveStaffPage() {
       setMessage(data.error || "更新失敗");
       return;
     }
-    setMessage("已更新儲備人力設定");
+    setMessage("已更新儲備人力設定；生效日前的歷史資料不會被此設定覆蓋");
     refresh();
   }
 
@@ -120,6 +137,7 @@ export default function ReserveStaffPage() {
       <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm text-slate-600">
           勾選「儲備人力」後，需填寫「工時計算%」。此比例會在「全店到齊且加班總時數未超過 3 小時」時套用。
+          每次儲存都會依「生效日期」建立一筆期間設定，取消勾選只會影響生效日之後。
         </p>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1">
@@ -154,6 +172,7 @@ export default function ReserveStaffPage() {
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">門市</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">儲備人力</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">工時計算%</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">生效日期</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -162,6 +181,7 @@ export default function ReserveStaffPage() {
                 const d = draft[e.id] ?? {
                   isReserveStaff: e.isReserveStaff,
                   reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
+                  effectiveFrom: todayInputValue(),
                 };
                 return (
                   <tr key={e.id} className="border-b border-slate-100">
@@ -184,6 +204,7 @@ export default function ReserveStaffPage() {
                             setDraft((prev) => ({
                               ...prev,
                               [e.id]: {
+                                ...d,
                                 isReserveStaff: ev.target.checked,
                                 reserveWorkPercent: ev.target.checked ? (prev[e.id]?.reserveWorkPercent ?? "") : "",
                               },
@@ -206,6 +227,22 @@ export default function ReserveStaffPage() {
                         placeholder={d.isReserveStaff ? "例如 50" : "—"}
                         className="w-28 rounded border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50"
                       />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <input
+                        type="date"
+                        value={d.effectiveFrom}
+                        onChange={(ev) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            [e.id]: { ...d, effectiveFrom: ev.target.value },
+                          }))
+                        }
+                        className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                      />
+                      {!d.isReserveStaff && (
+                        <p className="mt-1 text-xs text-slate-500">自此日起取消，不影響更早資料</p>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       <button
