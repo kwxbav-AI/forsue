@@ -1,4 +1,4 @@
-﻿-- CreateTable
+-- CreateTable
 CREATE TABLE IF NOT EXISTS "EmployeeReserveStaffPeriod" (
     "id" TEXT NOT NULL,
     "employeeId" TEXT NOT NULL,
