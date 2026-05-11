@@ -109,3 +109,17 @@ export function buildWeeksForMonth(
 
   return { weeks, dateToWeekIndex };
 }
+
+/** 自 ymd 往月初回推，找第一個落在 buildWeeksForMonth 週切分內的日（週日不在 map 內）。 */
+export function findWeekAnchorYmdOnOrBefore(
+  ymd: string,
+  monthStartYmd: string,
+  dateToWeekIndex: Map<string, number>
+): string | null {
+  let cur = ymd;
+  while (cur >= monthStartYmd) {
+    if (dateToWeekIndex.has(cur)) return cur;
+    cur = addCalendarDaysUTC(cur, -1);
+  }
+  return null;
+}

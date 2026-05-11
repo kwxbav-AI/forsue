@@ -15,6 +15,11 @@ type ApiMetaWeek = {
 type ApiMeta = {
   uploadedWorkingDays: number;
   uploadedDataDays?: number;
+  calendarWorkingDaysInForecastWindow?: number;
+  calendarWeekdayDays?: number;
+  calendarSaturdayDays?: number;
+  forecastWindowStartYmd?: string | null;
+  forecastWindowEndYmd?: string | null;
   totalMonthWorkingDays: number;
   weekdayUploadedDataDays?: number;
   saturdayUploadedDataDays?: number;
@@ -291,14 +296,34 @@ export default function RevenueForecastReportPage() {
               <div className="border-t border-slate-100 px-4 py-3 text-sm text-slate-700">
                 <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <dt className="text-xs text-slate-500">帳上有資料天數（預估分母）</dt>
-                    <dd className="font-medium">{data.meta.uploadedDataDays ?? data.meta.uploadedWorkingDays} 天</dd>
-                    <dd className="mt-0.5 text-xs text-slate-500">
-                      本月起至營收截止日，任一家門市有績效日結即算一日（統一上傳、全門市聯集）。
+                    <dt className="text-xs text-slate-500">預估分母（日曆工作天）</dt>
+                    <dd className="font-medium">
+                      {data.meta.calendarWorkingDaysInForecastWindow ?? data.meta.uploadedWorkingDays} 天
+                    </dd>
+                    {data.meta.forecastWindowStartYmd && data.meta.forecastWindowEndYmd ? (
+                      <dd className="mt-0.5 text-xs text-slate-500">
+                        門市達標週視窗 {formatMdFromYmd(data.meta.forecastWindowStartYmd)}–
+                        {formatMdFromYmd(data.meta.forecastWindowEndYmd)}：排除週日與「設定區・假日」後之日數（與門市達標工作日一致）。
+                      </dd>
+                    ) : (
+                      <dd className="mt-0.5 text-xs text-slate-500">—</dd>
+                    )}
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">其中平日 / 週六（日曆）</dt>
+                    <dd className="font-medium">
+                      {data.meta.calendarWeekdayDays ?? "—"} / {data.meta.calendarSaturdayDays ?? "—"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500">其中平日 / 週六</dt>
+                    <dt className="text-xs text-slate-500">帳上有資料天數（對照）</dt>
+                    <dd className="font-medium">{data.meta.uploadedDataDays ?? "—"} 天</dd>
+                    <dd className="mt-0.5 text-xs text-slate-500">
+                      視窗內任一家有績效日結之日數（不作分母）。
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">其中平日 / 週六（僅帳上）</dt>
                     <dd className="font-medium">
                       {data.meta.weekdayUploadedDataDays ?? "—"} / {data.meta.saturdayUploadedDataDays ?? "—"}
                     </dd>
@@ -310,7 +335,7 @@ export default function RevenueForecastReportPage() {
                   <div>
                     <dt className="text-xs text-slate-500">備註</dt>
                     <dd className="text-xs leading-snug text-slate-600">
-                      D34 與門市達標全月加總一致。預估整月＝當月實績加總 ÷ 帳上有資料天數 × D34。
+                      D34 與門市達標全月加總一致。「5月實績」為週視窗內加總；預估整月＝該加總 ÷ 日曆工作天 × D34（週日與假日設定已排除）。
                     </dd>
                   </div>
                 </dl>

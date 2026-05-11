@@ -4,8 +4,10 @@ import { addCalendarDaysUTC, formatDateOnly, formatDateOnlyTaipei, parseDateOnly
 import {
   buildWeeksForMonth,
   countWorkingDaysInRangeUTC,
+  findWeekAnchorYmdOnOrBefore,
   monthStartEndYmd,
   parseMonthParam,
+  splitWeekdaySaturdayWorkingDaysInRangeUTC,
 } from "@/lib/month-working-calendar";
 
 export const dynamic = "force-dynamic";
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
 
   const holidaySet = new Set(holidays.map((h) => formatDateOnly(h.date)));
 
-  const { weeks: weekSegments } = buildWeeksForMonth(monthStartYmd, monthEndYmd);
+  const { weeks: weekSegments, dateToWeekIndex } = buildWeeksForMonth(monthStartYmd, monthEndYmd);
   const weeksWithWorking = weekSegments.map((w) => ({
     index: w.index,
     startYmd: w.startYmd,
@@ -134,6 +136,22 @@ export async function GET(request: NextRequest) {
     },
   });
 
+  /** 預估視窗：截止日所屬「門市達標」週分段，至 min(週末, 營收截止日)；與試算表「本週已上傳區間」一致 */
+  const weekAnchorYmd = findWeekAnchorYmdOnOrBefore(revenueCutoffYmd, monthStartYmd, dateToWeekIndex);
+  let forecastWindowStartYmd: string | null = null;
+  let forecastWindowEndYmd: string | null = null;
+  if (weekAnchorYmd != null) {
+    const wi = dateToWeekIndex.get(weekAnchorYmd);
+    if (wi != null) {
+      const seg = weekSegments[wi];
+      forecastWindowStartYmd = seg.startYmd;
+      forecastWindowEndYmd = seg.endYmd <= revenueCutoffYmd ? seg.endYmd : revenueCutoffYmd;
+    }
+  }
+  /** 極端情況無週錨點時退回月初～截止（避免全空白） */
+  const windowLo = forecastWindowStartYmd ?? monthStartYmd;
+  const windowHi = forecastWindowEndYmd ?? revenueCutoffYmd;
+
   const mtdByStore = new Map<string, number>();
   const historyByStoreByIndex = new Map<string, number[]>();
   const dailyTotalByYmd = new Map<string, number>();
@@ -143,14 +161,14 @@ export async function GET(request: NextRequest) {
     historyByStoreByIndex.set(s.id, Array.from({ length: HISTORY_MONTH_COUNT }, () => 0));
   }
 
-  /** 帳上有資料的日曆日（全門市聯集）：統一上傳時任一家有 PerformanceDaily 即視為該日已上傳 */
+  /** 預估分母：視窗內任一家有 PerformanceDaily 的不重複日（統一上傳、全門市聯集） */
   const dataDayYmdSet = new Set<string>();
 
   for (const p of performanceRows) {
     const ymd = formatDateOnly(p.workDate);
     const rev = num(p.revenueAmount);
 
-    if (ymd >= monthStartYmd && ymd <= revenueCutoffYmd) {
+    if (ymd >= windowLo && ymd <= windowHi) {
       mtdByStore.set(p.storeId, (mtdByStore.get(p.storeId) ?? 0) + rev);
       dailyTotalByYmd.set(ymd, (dailyTotalByYmd.get(ymd) ?? 0) + rev);
       dataDayYmdSet.add(ymd);
@@ -177,12 +195,26 @@ export async function GET(request: NextRequest) {
     else weekdayUploadedDataDays += 1;
   }
 
+  /** 預估分母：與門市達標相同——視窗內排除週日與「假日設定」後之日曆工作天（例：5/1–5/2 假日、5/3・5/10 週日 → 5/4–5/9 共 6 天） */
+  const calendarWorkingDaysInForecastWindow = countWorkingDaysInRangeUTC(windowLo, windowHi, holidaySet);
+  const calendarSplitInForecastWindow = splitWeekdaySaturdayWorkingDaysInRangeUTC(
+    windowLo,
+    windowHi,
+    holidaySet
+  );
+
   let weekdayRevSum = 0;
   let weekdayRevCount = 0;
   let saturdayRevSum = 0;
   let saturdayRevCount = 0;
 
-  for (let t = parseDateOnlyUTC(monthStartYmd).getTime(); t <= parseDateOnlyUTC(revenueCutoffYmd).getTime(); t += 86400000) {
+  const avgLoopStart = windowLo;
+  const avgLoopEnd = windowHi;
+  for (
+    let t = parseDateOnlyUTC(avgLoopStart).getTime();
+    t <= parseDateOnlyUTC(avgLoopEnd).getTime();
+    t += 86400000
+  ) {
     const d = new Date(t);
     const ymd = formatDateOnly(d);
     if (d.getUTCDay() === 0) continue;
@@ -206,7 +238,9 @@ export async function GET(request: NextRequest) {
     const historyByMonth = (historyByStoreByIndex.get(s.id) ?? []).map((v) => v);
     const prevActual = historyByMonth[prevMonthIdx0] ?? 0;
     const forecast =
-      uploadedDataDays > 0 ? (actualMtd / uploadedDataDays) * totalMonthWorkingDays : null;
+      calendarWorkingDaysInForecastWindow > 0
+        ? (actualMtd / calendarWorkingDaysInForecastWindow) * totalMonthWorkingDays
+        : null;
     const forecastPct =
       forecast != null && prevActual > 0 ? ((forecast - prevActual) / prevActual) * 100 : null;
 
@@ -224,7 +258,9 @@ export async function GET(request: NextRequest) {
 
   const actualMtdTotal = storeRows.reduce((s, r) => s + r.actualMtd, 0);
   const forecastTotal =
-    uploadedDataDays > 0 ? (actualMtdTotal / uploadedDataDays) * totalMonthWorkingDays : null;
+    calendarWorkingDaysInForecastWindow > 0
+      ? (actualMtdTotal / calendarWorkingDaysInForecastWindow) * totalMonthWorkingDays
+      : null;
   const prevMonthTotalAll = storeRows.reduce((s, r) => s + (r.historyByMonth[prevMonthIdx0] ?? 0), 0);
   const forecastPctTotal =
     forecastTotal != null && prevMonthTotalAll > 0
@@ -242,13 +278,18 @@ export async function GET(request: NextRequest) {
     asOfDateRequested: requestedAsOfYmd,
     historyMonths: historyMonths.map((h) => ({ key: h.key, label: h.label })),
     meta: {
-      /** 與 uploadedDataDays 相同，供舊版前端相容 */
-      uploadedWorkingDays: uploadedDataDays,
+      /** 預估分母（與 uploadedWorkingDays 欄位語意對齊：日曆工作天） */
+      uploadedWorkingDays: calendarWorkingDaysInForecastWindow,
       uploadedDataDays,
+      calendarWorkingDaysInForecastWindow,
+      forecastWindowStartYmd: forecastWindowStartYmd ?? windowLo,
+      forecastWindowEndYmd: forecastWindowEndYmd ?? windowHi,
       totalMonthWorkingDays,
       weekdayUploadedDataDays,
       saturdayUploadedDataDays,
-      revenueDenominator: "distinctGlobalPerformanceDays" as const,
+      calendarWeekdayDays: calendarSplitInForecastWindow.weekday,
+      calendarSaturdayDays: calendarSplitInForecastWindow.saturday,
+      revenueDenominator: "calendarWorkingDaysInForecastWindow" as const,
       revenueExcludesTodayTaipei: true,
       weeks: weeksWithWorking,
     },
