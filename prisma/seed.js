@@ -218,19 +218,45 @@ async function main() {
     return { canRead: false, canWrite: false };
   }
 
+  // 3b) 預設角色（RolePermission 以 roleId + moduleId 複合鍵對應）
+  const defaultRoleSpecs = [
+    { key: "ADMIN", name: "管理員" },
+    { key: "EDITOR", name: "編輯者" },
+    { key: "VIEWER", name: "檢視者" },
+    { key: "STORE_STAFF", name: "門市人員" },
+  ];
+  const roleIdByKey = new Map();
+  for (const r of defaultRoleSpecs) {
+    const row = await prisma.role.upsert({
+      where: { key: r.key },
+      update: { name: r.name, isActive: true },
+      create: { id: r.key, key: r.key, name: r.name, isActive: true },
+      select: { id: true },
+    });
+    roleIdByKey.set(r.key, row.id);
+  }
+
   // 4) upsert role permissions for all modules
   const allModuleRows = await prisma.permissionModule.findMany({
     select: { id: true, key: true },
   });
   for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]) {
+    const roleId = roleIdByKey.get(role);
+    if (!roleId) continue;
     for (const m of allModuleRows) {
       const v = defaultPerm(role, m.key);
       const canWrite = !!v.canWrite;
       const canRead = !!v.canRead || canWrite;
       await prisma.rolePermission.upsert({
-        where: { role_moduleId: { role, moduleId: m.id } },
+        where: { roleId_moduleId: { roleId, moduleId: m.id } },
         update: { canRead, canWrite },
-        create: { role, moduleId: m.id, canRead, canWrite },
+        create: {
+          roleId,
+          legacyRole: role,
+          moduleId: m.id,
+          canRead,
+          canWrite,
+        },
       });
     }
   }
@@ -244,7 +270,8 @@ async function main() {
       data: {
         username: adminUser,
         passwordHash,
-        role: "ADMIN",
+        legacyRole: "ADMIN",
+        roleId: roleIdByKey.get("ADMIN") ?? undefined,
       },
     });
     console.log(

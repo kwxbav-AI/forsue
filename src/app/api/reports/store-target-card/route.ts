@@ -1,91 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addCalendarDaysUTC, formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
+import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
+import {
+  buildWeeksForMonth,
+  countWorkingDaysInRangeUTC,
+  monthStartEndYmd,
+  parseMonthParam,
+} from "@/lib/month-working-calendar";
 
 export const dynamic = "force-dynamic";
 
 type WeekRange = {
-  index: number; // 1-based for display
+  index: number;
   startYmd: string;
   endYmd: string;
   workingDays: number;
 };
-
-function parseMonthParam(month: string): { year: number; month: number } | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(month.trim());
-  if (!m) return null;
-  const year = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(mm)) return null;
-  if (mm < 1 || mm > 12) return null;
-  return { year, month: mm };
-}
-
-/** 選定區間內（含起訖）的「日曆日」，逐日 UTC，排除週日與假日後的天數 */
-function countWorkingDaysInRangeUTC(
-  startYmd: string,
-  endYmd: string,
-  holidayYmdSet: Set<string>
-): number {
-  const start = parseDateOnlyUTC(startYmd);
-  const end = parseDateOnlyUTC(endYmd);
-  let n = 0;
-  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
-    const d = new Date(t);
-    const ymd = formatDateOnly(d);
-    if (d.getUTCDay() === 0) continue;
-    if (holidayYmdSet.has(ymd)) continue;
-    n++;
-  }
-  return n;
-}
-
-function buildWeeksForMonth(startYmd: string, endYmd: string): { weeks: Omit<WeekRange, "workingDays">[]; dateToWeekIndex: Map<string, number> } {
-  const start = parseDateOnlyUTC(startYmd);
-  const end = parseDateOnlyUTC(endYmd);
-
-  const weeks: { index: number; startYmd: string; endYmd: string }[] = [];
-  const dateToWeekIndex = new Map<string, number>(); // ymd -> 0-based week index
-
-  let currentStart: string | null = null;
-  let currentEnd: string | null = null;
-
-  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
-    const d = new Date(t);
-    const ymd = formatDateOnly(d);
-    const isSunday = d.getUTCDay() === 0;
-    if (isSunday) {
-      if (currentStart && currentEnd) {
-        const idx0 = weeks.length;
-        weeks.push({ index: idx0 + 1, startYmd: currentStart, endYmd: currentEnd });
-        // map dates in this segment (excluding Sundays by construction)
-        for (let day = currentStart; day <= currentEnd; day = addCalendarDaysUTC(day, 1)) {
-          const dd = parseDateOnlyUTC(day);
-          if (dd.getUTCDay() === 0) continue;
-          dateToWeekIndex.set(day, idx0);
-        }
-      }
-      currentStart = null;
-      currentEnd = null;
-      continue;
-    }
-
-    if (!currentStart) currentStart = ymd;
-    currentEnd = ymd;
-  }
-
-  if (currentStart && currentEnd) {
-    const idx0 = weeks.length;
-    weeks.push({ index: idx0 + 1, startYmd: currentStart, endYmd: currentEnd });
-    for (let day = currentStart; day <= currentEnd; day = addCalendarDaysUTC(day, 1)) {
-      const dd = parseDateOnlyUTC(day);
-      if (dd.getUTCDay() === 0) continue;
-      dateToWeekIndex.set(day, idx0);
-    }
-  }
-
-  return { weeks, dateToWeekIndex };
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -98,9 +28,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "month 格式錯誤，請使用 YYYY-MM" }, { status: 400 });
   }
 
-  const startYmd = `${String(parsed.year).padStart(4, "0")}-${String(parsed.month).padStart(2, "0")}-01`;
-  const lastDay = new Date(Date.UTC(parsed.year, parsed.month, 0, 0, 0, 0, 0)); // month is 1-based; day 0 = last day of previous month
-  const endYmd = formatDateOnly(lastDay);
+  const { startYmd, endYmd } = monthStartEndYmd(parsed.year, parsed.month);
 
   const { weeks: weekRangesRaw, dateToWeekIndex } = buildWeeksForMonth(startYmd, endYmd);
   if (weekRangesRaw.length === 0) {
@@ -132,7 +60,6 @@ export async function GET(request: NextRequest) {
     workingDays: countWorkingDaysInRangeUTC(w.startYmd, w.endYmd, holidaySet),
   }));
 
-  // init per-store stats
   const byStoreId = new Map<
     string,
     {
@@ -199,4 +126,3 @@ export async function GET(request: NextRequest) {
     stores: Array.from(byStoreId.values()),
   });
 }
-

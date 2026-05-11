@@ -284,6 +284,18 @@
         { "kind": "API", "pathPattern": "/api/reports/store-target-card", "method": "GET" }
       ]
     },
+    {
+      "key": "reports-revenue-forecast",
+      "label": "營收預估分析",
+      "description": "依月度與資料截止日，預估整月營收與歷史對照",
+      "group": "報表",
+      "sortOrder": 346,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/reports/revenue-forecast", "method": null },
+        { "kind": "API", "pathPattern": "/api/reports/revenue-forecast", "method": "GET" }
+      ]
+    },
 
     {
       "key": "performance-daily",

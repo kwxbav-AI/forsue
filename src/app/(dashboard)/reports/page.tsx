@@ -32,6 +32,12 @@ export default async function ReportsHubPage() {
       title: "門市達標",
       desc: "依月份分週，產出可複製的門市達標訊息稿",
     },
+    {
+      key: "revenue-forecast",
+      href: "/reports/revenue-forecast",
+      title: "營收預估分析",
+      desc: "當月實績、整月預估、對上月實績之預估 %、歷史月對照",
+    },
   ] as const;
 
   const visible = !authOn
