@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
+import { addCalendarDaysUTC, formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
 import {
   buildWeeksForMonth,
   countWorkingDaysInRangeUTC,
   monthStartEndYmd,
   parseMonthParam,
-  splitWeekdaySaturdayWorkingDaysInRangeUTC,
 } from "@/lib/month-working-calendar";
 
 export const dynamic = "force-dynamic";
 
-const HISTORY_MONTH_COUNT = 18;
+/** 歷史欄位數（含 2025-01～2026-04 等長區間；選月較晚時仍可追溯） */
+const HISTORY_MONTH_COUNT = 36;
 
 function num(x: unknown): number {
   return x == null ? 0 : Number(x);
@@ -28,6 +28,10 @@ function clampYmd(ymd: string, minYmd: string, maxYmd: string): string {
   if (ymd < minYmd) return minYmd;
   if (ymd > maxYmd) return maxYmd;
   return ymd;
+}
+
+function minYmd(a: string, b: string): string {
+  return a <= b ? a : b;
 }
 
 function historyMonthLabel(y: number, m: number): string {
@@ -49,18 +53,25 @@ export async function GET(request: NextRequest) {
   const { startYmd: monthStartYmd, endYmd: monthEndYmd } = monthStartEndYmd(reportYear, reportMonth);
 
   const asOfParam = searchParams.get("asOfDate")?.trim();
-  let asOfYmd: string;
+  const todayTaipei = formatDateOnlyTaipei(new Date());
+  const yesterdayTaipei = addCalendarDaysUTC(todayTaipei, -1);
+
+  let requestedAsOfYmd: string;
   if (asOfParam) {
     try {
       parseDateOnlyUTC(asOfParam);
-      asOfYmd = asOfParam;
+      requestedAsOfYmd = asOfParam;
     } catch {
       return NextResponse.json({ error: "asOfDate 格式錯誤，請使用 YYYY-MM-DD" }, { status: 400 });
     }
   } else {
-    asOfYmd = formatDateOnlyTaipei(new Date());
+    requestedAsOfYmd = todayTaipei;
   }
-  asOfYmd = clampYmd(asOfYmd, monthStartYmd, monthEndYmd);
+  requestedAsOfYmd = clampYmd(requestedAsOfYmd, monthStartYmd, monthEndYmd);
+
+  /** 營收加總不含「今天」（台北日曆）；且不得晚於使用者選的截止日 */
+  let revenueCutoffYmd = minYmd(requestedAsOfYmd, yesterdayTaipei);
+  revenueCutoffYmd = clampYmd(revenueCutoffYmd, monthStartYmd, monthEndYmd);
 
   const oldestHist = addCalendarMonths(reportYear, reportMonth, -HISTORY_MONTH_COUNT);
   const oldestStartYmd = monthStartEndYmd(oldestHist.year, oldestHist.month).startYmd;
@@ -94,9 +105,6 @@ export async function GET(request: NextRequest) {
   }));
   const totalMonthWorkingDays = weeksWithWorking.reduce((s, w) => s + w.workingDays, 0);
 
-  const uploadedSplit = splitWeekdaySaturdayWorkingDaysInRangeUTC(monthStartYmd, asOfYmd, holidaySet);
-  const uploadedWorkingDays = uploadedSplit.weekday + uploadedSplit.saturday;
-
   const historyMonths: { key: string; label: string; startYmd: string; endYmd: string }[] = [];
   for (let i = 1; i <= HISTORY_MONTH_COUNT; i++) {
     const { year: hy, month: hm } = addCalendarMonths(reportYear, reportMonth, -i);
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest) {
     where: {
       workDate: {
         gte: parseDateOnlyUTC(oldestStartYmd),
-        lte: parseDateOnlyUTC(asOfYmd),
+        lte: parseDateOnlyUTC(revenueCutoffYmd),
       },
       versionNo: 1,
       store: { isActive: true, hideInReports: false as any },
@@ -135,13 +143,17 @@ export async function GET(request: NextRequest) {
     historyByStoreByIndex.set(s.id, Array.from({ length: HISTORY_MONTH_COUNT }, () => 0));
   }
 
+  /** 帳上有資料的日曆日（全門市聯集）：統一上傳時任一家有 PerformanceDaily 即視為該日已上傳 */
+  const dataDayYmdSet = new Set<string>();
+
   for (const p of performanceRows) {
     const ymd = formatDateOnly(p.workDate);
     const rev = num(p.revenueAmount);
 
-    if (ymd >= monthStartYmd && ymd <= asOfYmd) {
+    if (ymd >= monthStartYmd && ymd <= revenueCutoffYmd) {
       mtdByStore.set(p.storeId, (mtdByStore.get(p.storeId) ?? 0) + rev);
       dailyTotalByYmd.set(ymd, (dailyTotalByYmd.get(ymd) ?? 0) + rev);
+      dataDayYmdSet.add(ymd);
     }
 
     for (let hi = 0; hi < historyMonths.length; hi++) {
@@ -154,12 +166,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const uploadedDataDays = dataDayYmdSet.size;
+  let weekdayUploadedDataDays = 0;
+  let saturdayUploadedDataDays = 0;
+  for (const ymd of dataDayYmdSet) {
+    const d = parseDateOnlyUTC(ymd);
+    const dow = d.getUTCDay();
+    if (dow === 0) continue;
+    if (dow === 6) saturdayUploadedDataDays += 1;
+    else weekdayUploadedDataDays += 1;
+  }
+
   let weekdayRevSum = 0;
   let weekdayRevCount = 0;
   let saturdayRevSum = 0;
   let saturdayRevCount = 0;
 
-  for (let t = parseDateOnlyUTC(monthStartYmd).getTime(); t <= parseDateOnlyUTC(asOfYmd).getTime(); t += 86400000) {
+  for (let t = parseDateOnlyUTC(monthStartYmd).getTime(); t <= parseDateOnlyUTC(revenueCutoffYmd).getTime(); t += 86400000) {
     const d = new Date(t);
     const ymd = formatDateOnly(d);
     if (d.getUTCDay() === 0) continue;
@@ -183,7 +206,7 @@ export async function GET(request: NextRequest) {
     const historyByMonth = (historyByStoreByIndex.get(s.id) ?? []).map((v) => v);
     const prevActual = historyByMonth[prevMonthIdx0] ?? 0;
     const forecast =
-      uploadedWorkingDays > 0 ? (actualMtd / uploadedWorkingDays) * totalMonthWorkingDays : null;
+      uploadedDataDays > 0 ? (actualMtd / uploadedDataDays) * totalMonthWorkingDays : null;
     const forecastPct =
       forecast != null && prevActual > 0 ? ((forecast - prevActual) / prevActual) * 100 : null;
 
@@ -201,7 +224,7 @@ export async function GET(request: NextRequest) {
 
   const actualMtdTotal = storeRows.reduce((s, r) => s + r.actualMtd, 0);
   const forecastTotal =
-    uploadedWorkingDays > 0 ? (actualMtdTotal / uploadedWorkingDays) * totalMonthWorkingDays : null;
+    uploadedDataDays > 0 ? (actualMtdTotal / uploadedDataDays) * totalMonthWorkingDays : null;
   const prevMonthTotalAll = storeRows.reduce((s, r) => s + (r.historyByMonth[prevMonthIdx0] ?? 0), 0);
   const forecastPctTotal =
     forecastTotal != null && prevMonthTotalAll > 0
@@ -214,13 +237,19 @@ export async function GET(request: NextRequest) {
     month,
     monthStart: monthStartYmd,
     monthEnd: monthEndYmd,
-    asOfDate: asOfYmd,
+    /** 實際用於營收加總、預估分母、區間顯示之截止（不含今日；≤ 所選 asOf） */
+    asOfDate: revenueCutoffYmd,
+    asOfDateRequested: requestedAsOfYmd,
     historyMonths: historyMonths.map((h) => ({ key: h.key, label: h.label })),
     meta: {
-      uploadedWorkingDays,
+      /** 與 uploadedDataDays 相同，供舊版前端相容 */
+      uploadedWorkingDays: uploadedDataDays,
+      uploadedDataDays,
       totalMonthWorkingDays,
-      weekdayUploadedWorkingDays: uploadedSplit.weekday,
-      saturdayUploadedWorkingDays: uploadedSplit.saturday,
+      weekdayUploadedDataDays,
+      saturdayUploadedDataDays,
+      revenueDenominator: "distinctGlobalPerformanceDays" as const,
+      revenueExcludesTodayTaipei: true,
       weeks: weeksWithWorking,
     },
     stores: storeRows,

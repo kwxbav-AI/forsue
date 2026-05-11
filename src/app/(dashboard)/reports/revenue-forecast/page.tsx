@@ -14,9 +14,12 @@ type ApiMetaWeek = {
 
 type ApiMeta = {
   uploadedWorkingDays: number;
+  uploadedDataDays?: number;
   totalMonthWorkingDays: number;
-  weekdayUploadedWorkingDays: number;
-  saturdayUploadedWorkingDays: number;
+  weekdayUploadedDataDays?: number;
+  saturdayUploadedDataDays?: number;
+  revenueDenominator?: string;
+  revenueExcludesTodayTaipei?: boolean;
   weeks: ApiMetaWeek[];
 };
 
@@ -45,6 +48,7 @@ type ApiResponse = {
   monthStart: string;
   monthEnd: string;
   asOfDate: string;
+  asOfDateRequested?: string;
   historyMonths: ApiHistoryMonth[];
   meta: ApiMeta;
   stores: ApiStoreRow[];
@@ -86,6 +90,18 @@ function formatInt(n: number): string {
 function formatPct(n: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
   return `${n.toFixed(1)}%`;
+}
+
+/** 預估%：>20% 橘底黑字；>0% 紅字；<0% 綠字 */
+function forecastPctTdClass(p: number | null, variant: "body" | "footer"): string {
+  const pad = variant === "footer" ? "px-2 py-2 " : "px-2 py-1.5 ";
+  const base = `${pad}text-right tabular-nums `;
+  const bgBody = variant === "body" ? "bg-white " : "bg-slate-50 ";
+  if (p == null || Number.isNaN(p)) return `${base}${bgBody}text-slate-600`;
+  if (p > 20) return `${base}rounded bg-orange-300 text-black font-semibold`;
+  if (p > 0) return `${base}${bgBody}text-red-600 font-medium`;
+  if (p < 0) return `${base}${bgBody}text-green-600 font-medium`;
+  return `${base}${bgBody}text-slate-700`;
 }
 
 function formatWeekRange(w: ApiMetaWeek): string {
@@ -224,7 +240,7 @@ export default function RevenueForecastReportPage() {
             className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
-        <label className="flex items-center gap-2">
+        <label className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
           <span className="text-sm text-slate-600">資料截止日</span>
           <input
             type="date"
@@ -232,6 +248,7 @@ export default function RevenueForecastReportPage() {
             onChange={(e) => setAsOfInput(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
+          <span className="text-xs text-slate-500">未選時以台北「昨天」為上限（不含今日營收）</span>
         </label>
         <button
           type="button"
@@ -244,7 +261,11 @@ export default function RevenueForecastReportPage() {
         {data ? (
           <span className="text-sm text-slate-500">
             區間 {formatMdFromYmd(data.monthStart)}-{formatMdFromYmd(data.asOfDate)}
-            （{currentMonthShortLabel} 實績截至該日止）
+            （{currentMonthShortLabel} 實績截至該日止
+            {data.asOfDateRequested && data.asOfDateRequested !== data.asOfDate
+              ? `；已依「不含今日」自 ${formatMdFromYmd(data.asOfDateRequested)} 調整為 ${formatMdFromYmd(data.asOfDate)}`
+              : ""}
+            ）
           </span>
         ) : null}
       </div>
@@ -270,13 +291,16 @@ export default function RevenueForecastReportPage() {
               <div className="border-t border-slate-100 px-4 py-3 text-sm text-slate-700">
                 <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <dt className="text-xs text-slate-500">截止區間 · 總工作日（D28）</dt>
-                    <dd className="font-medium">{data.meta.uploadedWorkingDays} 天</dd>
+                    <dt className="text-xs text-slate-500">帳上有資料天數（預估分母）</dt>
+                    <dd className="font-medium">{data.meta.uploadedDataDays ?? data.meta.uploadedWorkingDays} 天</dd>
+                    <dd className="mt-0.5 text-xs text-slate-500">
+                      本月起至營收截止日，任一家門市有績效日結即算一日（統一上傳、全門市聯集）。
+                    </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500">平日 / 週六（同上區間）</dt>
+                    <dt className="text-xs text-slate-500">其中平日 / 週六</dt>
                     <dd className="font-medium">
-                      {data.meta.weekdayUploadedWorkingDays} / {data.meta.saturdayUploadedWorkingDays}
+                      {data.meta.weekdayUploadedDataDays ?? "—"} / {data.meta.saturdayUploadedDataDays ?? "—"}
                     </dd>
                   </div>
                   <div>
@@ -286,7 +310,7 @@ export default function RevenueForecastReportPage() {
                   <div>
                     <dt className="text-xs text-slate-500">備註</dt>
                     <dd className="text-xs leading-snug text-slate-600">
-                      總工作天與門市達標頁一致（週分段後各段排除週日与假日）。
+                      D34 與門市達標全月加總一致。預估整月＝當月實績加總 ÷ 帳上有資料天數 × D34。
                     </dd>
                   </div>
                 </dl>
@@ -356,7 +380,7 @@ export default function RevenueForecastReportPage() {
                     <td className="bg-white px-2 py-1.5 text-right tabular-nums">
                       {row.forecast == null ? "—" : formatInt(row.forecast)}
                     </td>
-                    <td className="bg-white px-2 py-1.5 text-right tabular-nums">{formatPct(row.forecastPct)}</td>
+                    <td className={forecastPctTdClass(row.forecastPct, "body")}>{formatPct(row.forecastPct)}</td>
                     {row.historyByMonth.map((v, i) => (
                       <td key={data.historyMonths[i]?.key ?? i} className="bg-white px-2 py-1.5 text-right tabular-nums">
                         {formatInt(v)}
@@ -371,7 +395,9 @@ export default function RevenueForecastReportPage() {
                   <td className="px-2 py-2 text-right tabular-nums">
                     {data.totals.forecast == null ? "—" : formatInt(data.totals.forecast)}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums">{formatPct(data.totals.forecastPct)}</td>
+                  <td className={forecastPctTdClass(data.totals.forecastPct, "footer")}>
+                    {formatPct(data.totals.forecastPct)}
+                  </td>
                   {data.totals.historyByMonth.map((v, i) => (
                     <td key={`t-${data.historyMonths[i]?.key ?? i}`} className="px-2 py-2 text-right tabular-nums">
                       {formatInt(v)}
