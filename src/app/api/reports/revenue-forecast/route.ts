@@ -4,7 +4,6 @@ import { addCalendarDaysUTC, formatDateOnly, formatDateOnlyTaipei, parseDateOnly
 import {
   buildWeeksForMonth,
   countWorkingDaysInRangeUTC,
-  findWeekAnchorYmdOnOrBefore,
   monthStartEndYmd,
   parseMonthParam,
   splitWeekdaySaturdayWorkingDaysInRangeUTC,
@@ -98,7 +97,7 @@ export async function GET(request: NextRequest) {
 
   const holidaySet = new Set(holidays.map((h) => formatDateOnly(h.date)));
 
-  const { weeks: weekSegments, dateToWeekIndex } = buildWeeksForMonth(monthStartYmd, monthEndYmd);
+  const { weeks: weekSegments } = buildWeeksForMonth(monthStartYmd, monthEndYmd);
   const weeksWithWorking = weekSegments.map((w) => ({
     index: w.index,
     startYmd: w.startYmd,
@@ -136,21 +135,9 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  /** 預估視窗：截止日所屬「門市達標」週分段，至 min(週末, 營收截止日)；與試算表「本週已上傳區間」一致 */
-  const weekAnchorYmd = findWeekAnchorYmdOnOrBefore(revenueCutoffYmd, monthStartYmd, dateToWeekIndex);
-  let forecastWindowStartYmd: string | null = null;
-  let forecastWindowEndYmd: string | null = null;
-  if (weekAnchorYmd != null) {
-    const wi = dateToWeekIndex.get(weekAnchorYmd);
-    if (wi != null) {
-      const seg = weekSegments[wi];
-      forecastWindowStartYmd = seg.startYmd;
-      forecastWindowEndYmd = seg.endYmd <= revenueCutoffYmd ? seg.endYmd : revenueCutoffYmd;
-    }
-  }
-  /** 極端情況無週錨點時退回月初～截止（避免全空白） */
-  const windowLo = forecastWindowStartYmd ?? monthStartYmd;
-  const windowHi = forecastWindowEndYmd ?? revenueCutoffYmd;
+  /** 實績與預估分母、日均：當月一日起至營收截止日（選整月時為全月；與「本月實績」區間一致） */
+  const periodLo = monthStartYmd;
+  const periodHi = revenueCutoffYmd;
 
   const mtdByStore = new Map<string, number>();
   const historyByStoreByIndex = new Map<string, number[]>();
@@ -161,14 +148,14 @@ export async function GET(request: NextRequest) {
     historyByStoreByIndex.set(s.id, Array.from({ length: HISTORY_MONTH_COUNT }, () => 0));
   }
 
-  /** 預估分母：視窗內任一家有 PerformanceDaily 的不重複日（統一上傳、全門市聯集） */
+  /** 帳上有資料天數：月初～截止區間內任一家有 PerformanceDaily 的不重複日（全門市聯集；不作分母） */
   const dataDayYmdSet = new Set<string>();
 
   for (const p of performanceRows) {
     const ymd = formatDateOnly(p.workDate);
     const rev = num(p.revenueAmount);
 
-    if (ymd >= windowLo && ymd <= windowHi) {
+    if (ymd >= periodLo && ymd <= periodHi) {
       mtdByStore.set(p.storeId, (mtdByStore.get(p.storeId) ?? 0) + rev);
       dailyTotalByYmd.set(ymd, (dailyTotalByYmd.get(ymd) ?? 0) + rev);
       dataDayYmdSet.add(ymd);
@@ -195,11 +182,11 @@ export async function GET(request: NextRequest) {
     else weekdayUploadedDataDays += 1;
   }
 
-  /** 預估分母：與門市達標相同——視窗內排除週日與「假日設定」後之日曆工作天（例：5/1–5/2 假日、5/3・5/10 週日 → 5/4–5/9 共 6 天） */
-  const calendarWorkingDaysInForecastWindow = countWorkingDaysInRangeUTC(windowLo, windowHi, holidaySet);
+  /** 預估分母：月初～營收截止，排除週日與「假日設定」後之日曆工作天（與門市達標同日曆規則） */
+  const calendarWorkingDaysInForecastWindow = countWorkingDaysInRangeUTC(periodLo, periodHi, holidaySet);
   const calendarSplitInForecastWindow = splitWeekdaySaturdayWorkingDaysInRangeUTC(
-    windowLo,
-    windowHi,
+    periodLo,
+    periodHi,
     holidaySet
   );
 
@@ -208,8 +195,8 @@ export async function GET(request: NextRequest) {
   let saturdayRevSum = 0;
   let saturdayRevCount = 0;
 
-  const avgLoopStart = windowLo;
-  const avgLoopEnd = windowHi;
+  const avgLoopStart = periodLo;
+  const avgLoopEnd = periodHi;
   for (
     let t = parseDateOnlyUTC(avgLoopStart).getTime();
     t <= parseDateOnlyUTC(avgLoopEnd).getTime();
@@ -282,14 +269,14 @@ export async function GET(request: NextRequest) {
       uploadedWorkingDays: calendarWorkingDaysInForecastWindow,
       uploadedDataDays,
       calendarWorkingDaysInForecastWindow,
-      forecastWindowStartYmd: forecastWindowStartYmd ?? windowLo,
-      forecastWindowEndYmd: forecastWindowEndYmd ?? windowHi,
+      forecastWindowStartYmd: periodLo,
+      forecastWindowEndYmd: periodHi,
       totalMonthWorkingDays,
       weekdayUploadedDataDays,
       saturdayUploadedDataDays,
       calendarWeekdayDays: calendarSplitInForecastWindow.weekday,
       calendarSaturdayDays: calendarSplitInForecastWindow.saturday,
-      revenueDenominator: "calendarWorkingDaysInForecastWindow" as const,
+      revenueDenominator: "calendarWorkingDaysMonthStartToCutoff" as const,
       revenueExcludesTodayTaipei: true,
       weeks: weeksWithWorking,
     },

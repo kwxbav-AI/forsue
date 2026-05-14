@@ -302,8 +302,8 @@ export default function RevenueForecastReportPage() {
                     </dd>
                     {data.meta.forecastWindowStartYmd && data.meta.forecastWindowEndYmd ? (
                       <dd className="mt-0.5 text-xs text-slate-500">
-                        門市達標週視窗 {formatMdFromYmd(data.meta.forecastWindowStartYmd)}–
-                        {formatMdFromYmd(data.meta.forecastWindowEndYmd)}：排除週日與「設定區・假日」後之日數（與門市達標工作日一致）。
+                        統計區間 {formatMdFromYmd(data.meta.forecastWindowStartYmd)}–
+                        {formatMdFromYmd(data.meta.forecastWindowEndYmd)}（當月一日起至營收截止日）：排除週日與「設定區・假日」後之日數（與門市達標工作日一致）。
                       </dd>
                     ) : (
                       <dd className="mt-0.5 text-xs text-slate-500">—</dd>
@@ -319,7 +319,7 @@ export default function RevenueForecastReportPage() {
                     <dt className="text-xs text-slate-500">帳上有資料天數（對照）</dt>
                     <dd className="font-medium">{data.meta.uploadedDataDays ?? "—"} 天</dd>
                     <dd className="mt-0.5 text-xs text-slate-500">
-                      視窗內任一家有績效日結之日數（不作分母）。
+                      上述區間內任一家有績效日結之日數（不作分母）。
                     </dd>
                   </div>
                   <div>
