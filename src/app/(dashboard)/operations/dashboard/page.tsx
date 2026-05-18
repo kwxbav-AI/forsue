@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
 import {
@@ -266,6 +267,7 @@ export default function OperationsDashboardPage() {
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState("");
   const [storeId, setStoreId] = useState("");
+  const didInitSelection = useRef(false);
 
   const loadMeta = useCallback(async () => {
     const res = await fetch("/api/operations/dashboard");
@@ -280,11 +282,18 @@ export default function OperationsDashboardPage() {
   }, [loadMeta]);
 
   useEffect(() => {
-    if (!meta?.stores.length || storeId) return;
+    if (!meta?.stores.length || didInitSelection.current) return;
+    didInitSelection.current = true;
     const first = meta.stores[0];
     setStoreId(first.id);
     if (first.region) setRegion(first.region);
-  }, [meta, storeId]);
+  }, [meta]);
+
+  const regionOptions = useMemo(() => {
+    const fromApi = meta?.regions ?? [];
+    if (fromApi.length >= OPS_FILTER_REGIONS.length) return fromApi;
+    return [...OPS_FILTER_REGIONS];
+  }, [meta?.regions]);
 
   const filteredStores = useMemo(
     () => meta?.stores.filter((s) => !region || s.region === region) ?? [],
@@ -434,13 +443,19 @@ export default function OperationsDashboardPage() {
           <select
             value={region}
             onChange={(e) => {
-              setRegion(e.target.value);
-              setStoreId("");
+              const newRegion = e.target.value;
+              setRegion(newRegion);
+              if (!newRegion) {
+                setStoreId("");
+                return;
+              }
+              const firstInRegion = meta?.stores.find((s) => s.region === newRegion);
+              setStoreId(firstInRegion?.id ?? "");
             }}
             className="min-w-[110px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">{T.allRegions}</option>
-            {meta?.regions.map((r) => (
+            {regionOptions.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
