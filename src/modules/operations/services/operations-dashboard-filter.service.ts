@@ -1,9 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
+import { addCalendarDaysUTC, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
+import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
 import {
   countWorkingDaysInRangeUTC,
   monthStartEndYmd,
 } from "@/lib/month-working-calendar";
+import {
+  normalizeStoreKey,
+  storeNameMatchesCatalogKey,
+} from "@/lib/operations-dashboard";
 import {
   type ChartsPerStoreRow,
   fetchChartsPerStore,
@@ -32,6 +37,13 @@ export type DashboardFilterStoreRow = {
   defaultLaborHours: number | null;
 };
 
+export type DashboardDailyTrendPoint = {
+  date: string;
+  label: string;
+  revenue: number;
+  laborHours: number;
+};
+
 export type DashboardFilterResult = {
   filterLabel: string;
   storeCount: number;
@@ -40,6 +52,7 @@ export type DashboardFilterResult = {
   workingDaysInRange: number;
   summary: DashboardFilterStoreRow;
   stores: DashboardFilterStoreRow[];
+  dailyTrend: DashboardDailyTrendPoint[];
 };
 
 type MonthSlice = { year: number; month: number; overlapStart: string; overlapEnd: string };
@@ -126,11 +139,22 @@ async function mapPerformanceToRetailStore(
       defaultLaborHoursPerDay: true,
     },
   });
-  const retailByName = new Map(retailStores.map((r) => [r.storeName.trim(), r]));
+  const retailByExactName = new Map(
+    retailStores.map((r) => [r.storeName.trim(), r])
+  );
 
   const out = new Map<string, { retailId: string; settings: RetailLaborSettings }>();
   for (const s of perfStores) {
-    const retail = retailByName.get(s.name.trim());
+    let retail = retailByExactName.get(s.name.trim());
+    if (!retail) {
+      const perfKey = normalizeStoreKey(s.name);
+      retail = retailStores.find(
+        (r) =>
+          normalizeStoreKey(r.storeName) === perfKey ||
+          storeNameMatchesCatalogKey(r.storeName, perfKey) ||
+          storeNameMatchesCatalogKey(s.name, r.storeName)
+      );
+    }
     if (!retail) continue;
     out.set(s.id, {
       retailId: retail.id,
@@ -299,6 +323,91 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
   };
 }
 
+function listDateStrings(startYmd: string, endYmd: string): string[] {
+  const days: string[] = [];
+  let dayStr = startYmd;
+  while (dayStr <= endYmd) {
+    days.push(dayStr);
+    dayStr = addCalendarDaysUTC(dayStr, 1);
+  }
+  return days;
+}
+
+function formatTrendLabel(ymd: string): string {
+  const [, m, d] = ymd.split("-");
+  return `${m}/${d}`;
+}
+
+async function mapDaysWithConcurrency<T>(
+  dayStrs: string[],
+  concurrency: number,
+  fn: (dayStr: string) => Promise<T>
+): Promise<T[]> {
+  const results: T[] = new Array(dayStrs.length);
+  let index = 0;
+  async function worker() {
+    while (index < dayStrs.length) {
+      const i = index++;
+      results[i] = await fn(dayStrs[i]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, dayStrs.length) }, () => worker())
+  );
+  return results;
+}
+
+export async function fetchDailyTrendForSelection(input: {
+  startYmd: string;
+  endYmd: string;
+  selection: {
+    storeId?: string;
+    region?: string;
+    storeLabel?: string;
+    catalogKey?: string;
+  };
+  applyOpsCatalogWhenEmpty: boolean;
+}): Promise<DashboardDailyTrendPoint[]> {
+  const stores = await prisma.store.findMany({
+    where: { isActive: true, hideInReports: false },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(stores.map((s) => [s.id, s.name]));
+
+  const dayStrs = listDateStrings(input.startYmd, input.endYmd);
+  const dailyTotals = await mapDaysWithConcurrency(dayStrs, 4, async (dayStr) => {
+    const daily = await computeDailyMetricsByStoreResilient(
+      parseDateOnlyUTC(dayStr),
+      { reportVisibleOnly: true }
+    );
+    const chartRows: ChartsPerStoreRow[] = [];
+    for (const [storeId, m] of daily) {
+      if (!(m.revenue > 0 || m.laborHours > 0)) continue;
+      chartRows.push({
+        storeId,
+        storeName: nameById.get(storeId) ?? "",
+        revenueSum: m.revenue,
+        hoursSum: m.laborHours,
+        efficiencyRatio: m.laborHours > 0 ? m.revenue / m.laborHours : null,
+      });
+    }
+
+    let filtered = filterChartsBySelection(chartRows, new Map(), input.selection);
+    if (input.applyOpsCatalogWhenEmpty) {
+      filtered = filterChartsByOpsCatalog(filtered);
+    }
+    const totals = metricsFromChartRows(filtered);
+    return { dayStr, revenue: totals.revenue, laborHours: totals.laborHours };
+  });
+
+  return dailyTotals.map((d) => ({
+    date: d.dayStr,
+    label: formatTrendLabel(d.dayStr),
+    revenue: d.revenue,
+    laborHours: d.laborHours,
+  }));
+}
+
 export async function buildDashboardFilterResult(input: {
   perStore: ChartsPerStoreRow[];
   priorPerStore: ChartsPerStoreRow[];
@@ -388,6 +497,13 @@ export async function buildDashboardFilterResult(input: {
   const summary = aggregateSummaryRows(storeRows);
   const totals = metricsFromChartRows(filteredCharts);
 
+  const dailyTrend = await fetchDailyTrendForSelection({
+    startYmd: input.startYmd,
+    endYmd: input.endYmd,
+    selection: input.selection,
+    applyOpsCatalogWhenEmpty: input.applyOpsCatalogWhenEmpty,
+  });
+
   return {
     filterLabel: input.filterLabel,
     storeCount: input.storeCount,
@@ -396,6 +512,7 @@ export async function buildDashboardFilterResult(input: {
     workingDaysInRange,
     summary,
     stores: storeRows,
+    dailyTrend,
   };
 }
 

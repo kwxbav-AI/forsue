@@ -105,9 +105,16 @@ for (const { region, storeNames } of OPS_REGION_CATALOG) {
 
 
 export function normalizeStoreKey(name: string): string {
-
   return name.trim().replace(/店$/, "");
+}
 
+/** 兩個門市名稱是否為同一 catalog 門市（女中 = 女中店、南竹 = 南竹店） */
+export function storeNamesEquivalent(a: string, b: string): boolean {
+  const ka = normalizeStoreKey(a);
+  const kb = normalizeStoreKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  return storeNameMatchesCatalogKey(a, kb) && storeNameMatchesCatalogKey(b, ka);
 }
 
 /** 門市名稱是否對應營運 catalog 簡稱（如「女中」「宜蘭區-女中店」） */
@@ -128,7 +135,10 @@ export function storeNameMatchesCatalogKey(
     .filter(Boolean);
   if (segments.some((seg) => seg === ck)) return true;
 
-  return sn.endsWith(ck) || sn.includes(ck);
+  if (sn.endsWith(ck)) return true;
+  if (sn.length > ck.length && sn.endsWith(`${ck}店`)) return true;
+
+  return false;
 }
 
 

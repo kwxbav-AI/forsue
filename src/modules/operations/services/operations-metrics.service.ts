@@ -3,10 +3,11 @@ import { toDateRangeTaipei } from "@/lib/date";
 import {
   DUAL_OPS_REGIONS,
   OPS_REGION_CATALOG,
-  formatOpsStoreLabel,
   inferRetailRegion,
   normalizeStoreKey,
   storeNameMatchesCatalogKey,
+  storeNamesEquivalent,
+  formatOpsStoreLabel,
 } from "@/lib/operations-dashboard";
 import {
   aggregateStoreMetricsForRange,
@@ -232,6 +233,32 @@ export function filterChartsByCatalogKey(
   return rows.filter((r) => storeNameMatchesCatalogKey(r.storeName, key));
 }
 
+/**
+ * 女中與女中店視為同一門市：多列時只取「主檔」一列（優先名稱=女中，其次女中店），不將兩列加總。
+ */
+export function pickPrimaryChartsRowForCatalog(
+  rows: ChartsPerStoreRow[],
+  catalogKey: string
+): ChartsPerStoreRow | null {
+  if (rows.length === 0) return null;
+  const key = normalizeStoreKey(catalogKey);
+  return [...rows].sort((a, b) => {
+    const rankDiff =
+      catalogStoreNameRank(a.storeName, key) -
+      catalogStoreNameRank(b.storeName, key);
+    if (rankDiff !== 0) return rankDiff;
+    return b.revenueSum - a.revenueSum;
+  })[0];
+}
+
+export function collapseChartsRowsByCatalog(
+  rows: ChartsPerStoreRow[],
+  catalogKey: string
+): ChartsPerStoreRow[] {
+  const primary = pickPrimaryChartsRowForCatalog(rows, catalogKey);
+  return primary ? [primary] : [];
+}
+
 export function filterChartsBySelection(
   rows: ChartsPerStoreRow[],
   regionMap: Map<string, string>,
@@ -243,17 +270,30 @@ export function filterChartsBySelection(
   }
 ): ChartsPerStoreRow[] {
   if (options.storeId || options.catalogKey) {
+    const catalog =
+      options.catalogKey ??
+      (options.storeLabel ? normalizeStoreKey(options.storeLabel) : "");
+
+    if (catalog) {
+      const byCatalog = filterChartsByCatalogKey(rows, catalog);
+      if (byCatalog.length > 0) {
+        return collapseChartsRowsByCatalog(byCatalog, catalog);
+      }
+    }
+
     if (options.storeId) {
       const byId = rows.filter((r) => r.storeId === options.storeId);
       if (byId.length > 0) return byId;
     }
 
-    const catalog =
-      options.catalogKey ??
-      (options.storeLabel ? normalizeStoreKey(options.storeLabel) : "");
-    if (catalog) {
-      const byCatalog = filterChartsByCatalogKey(rows, catalog);
-      if (byCatalog.length > 0) return byCatalog;
+    if (options.storeLabel) {
+      const labelKey = normalizeStoreKey(options.storeLabel);
+      const fromLabel = rows.filter((r) =>
+        storeNamesEquivalent(r.storeName, options.storeLabel!)
+      );
+      if (fromLabel.length > 0) {
+        return collapseChartsRowsByCatalog(fromLabel, catalog || labelKey);
+      }
     }
 
     return [];
@@ -265,10 +305,14 @@ export function filterChartsBySelection(
 }
 
 export function filterChartsByOpsCatalog(rows: ChartsPerStoreRow[]): ChartsPerStoreRow[] {
-  const catalogKeys = new Set(
-    OPS_REGION_CATALOG.flatMap((g) => g.storeNames).map(normalizeStoreKey)
+  const catalogKeys = OPS_REGION_CATALOG.flatMap((g) => g.storeNames).map(
+    normalizeStoreKey
   );
-  return rows.filter((r) => catalogKeys.has(normalizeStoreKey(r.storeName)));
+  return rows.filter((r) => {
+    const key = normalizeStoreKey(r.storeName);
+    if (catalogKeys.includes(key)) return true;
+    return catalogKeys.some((ck) => storeNameMatchesCatalogKey(r.storeName, ck));
+  });
 }
 
 export async function listPerformanceStoresForFilter() {

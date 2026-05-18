@@ -186,6 +186,9 @@ export async function GET(request: NextRequest) {
         overtimeRatio: filteredResult.summary.overtimeRatio,
         dailyBusinessHours: filteredResult.summary.dailyBusinessHours,
         defaultLaborHours: filteredResult.summary.defaultLaborHours,
+        laborHoursDifference: filteredResult.summary.overtimeHours,
+        workingDaysInRange: filteredResult.workingDaysInRange,
+        dailyTrend: filteredResult.dailyTrend,
         stores: filteredResult.stores,
       },
     });
