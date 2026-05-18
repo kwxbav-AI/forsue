@@ -67,6 +67,8 @@ type KpiMetrics = {
   efficiencyRatio: number | null;
   yoyGrowthRate: number | null;
   regionLabel: string;
+  periodStartDate?: string;
+  periodEndDate?: string;
 };
 
 type FilteredMetrics = {
@@ -102,9 +104,10 @@ function formatYoy(n: number | null) {
   return `${sign}${n.toFixed(1)}%`;
 }
 
+const METRICS_DATA_START = "2026-04-01";
+
 export default function OperationsDashboardPage() {
   const today = formatLocalDateInput();
-  const monthStart = today.slice(0, 8) + "01";
 
   const [meta, setMeta] = useState<Meta | null>(null);
   const [kpiMetrics, setKpiMetrics] = useState<KpiMetrics | null>(null);
@@ -115,7 +118,7 @@ export default function OperationsDashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState(monthStart);
+  const [startDate, setStartDate] = useState(METRICS_DATA_START);
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState("");
   const [storeId, setStoreId] = useState("");
@@ -222,7 +225,11 @@ export default function OperationsDashboardPage() {
             : T.emDash}
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            {queried ? T.kpiRegions : T.kpiRegionsHint}
+            {queried && kpiMetrics?.periodStartDate && kpiMetrics?.periodEndDate ?
+              `${kpiMetrics.periodStartDate} ${T.tilde} ${kpiMetrics.periodEndDate} \u00b7 ${T.kpiRegions}`
+            : queried ?
+              T.kpiRegions
+            : T.kpiRegionsHint}
           </p>
         </div>
 

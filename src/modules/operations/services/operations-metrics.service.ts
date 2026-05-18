@@ -63,19 +63,20 @@ export async function fetchDualRegionTotalsFromPerformanceDaily(
 ): Promise<PerformanceAggregate> {
   const { start, end } = toDateRangeTaipei(startDate, endDate);
 
+  const allowedKeys = getCatalogKeysForRegions(DUAL_OPS_REGIONS);
   const catalogStores = await prisma.store.findMany({
-    where: {
-      isActive: true,
-      hideInReports: false,
-      name: { in: OPS_REGION_CATALOG.flatMap((g) => [...g.storeNames]) },
-    },
-    select: { id: true, name: true, department: true },
+    where: { isActive: true, hideInReports: false },
+    select: { id: true, name: true },
   });
 
   const dualIds = catalogStores
     .filter((s) => {
-      const r = inferRetailRegion(s.name, s.department);
-      return r === "桃園區" || r === "宜蘭區";
+      const key = normalizeStoreKey(s.name);
+      if (allowedKeys.has(key)) return true;
+      for (const catalogKey of allowedKeys) {
+        if (storeNameMatchesCatalogKey(s.name, catalogKey)) return true;
+      }
+      return false;
     })
     .map((s) => s.id);
 
@@ -152,12 +153,54 @@ export async function buildStoreRegionMap(
   );
 }
 
+/** 依營運 catalog 區域名稱篩選（與圖表門市名稱一致，不依 department 推斷） */
+export function getCatalogKeysForRegions(regions: readonly string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const { region, storeNames } of OPS_REGION_CATALOG) {
+    if (!regions.includes(region)) continue;
+    for (const name of storeNames) {
+      keys.add(normalizeStoreKey(name));
+    }
+  }
+  return keys;
+}
+
+export function rowMatchesCatalogRegions(
+  row: Pick<ChartsPerStoreRow, "storeName">,
+  regions: readonly string[]
+): boolean {
+  const allowed = getCatalogKeysForRegions(regions);
+  const key = normalizeStoreKey(row.storeName);
+  if (allowed.has(key)) return true;
+  for (const catalogKey of allowed) {
+    if (storeNameMatchesCatalogKey(row.storeName, catalogKey)) return true;
+  }
+  return false;
+}
+
+export function filterChartsByCatalogRegions(
+  rows: ChartsPerStoreRow[],
+  regions: readonly string[]
+): ChartsPerStoreRow[] {
+  return rows.filter((r) => rowMatchesCatalogRegions(r, regions));
+}
+
+/** @deprecated 請改用 filterChartsByCatalogRegions */
 export function filterChartsByDualRegions(
   rows: ChartsPerStoreRow[],
   regionMap: Map<string, string>
 ): ChartsPerStoreRow[] {
-  const dualSet = new Set<string>(DUAL_OPS_REGIONS);
-  return rows.filter((r) => dualSet.has(regionMap.get(r.storeId) ?? ""));
+  return filterChartsByCatalogRegions(rows, DUAL_OPS_REGIONS);
+}
+
+/** 桃園＋宜蘭區間加總（與圖表相同公式：上傳營收／真實工時） */
+export async function fetchDualRegionChartTotals(
+  startDate: string,
+  endDate: string
+): Promise<PerformanceAggregate> {
+  const perStore = await fetchChartsPerStore(startDate, endDate);
+  const rows = filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS);
+  return sumChartRows(rows);
 }
 
 function catalogStoreNameRank(name: string, catalogKey: string): number {
@@ -215,7 +258,7 @@ export function filterChartsBySelection(
     return [];
   }
   if (options.region) {
-    return rows.filter((r) => regionMap.get(r.storeId) === options.region);
+    return filterChartsByCatalogRegions(rows, [options.region]);
   }
   return rows;
 }

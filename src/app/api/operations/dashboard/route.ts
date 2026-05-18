@@ -4,15 +4,18 @@ import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard
 import {
   buildStoreRegionMap,
   fetchChartsPerStore,
+  fetchDualRegionChartTotals,
   fetchDualRegionTotalsFromPerformanceDaily,
-  filterChartsByDualRegions,
   filterChartsByOpsCatalog,
   filterChartsBySelection,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
   metricsFromChartRows,
-  sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
+import {
+  clampMetricsDateRange,
+  getPerformanceMetricsDataStartYmd,
+} from "@/lib/performance-metrics-range";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
 export const dynamic = "force-dynamic";
@@ -60,16 +63,20 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate
     );
-    const perStore = await fetchChartsPerStore(
-      effectiveRange.startDate,
-      effectiveRange.endDate
+    const dataStartYmd = await getPerformanceMetricsDataStartYmd();
+    const kpiRange = clampMetricsDateRange(
+      dataStartYmd,
+      effectiveRange.endDate,
+      dataStartYmd
     );
+
+    const [perStore, dualCurrent] = await Promise.all([
+      fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
+      fetchDualRegionChartTotals(kpiRange.startDate, kpiRange.endDate),
+    ]);
 
     const allStoreIds = perStore.map((r) => r.storeId);
     const regionMap = await buildStoreRegionMap(allStoreIds);
-
-    const dualCurrentRows = filterChartsByDualRegions(perStore, regionMap);
-    const dualCurrent = sumChartRows(dualCurrentRows);
 
     const dualPrior = await fetchDualRegionTotalsFromPerformanceDaily(
       shiftYear(effectiveRange.startDate, -1),
@@ -126,6 +133,8 @@ export async function GET(request: NextRequest) {
         yoyGrowthRate: kpiYoyGrowthRate,
         priorYearRevenue: dualPrior.revenue,
         regionLabel: "桃園區 + 宜蘭區",
+        periodStartDate: kpiRange.startDate,
+        periodEndDate: kpiRange.endDate,
       },
       filteredMetrics: {
         totalRevenue: filteredCurrent.revenue,
