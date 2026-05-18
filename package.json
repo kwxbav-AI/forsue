@@ -21,6 +21,7 @@
     "db:seed": "prisma db seed",
     "db:seed-historical-performance": "node scripts/seed-historical-performance.cjs",
     "db:studio": "prisma studio",
+    "db:check": "node scripts/check-db.cjs",
     "db:fix-dispatch-workdate": "node scripts/fix-dispatch-workdate.cjs",
     "db:shift-dispatch-workdate-plus1": "node scripts/shift-dispatch-workdate-plus1.cjs"
   },

@@ -213,7 +213,7 @@ export default function ReportsChartsPage() {
               ) : sorted.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-4 text-slate-500">
-                    此區間無資料
+                    此區間尚無營收或出勤資料
                   </td>
                 </tr>
               ) : (
@@ -267,7 +267,7 @@ export default function ReportsChartsPage() {
             </ResponsiveContainer>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            工效比 = 區間營收加總 ÷ 區間工時加總（hours=0 時視為 0）。
+            工效比 = 區間營收加總 ÷ 區間工時加總；與「每日工效比」相同公式；區間自 2026-04-01 起算。
           </p>
         </div>
       </div>

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
+import {
+  formatDateOnly,
+  formatDateOnlyTaipei,
+  toDateRangeTaipei,
+} from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +19,7 @@ export async function GET(request: Request) {
   let start: Date;
   let end: Date;
   try {
-    start = parseDateOnlyUTC(startDate);
-    end = parseDateOnlyUTC(endDate);
+    ({ start, end } = toDateRangeTaipei(startDate, endDate));
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }

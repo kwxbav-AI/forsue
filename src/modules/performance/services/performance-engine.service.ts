@@ -6,8 +6,9 @@ import {
   formatDateOnly,
   parseDateOnlyUTC,
   addCalendarDaysUTC,
+  calendarDayBoundsFromDate,
 } from "@/lib/date";
-import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
+import { computeDailyMetricsByStore } from "./daily-store-metrics.service";
 import { getTargetForDate } from "./target-setting.service";
 
 class PerformanceEngineService {
@@ -15,64 +16,19 @@ class PerformanceEngineService {
   async recalculateDailyPerformance(date: Date): Promise<void> {
     const d = toStartOfDay(date);
     const targetValue = await getTargetForDate(d);
-    const storeHours = await computeTotalWorkHoursByStore(d);
-
-    const revenueGrouped = await prisma.revenueRecord.groupBy({
-      by: ["storeId"],
-      where: { revenueDate: d },
-      _sum: { revenueAmount: true },
+    const dailyMetrics = await computeDailyMetricsByStore(d, {
+      reportVisibleOnly: false,
     });
-    const revenueSumByStoreId = new Map<string, number>();
-    for (const g of revenueGrouped) {
-      revenueSumByStoreId.set(g.storeId, Number(g._sum.revenueAmount ?? 0));
-    }
 
     const stores = await prisma.store.findMany({
       where: { isActive: true },
     });
 
-    // 內容篇數填報的扣工時：依分店（門市名稱）彙總，從該門市總工時中扣除
-    const contentEntries = await prisma.contentEntry.findMany({
-      where: { workDate: d },
-      select: { branch: true, deductedMinutes: true },
-    });
-    // 以 trim 後門市名稱對應 storeId，避免前後空白導致對不到
-    const nameToStore = new Map(
-      stores.map((s) => [s.name.trim(), s.id])
-    );
-    const contentDeductionHoursByStore: Record<string, number> = {};
-    for (const entry of contentEntries) {
-      const key = entry.branch.trim();
-      if (!key) continue;
-      const storeId = nameToStore.get(key);
-      if (!storeId || entry.deductedMinutes == null) continue;
-      contentDeductionHoursByStore[storeId] =
-        (contentDeductionHoursByStore[storeId] ?? 0) + entry.deductedMinutes / 60;
-    }
-
-    // 效期/清掃 工時：依門市彙總，從該門市總工時中扣除（workDate 以當日區間查詢）
-    const storeDeductions = await prisma.storeHourDeduction.findMany({
-      where: {
-        workDate: d,
-      },
-      select: { storeId: true, hours: true },
-    });
-    const storeDeductionHoursByStore: Record<string, number> = {};
-    for (const row of storeDeductions) {
-      const h = Number(row.hours);
-      if (Number.isFinite(h) && h > 0) {
-        storeDeductionHoursByStore[row.storeId] =
-          (storeDeductionHoursByStore[row.storeId] ?? 0) + h;
-      }
-    }
-
     const weekDay = d.getUTCDay();
     const rows = stores.map((store) => {
-      const rawHours = storeHours[store.id] ?? 0;
-      const contentDeduction = contentDeductionHoursByStore[store.id] ?? 0;
-      const storeDeduction = storeDeductionHoursByStore[store.id] ?? 0;
-      const totalWorkHours = Math.max(0, rawHours - contentDeduction - storeDeduction);
-      const revenueAmount = revenueSumByStoreId.get(store.id) ?? 0;
+      const metrics = dailyMetrics.get(store.id);
+      const totalWorkHours = metrics?.laborHours ?? 0;
+      const revenueAmount = metrics?.revenue ?? 0;
       let efficiencyRatio = 0;
       if (totalWorkHours > 0) {
         efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
@@ -94,9 +50,11 @@ class PerformanceEngineService {
       };
     });
 
+    const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+
     await prisma.$transaction(async (tx) => {
       await tx.performanceDaily.deleteMany({
-        where: { workDate: d, versionNo: 1 },
+        where: { workDate: { gte: dayStart, lte: dayEnd }, versionNo: 1 },
       });
       if (rows.length > 0) {
         await tx.performanceDaily.createMany({ data: rows });

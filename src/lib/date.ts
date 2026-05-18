@@ -131,6 +131,18 @@ export function toDateRangeTaipei(startStr: string, endStr: string): { start: Da
   };
 }
 
+/** 單一營運日（台北日曆）對應的 DB 查詢區間 */
+export function calendarDayBoundsFromYmd(ymd: string): { start: Date; end: Date } {
+  return {
+    start: parseTaipeiDateStartUTC(ymd),
+    end: parseTaipeiDateEndUTC(ymd),
+  };
+}
+
+export function calendarDayBoundsFromDate(workDate: Date): { start: Date; end: Date } {
+  return calendarDayBoundsFromYmd(formatDateOnly(toStartOfDay(workDate)));
+}
+
 /** 取得週的起始日 (週一) — 依執行環境本地時區 */
 export function getWeekStart(d: Date): Date {
   const day = d.getDay();

@@ -21,6 +21,10 @@
    ```
 2. 編輯 `.env`，設定 `DATABASE_URL`（PostgreSQL 連線字串）。
 
+   **GitHub 共編、同事協作**：請用團隊共用 Neon 開發庫 → [團隊共用開發資料庫](docs/團隊共用開發資料庫.md)；第一次 clone 見 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+   **若本機營收報表／Dashboard 沒資料、正式站卻有**：執行 `npm run db:check`；多半需改 `.env` 的 `DATABASE_URL` → [本機開發連雲端資料庫](docs/本機開發連雲端資料庫.md)。
+
 3. 安裝依賴：
    ```bash
    npm install

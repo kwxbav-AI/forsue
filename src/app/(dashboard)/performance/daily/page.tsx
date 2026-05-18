@@ -48,6 +48,7 @@ export default function PerformanceDailyPage() {
   const [date, setDate] = useState(() => formatLocalDateInput());
   const [list, setList] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [detailStoreId, setDetailStoreId] = useState<string | null>(null);
   const [detail, setDetail] = useState<StoreDetailPayload | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("storeName");
@@ -63,6 +64,11 @@ export default function PerformanceDailyPage() {
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  const hasAnyActivity = useMemo(
+    () => list.some((r) => r.revenueAmount > 0 || r.totalWorkHours > 0),
+    [list]
+  );
 
   const sortedList = useMemo(() => {
     const statusRank = (row: DailyRow) => {
@@ -150,9 +156,17 @@ export default function PerformanceDailyPage() {
 
       {loading ? (
         <p className="text-sm text-slate-500">載入中…</p>
+      ) : fetchError ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {fetchError}
+        </p>
       ) : list.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          此日期尚無績效資料，請先上傳出勤、營收並執行重算。
+          無法載入門市列表，請稍後再試。
+        </p>
+      ) : !hasAnyActivity ? (
+        <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+          此日期尚無營收或出勤資料，請確認已上傳該日的營收與出勤檔案。
         </p>
       ) : (
         <>

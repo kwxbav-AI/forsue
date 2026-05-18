@@ -38,6 +38,13 @@ export default async function DashboardLayout({
     !authOn ||
     (session != null &&
       (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/settings")));
+  const canOperations =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/operations/dashboard"
+      )));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -81,6 +88,14 @@ export default async function DashboardLayout({
             {canSettings ? (
               <Link href="/settings" className="text-slate-600 hover:text-sky-600">
                 設定區
+              </Link>
+            ) : null}
+            {canOperations ? (
+              <Link
+                href="/operations/dashboard"
+                className="text-slate-600 hover:text-sky-600"
+              >
+                營運總覽 Dashboard
               </Link>
             ) : null}
           </nav>

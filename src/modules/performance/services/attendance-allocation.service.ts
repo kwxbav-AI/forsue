@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Decimal from "decimal.js";
-import { toStartOfDay, formatDateOnly } from "@/lib/date";
+import { toStartOfDay, formatDateOnly, calendarDayBoundsFromDate } from "@/lib/date";
 import {
   buildNewHireWorkedDayNoIndex,
   getAttendanceDataStartDate,
@@ -23,9 +23,10 @@ export async function computeStoreHoursByEmployee(
   workDate: Date
 ): Promise<Map<string, StoreHoursMap>> {
   const d = toStartOfDay(workDate);
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
 
   const attendances = await prisma.attendanceRecord.findMany({
-    where: { workDate: d },
+    where: { workDate: { gte: dayStart, lte: dayEnd } },
     include: { employee: true },
   });
   // 同一員工同一日可能有多筆出勤（中間請假二段卡、或跨天拆分）。
@@ -46,11 +47,11 @@ export async function computeStoreHoursByEmployee(
   }
 
   const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate: d, confirmStatus: "已確認" },
+    where: { workDate: { gte: dayStart, lte: dayEnd }, confirmStatus: "已確認" },
   });
 
   const adjustments = await prisma.workhourAdjustment.findMany({
-    where: { workDate: d },
+    where: { workDate: { gte: dayStart, lte: dayEnd } },
   });
 
   // 錯誤訊息希望顯示「員工姓名」而不是 id
@@ -246,7 +247,7 @@ export async function computeStoreHoursByEmployee(
       ? await prisma.attendanceRecord.findMany({
           where: {
             employeeId: { in: uniqueNewHireCandidateIds },
-            workDate: { gte: earliestHireDate, lte: d },
+            workDate: { gte: earliestHireDate, lte: dayEnd },
             workHours: { gt: 0 },
           },
           select: { employeeId: true, workDate: true },

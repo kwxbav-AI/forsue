@@ -38,6 +38,12 @@ export default async function HomePage() {
       title: "設定區",
       desc: "門市管理、儲備人力設定、假日設定、目標值設定、帳號權限",
     },
+    {
+      key: "operations",
+      href: "/operations/dashboard",
+      title: "營運總覽 Dashboard",
+      desc: "零售門市營運分析、門市目標、每日績效",
+    },
   ] as const;
 
   const visible = !authOn

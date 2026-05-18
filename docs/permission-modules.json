@@ -443,6 +443,56 @@
       ]
     },
     {
+      "key": "operations-dashboard",
+      "label": "營運總覽 Dashboard",
+      "description": "零售門市營運分析入口與總覽",
+      "group": "營運分析",
+      "sortOrder": 710,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/dashboard", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/dashboard", "method": null }
+      ]
+    },
+    {
+      "key": "operations-stores",
+      "label": "營運門市管理",
+      "description": "營運分析模組用門市主檔（區域、區督）",
+      "group": "營運分析",
+      "sortOrder": 720,
+      "parentKey": "operations-dashboard",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/stores/sync", "method": null }
+      ]
+    },
+    {
+      "key": "operations-store-targets",
+      "label": "門市目標設定（營運）",
+      "description": "月業績、月工時目標與 RPLH",
+      "group": "營運分析",
+      "sortOrder": 730,
+      "parentKey": "operations-dashboard",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-targets", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-targets", "method": null }
+      ]
+    },
+    {
+      "key": "operations-data-api",
+      "label": "營運資料 API（每日績效/TMS/排班）",
+      "description": "營運模組其他資料 CRUD API",
+      "group": "營運分析",
+      "sortOrder": 740,
+      "parentKey": "operations-dashboard",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/operations/daily-store-performance", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/tms-transactions", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/staff-schedules", "method": null }
+      ]
+    },
+    {
       "key": "reserve-staff",
       "label": "儲備人力設定",
       "description": "儲備人力與工時計算%（含員工資料）",
