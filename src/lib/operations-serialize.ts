@@ -14,6 +14,8 @@ export function serializeRetailStore(s: RetailStore) {
     storeName: s.storeName,
     region: s.region,
     managerName: s.managerName,
+    dailyBusinessHours: decimalToNumber(s.dailyBusinessHours),
+    defaultLaborHoursPerDay: decimalToNumber(s.defaultLaborHoursPerDay),
     isActive: s.isActive,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),

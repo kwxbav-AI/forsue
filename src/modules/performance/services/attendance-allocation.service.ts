@@ -392,6 +392,39 @@ export async function computeStoreHoursByEmployee(
   return employeeStores;
 }
 
+/** 各門市當日加班時數（單筆出勤 >8h 部分，與出勤報表邏輯一致） */
+export async function computeStoreOvertimeHoursByStore(
+  workDate: Date
+): Promise<Record<string, number>> {
+  const d = toStartOfDay(workDate);
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+
+  const attendances = await prisma.attendanceRecord.findMany({
+    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    include: { employee: true },
+  });
+
+  const fallbackHomeStoreByEmployee = new Map<string, string>();
+  for (const att of attendances) {
+    if (att.originalStoreId && !fallbackHomeStoreByEmployee.has(att.employeeId)) {
+      fallbackHomeStoreByEmployee.set(att.employeeId, att.originalStoreId);
+    }
+  }
+
+  const byStore: Record<string, number> = {};
+  for (const att of attendances) {
+    const storeId =
+      att.employee.defaultStoreId ??
+      fallbackHomeStoreByEmployee.get(att.employeeId) ??
+      att.originalStoreId ??
+      null;
+    if (!storeId) continue;
+    const overtime = Math.max(0, Number(att.workHours) - 8);
+    byStore[storeId] = (byStore[storeId] ?? 0) + overtime;
+  }
+  return byStore;
+}
+
 /** 彙總為各門市當日總工時 */
 export async function computeTotalWorkHoursByStore(workDate: Date): Promise<Record<string, number>> {
   const byEmployee = await computeStoreHoursByEmployee(workDate);

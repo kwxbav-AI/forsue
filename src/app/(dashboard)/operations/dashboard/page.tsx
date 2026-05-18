@@ -51,6 +51,22 @@ const T = {
   hours: "\u5DE5\u6642",
   efficiency: "\u5DE5\u6548\u6BD4",
   loadFilterFailed: "\u7121\u6CD5\u8F09\u5165\u7BE9\u9078\u7D50\u679C\uFF0C\u8ACB\u91CD\u65B0\u67E5\u8A62\u3002",
+  chartsNote:
+    "\u71DF\u696D\u984D\u3001\u5DE5\u6642\u3001\u5DE5\u6548\u6BD4\u8207\u300C\u5716\u8868\u300D\u540C\u8DEF\u5F91\uFF08/api/reports/charts\uFF09",
+  revenueForecast: "\u71DF\u6536\u9810\u4F30\u503C",
+  revenueAchievement: "\u71DF\u6536\u9054\u6210\u503C",
+  revenueAchievementRate: "\u71DF\u6536\u9054\u6210\u7387",
+  filterYoy: "YoY \u71DF\u6536\u6210\u9577\u7387",
+  actualHours: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642",
+  overtimeHours: "\u52A0\u73ED\u5DE5\u6642",
+  overtimeRatio: "\u52A0\u73ED\u6642\u6578\u5360\u6BD4",
+  dailyBusinessHours: "\u9580\u5E02\u6BCF\u65E5\u71DF\u696D\u6642\u9577",
+  defaultLaborHours: "\u5340\u9593\u9810\u8A2D\u5DE5\u6642\u5408\u8A08",
+  defaultLaborHoursHint: "(\u6BCF\u65E5\u9810\u8A2D\u5DE5\u6642 \u00D7 \u5DE5\u4F5C\u5929\u6578)",
+  overtimeFormula: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642 \u2212 \u5340\u9593\u9810\u8A2D\u5DE5\u6642",
+  storeSettingsLink: "\u8ACB\u81F3\u300C\u71DF\u904B\u9580\u5E02\u7BA1\u7406\u300D\u8A2D\u5B9A\u71DF\u696D\u6642\u9577\u8207\u9810\u8A2D\u5DE5\u6642",
+  storeName: "\u9580\u5E02",
+  perStoreDetail: "\u5404\u9580\u5E02\u660E\u7D30",
 } as const;
 
 type StoreOption = { id: string; storeName: string; region: string | null };
@@ -71,6 +87,24 @@ type KpiMetrics = {
   periodEndDate?: string;
 };
 
+type FilterStoreRow = {
+  storeId: string;
+  storeName: string;
+  revenue: number;
+  laborHours: number;
+  efficiencyRatio: number | null;
+  revenueForecast: number | null;
+  revenueAchievement: number;
+  revenueAchievementRate: number | null;
+  yoyGrowthRate: number | null;
+  priorYearRevenue: number;
+  actualAttendanceHours: number;
+  overtimeHours: number | null;
+  overtimeRatio: number | null;
+  dailyBusinessHours: number | null;
+  defaultLaborHours: number | null;
+};
+
 type FilteredMetrics = {
   totalRevenue: number;
   totalLaborHours: number;
@@ -79,6 +113,17 @@ type FilteredMetrics = {
   storeCount: number;
   matchedStoreCount?: number;
   hasData?: boolean;
+  revenueForecast?: number | null;
+  revenueAchievement?: number;
+  revenueAchievementRate?: number | null;
+  yoyGrowthRate?: number | null;
+  priorYearRevenue?: number;
+  actualAttendanceHours?: number;
+  overtimeHours?: number;
+  overtimeRatio?: number | null;
+  dailyBusinessHours?: number | null;
+  defaultLaborHours?: number | null;
+  stores?: FilterStoreRow[];
 };
 
 function round2(n: number): number {
@@ -102,6 +147,92 @@ function formatYoy(n: number | null) {
   if (n == null || Number.isNaN(n)) return T.emDash;
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(1)}%`;
+}
+
+function formatPct(n: number | null) {
+  if (n == null || Number.isNaN(n)) return T.emDash;
+  return `${n.toFixed(1)}%`;
+}
+
+function MetricLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-1">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-medium text-slate-800">{value}</span>
+    </span>
+  );
+}
+
+function FilterMetricsBlock({ m }: { m: FilteredMetrics }) {
+  return (
+    <div className="mt-2 space-y-3 text-sm">
+      <p className="text-xs text-slate-400">{T.chartsNote}</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <MetricLine label={T.revenue} value={formatMoney(m.totalRevenue)} />
+        <MetricLine label={T.hours} value={`${formatHours(m.totalLaborHours)} hr`} />
+        <MetricLine label={T.efficiency} value={formatRatio(m.efficiencyRatio)} />
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 pt-2">
+        <MetricLine
+          label={T.revenueForecast}
+          value={m.revenueForecast != null ? formatMoney(m.revenueForecast) : T.emDash}
+        />
+        <MetricLine
+          label={T.revenueAchievement}
+          value={formatMoney(m.revenueAchievement ?? m.totalRevenue)}
+        />
+        <MetricLine
+          label={T.revenueAchievementRate}
+          value={formatPct(m.revenueAchievementRate ?? null)}
+        />
+        <MetricLine label={T.filterYoy} value={formatYoy(m.yoyGrowthRate ?? null)} />
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 pt-2">
+        <MetricLine
+          label={T.actualHours}
+          value={`${formatHours(m.actualAttendanceHours ?? m.totalLaborHours)} hr`}
+        />
+        <MetricLine
+          label={T.overtimeHours}
+          value={
+            m.overtimeHours != null ?
+              `${formatHours(m.overtimeHours)} hr`
+            : T.emDash
+          }
+        />
+        <MetricLine label={T.overtimeRatio} value={formatPct(m.overtimeRatio ?? null)} />
+        <MetricLine
+          label={T.dailyBusinessHours}
+          value={
+            m.dailyBusinessHours != null ?
+              `${formatHours(m.dailyBusinessHours)} hr`
+            : T.emDash
+          }
+        />
+        <MetricLine
+          label={T.defaultLaborHours}
+          value={
+            m.defaultLaborHours != null ?
+              `${formatHours(m.defaultLaborHours)} hr`
+            : T.emDash
+          }
+        />
+        <span className="text-slate-400">{T.defaultLaborHoursHint}</span>
+      </div>
+      <p className="text-xs text-slate-400">
+        {T.overtimeFormula} {T.middot}{" "}
+        <Link href="/operations/stores" className="text-sky-600 hover:underline">
+          {T.storeSettingsLink}
+        </Link>
+      </p>
+    </div>
+  );
 }
 
 const METRICS_DATA_START = "2026-04-01";
@@ -361,20 +492,64 @@ export default function OperationsDashboardPage() {
                 filteredMetrics.totalRevenue <= 0 &&
                 filteredMetrics.totalLaborHours <= 0 ?
                   <p className="mt-1 text-slate-500">{T.noData}</p>
-                : <p className="mt-1">
-                    {T.revenue}{" "}
-                    <span className="font-medium">
-                      {formatMoney(filteredMetrics.totalRevenue)}
-                    </span>
-                    {` ${T.middot} ${T.hours} `}
-                    <span className="font-medium">
-                      {formatHours(filteredMetrics.totalLaborHours)}
-                    </span>
-                    {` hr ${T.middot} ${T.efficiency} `}
-                    <span className="font-medium">
-                      {formatRatio(filteredMetrics.efficiencyRatio)}
-                    </span>
-                  </p>
+                : <>
+                    <FilterMetricsBlock m={filteredMetrics} />
+                    {(filteredMetrics.stores?.length ?? 0) > 1 ?
+                      <div className="mt-3 overflow-x-auto">
+                        <p className="mb-2 text-xs font-medium text-slate-600">
+                          {T.perStoreDetail}
+                        </p>
+                        <table className="min-w-full border-collapse text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-500">
+                              <th className="px-2 py-1.5 font-medium">{T.storeName}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{T.revenue}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{T.hours}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">
+                                {T.revenueForecast}
+                              </th>
+                              <th className="px-2 py-1.5 font-medium text-right">
+                                {T.revenueAchievementRate}
+                              </th>
+                              <th className="px-2 py-1.5 font-medium text-right">{T.filterYoy}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">
+                                {T.overtimeHours}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredMetrics.stores?.map((row) => (
+                              <tr key={row.storeId} className="border-b border-slate-100">
+                                <td className="px-2 py-1.5">{row.storeName}</td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {formatMoney(row.revenue)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {formatHours(row.laborHours)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {row.revenueForecast != null ?
+                                    formatMoney(row.revenueForecast)
+                                  : T.emDash}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {formatPct(row.revenueAchievementRate)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {formatYoy(row.yoyGrowthRate)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {row.overtimeHours != null ?
+                                    formatHours(row.overtimeHours)
+                                  : T.emDash}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    : null}
+                  </>
               : <p className="mt-1 text-slate-500">{T.loadFilterFailed}</p>
               }
             </div>

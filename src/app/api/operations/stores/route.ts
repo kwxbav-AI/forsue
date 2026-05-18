@@ -5,10 +5,16 @@ import { serializeRetailStore } from "@/lib/operations-serialize";
 
 export const dynamic = "force-dynamic";
 
+const optionalHours = z
+  .union([z.number().nonnegative(), z.null()])
+  .optional();
+
 const bodySchema = z.object({
   storeName: z.string().min(1),
   region: z.string().optional().nullable(),
   managerName: z.string().optional().nullable(),
+  dailyBusinessHours: optionalHours,
+  defaultLaborHoursPerDay: optionalHours,
   isActive: z.boolean().optional(),
 });
 
@@ -31,12 +37,21 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { storeName, region, managerName, isActive } = parsed.data;
+    const {
+      storeName,
+      region,
+      managerName,
+      dailyBusinessHours,
+      defaultLaborHoursPerDay,
+      isActive,
+    } = parsed.data;
     const created = await prisma.retailStore.create({
       data: {
         storeName: storeName.trim(),
         region: region?.trim() || null,
         managerName: managerName?.trim() || null,
+        dailyBusinessHours: dailyBusinessHours ?? null,
+        defaultLaborHoursPerDay: defaultLaborHoursPerDay ?? null,
         isActive: isActive ?? true,
       },
     });

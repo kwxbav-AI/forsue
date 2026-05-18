@@ -243,6 +243,11 @@ export function filterChartsBySelection(
   }
 ): ChartsPerStoreRow[] {
   if (options.storeId || options.catalogKey) {
+    if (options.storeId) {
+      const byId = rows.filter((r) => r.storeId === options.storeId);
+      if (byId.length > 0) return byId;
+    }
+
     const catalog =
       options.catalogKey ??
       (options.storeLabel ? normalizeStoreKey(options.storeLabel) : "");
@@ -251,10 +256,6 @@ export function filterChartsBySelection(
       if (byCatalog.length > 0) return byCatalog;
     }
 
-    if (options.storeId) {
-      const byId = rows.filter((r) => r.storeId === options.storeId);
-      if (byId.length > 0) return byId;
-    }
     return [];
   }
   if (options.region) {

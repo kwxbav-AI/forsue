@@ -5,10 +5,16 @@ import { serializeRetailStore } from "@/lib/operations-serialize";
 
 export const dynamic = "force-dynamic";
 
+const optionalHours = z
+  .union([z.number().nonnegative(), z.null()])
+  .optional();
+
 const bodySchema = z.object({
   storeName: z.string().min(1).optional(),
   region: z.string().optional().nullable(),
   managerName: z.string().optional().nullable(),
+  dailyBusinessHours: optionalHours,
+  defaultLaborHoursPerDay: optionalHours,
   isActive: z.boolean().optional(),
 });
 
@@ -40,12 +46,20 @@ export async function PUT(
       storeName?: string;
       region?: string | null;
       managerName?: string | null;
+      dailyBusinessHours?: number | null;
+      defaultLaborHoursPerDay?: number | null;
       isActive?: boolean;
     } = {};
     if (parsed.data.storeName !== undefined) data.storeName = parsed.data.storeName.trim();
     if (parsed.data.region !== undefined) data.region = parsed.data.region?.trim() || null;
     if (parsed.data.managerName !== undefined) {
       data.managerName = parsed.data.managerName?.trim() || null;
+    }
+    if (parsed.data.dailyBusinessHours !== undefined) {
+      data.dailyBusinessHours = parsed.data.dailyBusinessHours;
+    }
+    if (parsed.data.defaultLaborHoursPerDay !== undefined) {
+      data.defaultLaborHoursPerDay = parsed.data.defaultLaborHoursPerDay;
     }
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 

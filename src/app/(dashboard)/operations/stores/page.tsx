@@ -8,6 +8,8 @@ type RetailStore = {
   storeName: string;
   region: string | null;
   managerName: string | null;
+  dailyBusinessHours: number | null;
+  defaultLaborHoursPerDay: number | null;
   isActive: boolean;
 };
 
@@ -15,8 +17,17 @@ const emptyForm = {
   storeName: "",
   region: "",
   managerName: "",
+  dailyBusinessHours: "",
+  defaultLaborHoursPerDay: "",
   isActive: true,
 };
+
+function parseOptionalHours(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
 
 export default function OperationsStoresPage() {
   const [list, setList] = useState<RetailStore[]>([]);
@@ -48,6 +59,10 @@ export default function OperationsStoresPage() {
       storeName: row.storeName,
       region: row.region ?? "",
       managerName: row.managerName ?? "",
+      dailyBusinessHours:
+        row.dailyBusinessHours != null ? String(row.dailyBusinessHours) : "",
+      defaultLaborHoursPerDay:
+        row.defaultLaborHoursPerDay != null ? String(row.defaultLaborHoursPerDay) : "",
       isActive: row.isActive,
     });
     setMessage(null);
@@ -59,10 +74,23 @@ export default function OperationsStoresPage() {
       setMessage("\u8acb\u8f38\u5165\u9580\u5e02\u540d\u7a31");
       return;
     }
+    const dailyBusinessHours = parseOptionalHours(form.dailyBusinessHours);
+    const defaultLaborHoursPerDay = parseOptionalHours(form.defaultLaborHoursPerDay);
+    if (form.dailyBusinessHours.trim() && dailyBusinessHours == null) {
+      setMessage("\u71df\u696d\u6642\u9577\u8acb\u8f38\u5165\u6709\u6548\u6578\u5b57");
+      return;
+    }
+    if (form.defaultLaborHoursPerDay.trim() && defaultLaborHoursPerDay == null) {
+      setMessage("\u9810\u8a2d\u5de5\u6642\u8acb\u8f38\u5165\u6709\u6548\u6578\u5b57");
+      return;
+    }
+
     const payload = {
       storeName: form.storeName.trim(),
       region: form.region.trim() || null,
       managerName: form.managerName.trim() || null,
+      dailyBusinessHours,
+      defaultLaborHoursPerDay,
       isActive: form.isActive,
     };
 
@@ -105,7 +133,7 @@ export default function OperationsStoresPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-800">{"\u71df\u904b\u9580\u5e02\u7ba1\u7406"}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {"\u71df\u904b\u5206\u6790\u6a21\u7d44\u7528\u9580\u5e02\u4e3b\u6a94\uff08\u8207\u65e5\u5e38\u7e3e\u6548\u7cfb\u7d71\u9580\u5e02\u5206\u958b\uff09"}
+            {"\u71df\u904b\u5206\u6790\u6a21\u7d44\u7528\u9580\u5e02\u4e3b\u6a94\uff08\u8207\u65e5\u5e38\u7e3e\u6548\u7cfb\u7d71\u9580\u5e02\u5206\u958b\uff09\u3002\u53ef\u8a2d\u5b9a\u300c\u6bcf\u65e5\u71df\u696d\u6642\u9577\u300d\u8207\u300c\u6bcf\u65e5\u9810\u8a2d\u5de5\u6642\u300d\u4f9b Dashboard \u52a0\u73ed\u8a08\u7b97\u3002"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -154,7 +182,35 @@ export default function OperationsStoresPage() {
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
             />
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="text-sm">
+            <span className="text-slate-600">{"\u9580\u5e02\u6bcf\u65e5\u71df\u696d\u6642\u9577\uff08\u5c0f\u6642\uff09"}</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={form.dailyBusinessHours}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, dailyBusinessHours: e.target.value }))
+              }
+              placeholder={"\u4f8b\uff1a 12"}
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-slate-600">{"\u6bcf\u65e5\u9810\u8a2d\u5de5\u6642\uff08\u5c0f\u6642\uff09"}</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={form.defaultLaborHoursPerDay}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultLaborHoursPerDay: e.target.value }))
+              }
+              placeholder={"\u4f8b\uff1a 24"}
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input
               type="checkbox"
               checked={form.isActive}
@@ -196,6 +252,8 @@ export default function OperationsStoresPage() {
                 <th className="px-3 py-2">{"\u9580\u5e02"}</th>
                 <th className="px-3 py-2">{"\u5340\u57df"}</th>
                 <th className="px-3 py-2">{"\u8ca0\u8cac\u4e3b\u7ba1"}</th>
+                <th className="px-3 py-2 text-right">{"\u71df\u696d\u6642\u9577"}</th>
+                <th className="px-3 py-2 text-right">{"\u9810\u8a2d\u5de5\u6642"}</th>
                 <th className="px-3 py-2">{"\u72c0\u614b"}</th>
                 <th className="px-3 py-2"></th>
               </tr>
@@ -206,6 +264,14 @@ export default function OperationsStoresPage() {
                   <td className="px-3 py-2">{row.storeName}</td>
                   <td className="px-3 py-2">{row.region ?? "-"}</td>
                   <td className="px-3 py-2">{row.managerName ?? "-"}</td>
+                  <td className="px-3 py-2 text-right">
+                    {row.dailyBusinessHours != null ? row.dailyBusinessHours : "-"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {row.defaultLaborHoursPerDay != null ?
+                      row.defaultLaborHoursPerDay
+                    : "-"}
+                  </td>
                   <td className="px-3 py-2">
                     {row.isActive ? (
                       <span className="text-green-600">{"\u555f\u7528"}</span>

@@ -2,15 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei } from "@/lib/date";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import {
+  buildDashboardFilterResult,
+  fetchPriorYearChartsForFilter,
+} from "@/modules/operations/services/operations-dashboard-filter.service";
+import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
   fetchDualRegionTotalsFromPerformanceDaily,
-  filterChartsByOpsCatalog,
   filterChartsByCatalogRegions,
-  filterChartsBySelection,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
-  metricsFromChartRows,
   sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
 import {
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       dualRegions: [...DUAL_OPS_REGIONS],
       dataSource: "reports-charts",
       dataSourceNote:
-        "與「每日工效比」相同公式；KPI 自 2026-04-01 累計至今日",
+        "與「圖表」相同公式（/api/reports/charts）；KPI 自 2026-04-01 累計至今日",
     };
 
     if (!startDate || !endDate) {
@@ -79,10 +80,14 @@ export async function GET(request: NextRequest) {
       dataStartYmd
     );
 
-    const perStore = await fetchChartsPerStore(
-      effectiveRange.startDate,
-      effectiveRange.endDate
-    );
+    const [perStore, priorPerStore] = await Promise.all([
+      fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
+      fetchPriorYearChartsForFilter(
+        effectiveRange.startDate,
+        effectiveRange.endDate,
+        (ymd, delta) => shiftYear(ymd, delta)
+      ),
+    ]);
 
     let dualCurrent;
     if (rangesEqual(kpiRange, effectiveRange)) {
@@ -117,19 +122,6 @@ export async function GET(request: NextRequest) {
       ? filterStores.find((s) => s.id === storeId)
       : null;
 
-    let filteredRows = filterChartsBySelection(perStore, new Map(), {
-      storeId: storeId || undefined,
-      region: storeId ? undefined : region || undefined,
-      storeLabel: selectedStore?.storeName,
-      catalogKey: selectedStore?.catalogKey,
-    });
-
-    if (!storeId && !region) {
-      filteredRows = filterChartsByOpsCatalog(filteredRows);
-    }
-
-    const filteredCurrent = metricsFromChartRows(filteredRows);
-
     const filterLabel = selectedStore
       ? selectedStore.storeName
       : region || "全部門市";
@@ -137,6 +129,22 @@ export async function GET(request: NextRequest) {
     const filteredStoreCount = storeId
       ? 1
       : getOpsCatalogStoreCount(region || undefined);
+
+    const filteredResult = await buildDashboardFilterResult({
+      perStore,
+      priorPerStore,
+      startYmd: effectiveRange.startDate,
+      endYmd: effectiveRange.endDate,
+      filterLabel,
+      storeCount: filteredStoreCount,
+      selection: {
+        storeId: storeId || undefined,
+        region: storeId ? undefined : region || undefined,
+        storeLabel: selectedStore?.storeName,
+        catalogKey: selectedStore?.catalogKey,
+      },
+      applyOpsCatalogWhenEmpty: !storeId && !region,
+    });
 
     return NextResponse.json({
       meta,
@@ -161,14 +169,24 @@ export async function GET(request: NextRequest) {
         periodEndDate: kpiRange.endDate,
       },
       filteredMetrics: {
-        totalRevenue: filteredCurrent.revenue,
-        totalLaborHours: filteredCurrent.laborHours,
-        efficiencyRatio: filteredCurrent.efficiencyRatio,
-        filterLabel,
-        storeCount: filteredStoreCount,
-        matchedStoreCount: filteredRows.length,
-        hasData:
-          filteredCurrent.revenue > 0 || filteredCurrent.laborHours > 0,
+        totalRevenue: filteredResult.summary.revenue,
+        totalLaborHours: filteredResult.summary.laborHours,
+        efficiencyRatio: filteredResult.summary.efficiencyRatio,
+        filterLabel: filteredResult.filterLabel,
+        storeCount: filteredResult.storeCount,
+        matchedStoreCount: filteredResult.matchedStoreCount,
+        hasData: filteredResult.hasData,
+        revenueForecast: filteredResult.summary.revenueForecast,
+        revenueAchievement: filteredResult.summary.revenueAchievement,
+        revenueAchievementRate: filteredResult.summary.revenueAchievementRate,
+        yoyGrowthRate: filteredResult.summary.yoyGrowthRate,
+        priorYearRevenue: filteredResult.summary.priorYearRevenue,
+        actualAttendanceHours: filteredResult.summary.actualAttendanceHours,
+        overtimeHours: filteredResult.summary.overtimeHours,
+        overtimeRatio: filteredResult.summary.overtimeRatio,
+        dailyBusinessHours: filteredResult.summary.dailyBusinessHours,
+        defaultLaborHours: filteredResult.summary.defaultLaborHours,
+        stores: filteredResult.stores,
       },
     });
   } catch (error) {
