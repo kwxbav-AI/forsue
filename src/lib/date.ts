@@ -131,6 +131,18 @@ export function toDateRangeTaipei(startStr: string, endStr: string): { start: Da
   };
 }
 
+/**
+ * 出勤／調度／工時調整的 workDate（與上傳 toStartOfDay 儲存一致：UTC 日曆日 00:00）。
+ * 與「當日工時明細」相同，避免台北區間查詢誤含前後日資料。
+ */
+export function businessDayWorkDateFromYmd(ymd: string): Date {
+  return parseDateOnlyUTC(ymd);
+}
+
+export function businessDayWorkDateFromDate(workDate: Date): Date {
+  return businessDayWorkDateFromYmd(formatDateOnly(toStartOfDay(workDate)));
+}
+
 /** 單一營運日（台北日曆）對應的 DB 查詢區間 */
 export function calendarDayBoundsFromYmd(ymd: string): { start: Date; end: Date } {
   return {

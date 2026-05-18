@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import {
-  calendarDayBoundsFromYmd,
+  businessDayWorkDateFromDate,
   endOfDayUTC,
   formatDateOnly,
   parseDateOnlyUTC,
@@ -26,7 +26,7 @@ export async function computeDailyMetricsByStore(
   const { reportVisibleOnly = true } = options;
   const d = toStartOfDay(workDate);
   const businessYmd = formatDateOnly(d);
-  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromYmd(businessYmd);
+  const exactWorkDate = businessDayWorkDateFromDate(d);
   const revenueDayStart = parseDateOnlyUTC(businessYmd);
   const revenueDayEnd = endOfDayUTC(businessYmd);
   const storeHours = await computeTotalWorkHoursByStore(d);
@@ -50,7 +50,7 @@ export async function computeDailyMetricsByStore(
   });
 
   const contentEntries = await prisma.contentEntry.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    where: { workDate: exactWorkDate },
     select: { branch: true, deductedMinutes: true },
   });
   const nameToStore = new Map<string, string>();
@@ -73,7 +73,7 @@ export async function computeDailyMetricsByStore(
   }
 
   const storeDeductions = await prisma.storeHourDeduction.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    where: { workDate: exactWorkDate },
     select: { storeId: true, hours: true },
   });
   const storeDeductionHoursByStore: Record<string, number> = {};

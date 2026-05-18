@@ -6,7 +6,7 @@ import {
   formatDateOnly,
   parseDateOnlyUTC,
   addCalendarDaysUTC,
-  calendarDayBoundsFromDate,
+  businessDayWorkDateFromDate,
 } from "@/lib/date";
 import { computeDailyMetricsByStore } from "./daily-store-metrics.service";
 import { getTargetForDate } from "./target-setting.service";
@@ -50,11 +50,11 @@ class PerformanceEngineService {
       };
     });
 
-    const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+    const exactWorkDate = businessDayWorkDateFromDate(d);
 
     await prisma.$transaction(async (tx) => {
       await tx.performanceDaily.deleteMany({
-        where: { workDate: { gte: dayStart, lte: dayEnd }, versionNo: 1 },
+        where: { workDate: exactWorkDate, versionNo: 1 },
       });
       if (rows.length > 0) {
         await tx.performanceDaily.createMany({ data: rows });

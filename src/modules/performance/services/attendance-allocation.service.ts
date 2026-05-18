@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import Decimal from "decimal.js";
-import { toStartOfDay, formatDateOnly, calendarDayBoundsFromDate } from "@/lib/date";
+import {
+  businessDayWorkDateFromDate,
+  formatDateOnly,
+  toStartOfDay,
+} from "@/lib/date";
 import {
   buildNewHireWorkedDayNoIndex,
   getAttendanceDataStartDate,
@@ -23,10 +27,10 @@ export async function computeStoreHoursByEmployee(
   workDate: Date
 ): Promise<Map<string, StoreHoursMap>> {
   const d = toStartOfDay(workDate);
-  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+  const exactWorkDate = businessDayWorkDateFromDate(d);
 
   const attendances = await prisma.attendanceRecord.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    where: { workDate: exactWorkDate },
     include: { employee: true },
   });
   // 同一員工同一日可能有多筆出勤（中間請假二段卡、或跨天拆分）。
@@ -47,11 +51,11 @@ export async function computeStoreHoursByEmployee(
   }
 
   const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd }, confirmStatus: "已確認" },
+    where: { workDate: exactWorkDate, confirmStatus: "已確認" },
   });
 
   const adjustments = await prisma.workhourAdjustment.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    where: { workDate: exactWorkDate },
   });
 
   // 錯誤訊息希望顯示「員工姓名」而不是 id
@@ -247,7 +251,7 @@ export async function computeStoreHoursByEmployee(
       ? await prisma.attendanceRecord.findMany({
           where: {
             employeeId: { in: uniqueNewHireCandidateIds },
-            workDate: { gte: earliestHireDate, lte: dayEnd },
+            workDate: { gte: earliestHireDate, lte: exactWorkDate },
             workHours: { gt: 0 },
           },
           select: { employeeId: true, workDate: true },
@@ -397,10 +401,10 @@ export async function computeStoreOvertimeHoursByStore(
   workDate: Date
 ): Promise<Record<string, number>> {
   const d = toStartOfDay(workDate);
-  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+  const exactWorkDate = businessDayWorkDateFromDate(d);
 
   const attendances = await prisma.attendanceRecord.findMany({
-    where: { workDate: { gte: dayStart, lte: dayEnd } },
+    where: { workDate: exactWorkDate },
     include: { employee: true },
   });
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, toStartOfDay } from "@/lib/date";
+import { businessDayWorkDateFromDate, formatDateOnly, toStartOfDay } from "@/lib/date";
 import Decimal from "decimal.js";
 import {
   buildNewHireWorkedDayNoIndex,
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
     );
   }
   const workDate = toStartOfDay(date);
+  const exactWorkDate = businessDayWorkDateFromDate(workDate);
 
   const stores = await prisma.store.findMany({
     select: { id: true, name: true },
@@ -74,14 +75,14 @@ export async function GET(request: NextRequest) {
   const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
 
   const attendancesRaw = await prisma.attendanceRecord.findMany({
-    where: { workDate },
+    where: { workDate: exactWorkDate },
     include: { employee: true },
   });
   const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate, confirmStatus: "已確認" },
+    where: { workDate: exactWorkDate, confirmStatus: "已確認" },
   });
   const adjustments = await prisma.workhourAdjustment.findMany({
-    where: { workDate },
+    where: { workDate: exactWorkDate },
     include: { employee: { select: { id: true, employeeCode: true, name: true, defaultStoreId: true, isReserveStaff: true, reserveWorkPercent: true, hireDate: true } } },
   });
 
