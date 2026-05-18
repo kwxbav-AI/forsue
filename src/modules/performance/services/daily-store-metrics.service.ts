@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { calendarDayBoundsFromDate, formatDateOnly, toStartOfDay } from "@/lib/date";
+import {
+  calendarDayBoundsFromYmd,
+  endOfDayUTC,
+  formatDateOnly,
+  parseDateOnlyUTC,
+  toStartOfDay,
+} from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
 
 export type DailyStoreMetrics = {
@@ -19,12 +25,15 @@ export async function computeDailyMetricsByStore(
 ): Promise<Map<string, DailyStoreMetrics>> {
   const { reportVisibleOnly = true } = options;
   const d = toStartOfDay(workDate);
-  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+  const businessYmd = formatDateOnly(d);
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromYmd(businessYmd);
+  const revenueDayStart = parseDateOnlyUTC(businessYmd);
+  const revenueDayEnd = endOfDayUTC(businessYmd);
   const storeHours = await computeTotalWorkHoursByStore(d);
 
   const revenueGrouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
-    where: { revenueDate: { gte: dayStart, lte: dayEnd } },
+    where: { revenueDate: { gte: revenueDayStart, lte: revenueDayEnd } },
     _sum: { revenueAmount: true },
   });
   const revenueSumByStoreId = new Map<string, number>();
@@ -96,11 +105,13 @@ export async function computeDailyRevenueOnlyByStore(
 ): Promise<Map<string, DailyStoreMetrics>> {
   const { reportVisibleOnly = true } = options;
   const d = toStartOfDay(workDate);
-  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+  const businessYmd = formatDateOnly(d);
+  const revenueDayStart = parseDateOnlyUTC(businessYmd);
+  const revenueDayEnd = endOfDayUTC(businessYmd);
 
   const revenueGrouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
-    where: { revenueDate: { gte: dayStart, lte: dayEnd } },
+    where: { revenueDate: { gte: revenueDayStart, lte: revenueDayEnd } },
     _sum: { revenueAmount: true },
   });
 

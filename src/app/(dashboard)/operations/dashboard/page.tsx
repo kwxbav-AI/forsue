@@ -64,7 +64,13 @@ const T = {
   selectStore: "\u8ACB\u9078\u64C7\u9580\u5E02\u5F8C\u518D\u67E5\u770B",
   chartsNote:
     "\u71DF\u696D\u3001\u5DE5\u6642\u8207\u5716\u8868\u540C\u5E97\u5217\u76F8\u540C\uFF08\u5982\u5716\u8868\u300C\u5973\u4E2D\u300D=\u672C\u9801\u300C\u5973\u4E2D\u5E97\u300D\uFF09",
-  dualKpi: "\u5169\u5340\u7E3D\u89BD\uFF08\u6843\u5712+\u5B9C\u862D\uFF0C\u81EA 4/1 \u7D2F\u8A08\u81F3\u4ECA\u65E5\uFF09",
+  kpiRevenue: "\u5168\u516C\u53F8\u71DF\u6536\u9054\u6210\u503C",
+  kpiRegions: "\u5B9C\u862D\u5340 + \u6843\u5712\u5340",
+  kpiRegionsHint: "\u5B9C\u862D\u5340 + \u6843\u5712\u5340\uFF08\u67E5\u8A62\u5F8C\u986F\u793A\uFF09",
+  kpiEfficiency: "\u71DF\u904B\u90E8\u5DE5\u6548\u6BD4",
+  kpiEfficiencyHint: "\u71DF\u6536\u9054\u6210\u503C \u00F7 \u7E3D\u5DE5\u6642",
+  kpiYoy: "YoY \u71DF\u6536\u6210\u9577\u7387",
+  kpiYoyHint: "\u76F8\u8F03\u53BB\u5E74\u540C\u671F",
 } as const;
 
 const METRICS_DATA_START = "2026-04-01";
@@ -108,6 +114,7 @@ type KpiMetrics = {
   totalLaborHours: number;
   efficiencyRatio: number | null;
   yoyGrowthRate: number | null;
+  regionLabel?: string;
   periodStartDate?: string;
   periodEndDate?: string;
 };
@@ -290,11 +297,6 @@ export default function OperationsDashboardPage() {
     setMessage(null);
     if (!startDate || !endDate) return;
     if (startDate > endDate) return;
-    if (!storeId && !region) {
-      setMessage(T.selectStore);
-      return;
-    }
-
     setLoading(true);
     setQueried(true);
     setFiltered(null);
@@ -354,6 +356,57 @@ export default function OperationsDashboardPage() {
           >
             {syncing ? T.refreshing : T.syncStores}
           </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <p className="text-sm font-medium text-sky-700">{T.kpiRevenue}</p>
+          <p className="mt-2 text-3xl font-semibold text-slate-400">
+            {queried && kpiMetrics && !loading ?
+              <span className="text-slate-800">{formatMoney(kpiMetrics.totalRevenue)}</span>
+            : T.emDash}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            {queried && kpiMetrics?.periodStartDate && kpiMetrics?.periodEndDate ?
+              `${kpiMetrics.periodStartDate} ${T.tilde} ${kpiMetrics.periodEndDate} \u00b7 ${kpiMetrics.regionLabel ?? T.kpiRegions}`
+            : queried ?
+              T.kpiRegions
+            : T.kpiRegionsHint}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <p className="text-sm font-medium text-slate-800">{T.kpiEfficiency}</p>
+          <p className="mt-2 text-3xl font-semibold text-slate-400">
+            {queried && kpiMetrics && !loading ?
+              <span className="text-slate-800">
+                {formatRatio(kpiMetrics.efficiencyRatio)}
+                <span className="ml-1 text-base font-normal text-slate-500">
+                  {T.yuanPerHr}
+                </span>
+              </span>
+            : T.emDash}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">{T.kpiEfficiencyHint}</p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <p className="text-sm font-medium text-emerald-700">{T.kpiYoy}</p>
+          <p className="mt-2 text-3xl font-semibold text-slate-400">
+            {queried && kpiMetrics && !loading ?
+              <span
+                className={
+                  kpiMetrics.yoyGrowthRate != null && kpiMetrics.yoyGrowthRate >= 0 ?
+                    "text-emerald-700"
+                  : "text-slate-800"
+                }
+              >
+                {formatYoy(kpiMetrics.yoyGrowthRate)}
+              </span>
+            : T.emDash}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">{T.kpiYoyHint}</p>
         </div>
       </div>
 
@@ -643,15 +696,6 @@ export default function OperationsDashboardPage() {
               formatRatio(m.efficiencyRatio)
             )}
           </div>
-
-          {kpiMetrics ?
-            <p className="text-center text-xs text-slate-400">
-              {T.dualKpi}: {formatMoney(kpiMetrics.totalRevenue)} / {formatHours(kpiMetrics.totalLaborHours)} hr
-              {kpiMetrics.periodStartDate && kpiMetrics.periodEndDate ?
-                ` (${kpiMetrics.periodStartDate} ${T.tilde} ${kpiMetrics.periodEndDate})`
-              : null}
-            </p>
-          : null}
         </>
       : null}
     </div>
