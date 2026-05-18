@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei } from "@/lib/date";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import {
-  buildStoreRegionMap,
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
   fetchDualRegionTotalsFromPerformanceDaily,
   filterChartsByOpsCatalog,
+  filterChartsByCatalogRegions,
   filterChartsBySelection,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
   metricsFromChartRows,
+  sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
 import {
   clampMetricsDateRange,
@@ -25,6 +26,13 @@ function shiftYear(dateStr: string, deltaYears: number): string {
   const d = parseDateOnlyUTC(dateStr);
   d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
   return formatDateOnly(d);
+}
+
+function rangesEqual(
+  a: { startDate: string; endDate: string },
+  b: { startDate: string; endDate: string }
+): boolean {
+  return a.startDate === b.startDate && a.endDate === b.endDate;
 }
 
 export async function GET(request: NextRequest) {
@@ -44,8 +52,8 @@ export async function GET(request: NextRequest) {
       stores: filterStores,
       dualRegions: [...DUAL_OPS_REGIONS],
       dataSource: "reports-charts",
-    dataSourceNote:
-      "與「每日工效比」相同公式；區間自 2026-04-01（上傳起算日）起計",
+      dataSourceNote:
+        "與「每日工效比」相同公式；KPI 自 2026-04-01 累計至今日",
     };
 
     if (!startDate || !endDate) {
@@ -64,36 +72,52 @@ export async function GET(request: NextRequest) {
       endDate
     );
     const dataStartYmd = await getPerformanceMetricsDataStartYmd();
+    const todayYmd = formatDateOnlyTaipei();
     const kpiRange = clampMetricsDateRange(
       dataStartYmd,
-      effectiveRange.endDate,
+      todayYmd,
       dataStartYmd
     );
 
-    const [perStore, dualCurrent] = await Promise.all([
-      fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
-      fetchDualRegionChartTotals(kpiRange.startDate, kpiRange.endDate),
-    ]);
-
-    const allStoreIds = perStore.map((r) => r.storeId);
-    const regionMap = await buildStoreRegionMap(allStoreIds);
-
-    const dualPrior = await fetchDualRegionTotalsFromPerformanceDaily(
-      shiftYear(effectiveRange.startDate, -1),
-      shiftYear(effectiveRange.endDate, -1)
+    const perStore = await fetchChartsPerStore(
+      effectiveRange.startDate,
+      effectiveRange.endDate
     );
 
+    let dualCurrent;
+    if (rangesEqual(kpiRange, effectiveRange)) {
+      const rows = filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS);
+      dualCurrent = sumChartRows(rows);
+    } else {
+      dualCurrent = await fetchDualRegionChartTotals(
+        kpiRange.startDate,
+        kpiRange.endDate
+      );
+    }
+
+    let dualPrior = { revenue: 0, laborHours: 0, efficiencyRatio: null as number | null };
     let kpiYoyGrowthRate: number | null = null;
-    if (dualPrior.revenue > 0) {
-      kpiYoyGrowthRate =
-        ((dualCurrent.revenue - dualPrior.revenue) / dualPrior.revenue) * 100;
+    try {
+      dualPrior = await fetchDualRegionTotalsFromPerformanceDaily(
+        shiftYear(kpiRange.startDate, -1),
+        shiftYear(
+          effectiveRange.endDate < todayYmd ? effectiveRange.endDate : todayYmd,
+          -1
+        )
+      );
+      if (dualPrior.revenue > 0) {
+        kpiYoyGrowthRate =
+          ((dualCurrent.revenue - dualPrior.revenue) / dualPrior.revenue) * 100;
+      }
+    } catch (yoyErr) {
+      console.warn("YoY snapshot query skipped", yoyErr);
     }
 
     const selectedStore = storeId
       ? filterStores.find((s) => s.id === storeId)
       : null;
 
-    let filteredRows = filterChartsBySelection(perStore, regionMap, {
+    let filteredRows = filterChartsBySelection(perStore, new Map(), {
       storeId: storeId || undefined,
       region: storeId ? undefined : region || undefined,
       storeLabel: selectedStore?.storeName,
@@ -148,9 +172,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error("GET /api/operations/dashboard failed", error);
     return NextResponse.json(
-      { error: "查詢失敗，請縮短日期區間或稍後再試" },
+      {
+        error: "查詢失敗，請縮短日期區間或稍後再試",
+        ...(process.env.NODE_ENV !== "production" ? { detail } : {}),
+      },
       { status: 500 }
     );
   }

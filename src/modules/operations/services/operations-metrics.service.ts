@@ -281,11 +281,22 @@ export async function listPerformanceStoresForFilter() {
 
   const candidatesByKey = new Map<string, typeof stores>();
   for (const s of stores) {
-    const key = normalizeStoreKey(s.name);
-    if (!catalogKeys.has(key)) continue;
-    const list = candidatesByKey.get(key) ?? [];
+    let matchedKey: string | null = null;
+    const normalized = normalizeStoreKey(s.name);
+    if (catalogKeys.has(normalized)) {
+      matchedKey = normalized;
+    } else {
+      for (const catalogKey of catalogKeys) {
+        if (storeNameMatchesCatalogKey(s.name, catalogKey)) {
+          matchedKey = catalogKey;
+          break;
+        }
+      }
+    }
+    if (!matchedKey) continue;
+    const list = candidatesByKey.get(matchedKey) ?? [];
     list.push(s);
-    candidatesByKey.set(key, list);
+    candidatesByKey.set(matchedKey, list);
   }
 
   const result: Array<{

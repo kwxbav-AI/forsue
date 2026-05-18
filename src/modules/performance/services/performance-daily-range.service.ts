@@ -4,7 +4,7 @@ import {
   clampMetricsDateRange,
   getPerformanceMetricsDataStartYmd,
 } from "@/lib/performance-metrics-range";
-import { computeDailyMetricsByStore } from "./daily-store-metrics.service";
+import { computeDailyMetricsByStoreResilient } from "./daily-store-metrics.service";
 
 export type PerformanceDailyRangeRow = {
   storeId: string;
@@ -15,7 +15,7 @@ export type PerformanceDailyRangeRow = {
   dayCount: number;
 };
 
-const DAY_COMPUTE_CONCURRENCY = 8;
+const DAY_COMPUTE_CONCURRENCY = 4;
 
 function hasActivity(row: Pick<PerformanceDailyRangeRow, "revenueSum" | "hoursSum">): boolean {
   return row.revenueSum > 0 || row.hoursSum > 0;
@@ -92,7 +92,7 @@ async function computeEngineRangeRows(
     dayStrs,
     DAY_COMPUTE_CONCURRENCY,
     (dayStr) =>
-      computeDailyMetricsByStore(parseDateOnlyUTC(dayStr), {
+      computeDailyMetricsByStoreResilient(parseDateOnlyUTC(dayStr), {
         reportVisibleOnly: true,
       })
   );

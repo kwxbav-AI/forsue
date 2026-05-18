@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { calendarDayBoundsFromDate, toStartOfDay } from "@/lib/date";
+import { calendarDayBoundsFromDate, formatDateOnly, toStartOfDay } from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
 
 export type DailyStoreMetrics = {
@@ -87,4 +87,58 @@ export async function computeDailyMetricsByStore(
   }
 
   return result;
+}
+
+/** 出勤／調度異常時仍回傳當日營收（工時為 0） */
+export async function computeDailyRevenueOnlyByStore(
+  workDate: Date,
+  options: ComputeOptions = {}
+): Promise<Map<string, DailyStoreMetrics>> {
+  const { reportVisibleOnly = true } = options;
+  const d = toStartOfDay(workDate);
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromDate(d);
+
+  const revenueGrouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: { revenueDate: { gte: dayStart, lte: dayEnd } },
+    _sum: { revenueAmount: true },
+  });
+
+  const stores = await prisma.store.findMany({
+    where: {
+      isActive: true,
+      ...(reportVisibleOnly ? { hideInReports: false } : {}),
+    },
+    select: { id: true },
+  });
+
+  const revenueSumByStoreId = new Map<string, number>();
+  for (const g of revenueGrouped) {
+    revenueSumByStoreId.set(g.storeId, Number(g._sum.revenueAmount ?? 0));
+  }
+
+  const result = new Map<string, DailyStoreMetrics>();
+  for (const store of stores) {
+    const revenue = revenueSumByStoreId.get(store.id) ?? 0;
+    if (revenue > 0) {
+      result.set(store.id, { revenue, laborHours: 0 });
+    }
+  }
+  return result;
+}
+
+/** 單日計算失敗時降級為僅營收，避免整段區間 API 500 */
+export async function computeDailyMetricsByStoreResilient(
+  workDate: Date,
+  options: ComputeOptions = {}
+): Promise<Map<string, DailyStoreMetrics>> {
+  try {
+    return await computeDailyMetricsByStore(workDate, options);
+  } catch (err) {
+    console.error(
+      `computeDailyMetricsByStore failed for ${formatDateOnly(workDate)}`,
+      err
+    );
+    return computeDailyRevenueOnlyByStore(workDate, options);
+  }
 }
