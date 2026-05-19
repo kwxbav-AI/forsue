@@ -199,13 +199,14 @@ async function main() {
       return { canRead: true, canWrite: true };
     }
 
-    // VIEWER: read-only reports/performance/data, otherwise hidden
+    // VIEWER: read-only reports/performance/data/operations, otherwise hidden
     if (role === "VIEWER") {
       if (
         moduleKey === "home" ||
         moduleKey === "forbidden" ||
         moduleKey.startsWith("reports") ||
         moduleKey.startsWith("performance-") ||
+        moduleKey.startsWith("operations") ||
         moduleKey === "data"
       ) {
         return { canRead: true, canWrite: false };

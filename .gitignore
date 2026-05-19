@@ -38,3 +38,6 @@ backup.sql
 cloud-sql-proxy.exe
 *.exe
 
+# Manus reference source (local only, do not push)
+reference/
+

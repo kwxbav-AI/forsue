@@ -41,8 +41,8 @@ export default async function HomePage() {
     {
       key: "operations",
       href: "/operations/dashboard",
-      title: "營運總覽 Dashboard",
-      desc: "零售門市營運分析、門市目標、每日績效",
+      title: "COO 營運決策儀表板",
+      desc: "營運總覽、資料匯入、門市績效與工效比",
     },
   ] as const;
 

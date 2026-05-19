@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { isAuthEnabled } from "@/lib/auth-config";
 import type { SessionPayload } from "@/lib/auth-session";
 import { canAccessApiDb } from "@/lib/permissions-db";
 
@@ -8,6 +9,9 @@ export async function requireApiAccess(
   session: SessionPayload | null,
   req: NextRequest
 ): Promise<NextResponse | null> {
+  if (!isAuthEnabled()) {
+    return null;
+  }
   if (!session) {
     return NextResponse.json({ error: "未登入" }, { status: 401 });
   }

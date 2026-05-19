@@ -377,7 +377,8 @@
       "patterns": [
         { "kind": "PAGE", "pathPattern": "/settings/role-permissions", "method": null },
         { "kind": "API", "pathPattern": "/api/role-permissions", "method": null },
-        { "kind": "API", "pathPattern": "/api/role-permissions/effective", "method": null }
+        { "kind": "API", "pathPattern": "/api/role-permissions/effective", "method": null },
+        { "kind": "API", "pathPattern": "/api/roles", "method": null }
       ]
     },
     {
@@ -450,8 +451,26 @@
       "sortOrder": 710,
       "parentKey": null,
       "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/dashboard", "method": null },
-        { "kind": "API", "pathPattern": "/api/operations/dashboard", "method": null }
+        { "kind": "PAGE", "pathPattern": "/operations/analysis", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/supervision", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/marketing", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/compensation", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/work-hours", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/dashboard", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/overview", "method": null }
+      ]
+    },
+    {
+      "key": "operations-admin",
+      "label": "營運資料匯入",
+      "description": "COO 模組內資料匯入（與上傳中心共用 API）",
+      "group": "營運分析",
+      "sortOrder": 715,
+      "parentKey": "uploads",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/admin", "method": null }
       ]
     },
     {

@@ -21,12 +21,18 @@ function buildCookieHeader(request: NextRequest): string {
 }
 
 function getInternalOrigin(request: NextRequest): string | null {
-  // Cloud Run/自架時，middleware 內 fetch 打外部網域有機會失敗；
-  // 優先用容器內部 localhost 走同一個 Next 伺服器。
+  // 優先用請求的 Host（dev 常為 :3000 / :3001，production 為實際網域）。
+  const host = request.headers.get("host");
+  if (host) {
+    const proto =
+      request.headers.get("x-forwarded-proto") ??
+      (host.includes("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+    return `${proto}://${host}`;
+  }
+  // Cloud Run 等：fallback 至 process PORT（預設與 next start 一致）
   const port =
-    (typeof process !== "undefined" && process.env && (process.env.PORT || process.env.NEXT_PUBLIC_PORT)) || "8080";
-  // 只有在 server runtime 才會有 process；Edge 也可能提供，但沒關係，失敗就回到外部 URL。
-  if (!port) return null;
+    (typeof process !== "undefined" && process.env && (process.env.PORT || process.env.NEXT_PUBLIC_PORT)) ||
+    "8080";
   return `http://127.0.0.1:${port}`;
 }
 
