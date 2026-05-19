@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
@@ -251,6 +252,7 @@ function MiniStat({
 }
 
 export default function OperationsDashboardPage() {
+  const searchParams = useSearchParams();
   const today = formatLocalDateInput();
   const [meta, setMeta] = useState<{
     regions: string[];
@@ -268,6 +270,7 @@ export default function OperationsDashboardPage() {
   const [region, setRegion] = useState("");
   const [storeId, setStoreId] = useState("");
   const didInitSelection = useRef(false);
+  const didAutoFromUrl = useRef(false);
 
   const loadMeta = useCallback(async () => {
     const res = await fetch("/api/operations/dashboard");
@@ -282,12 +285,28 @@ export default function OperationsDashboardPage() {
   }, [loadMeta]);
 
   useEffect(() => {
-    if (!meta?.stores.length || didInitSelection.current) return;
-    didInitSelection.current = true;
-    const first = meta.stores[0];
-    setStoreId(first.id);
-    if (first.region) setRegion(first.region);
-  }, [meta]);
+    const urlStart = searchParams.get("startDate");
+    const urlEnd = searchParams.get("endDate");
+    if (urlStart) setStartDate(urlStart);
+    if (urlEnd) setEndDate(urlEnd);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!meta?.stores.length) return;
+    const urlStore = searchParams.get("storeId") || searchParams.get("store");
+    if (urlStore && meta.stores.some((s) => s.id === urlStore)) {
+      const picked = meta.stores.find((s) => s.id === urlStore)!;
+      setStoreId(picked.id);
+      if (picked.region) setRegion(picked.region);
+      return;
+    }
+    if (!didInitSelection.current) {
+      didInitSelection.current = true;
+      const first = meta.stores[0];
+      setStoreId(first.id);
+      if (first.region) setRegion(first.region);
+    }
+  }, [meta, searchParams]);
 
   const regionOptions = useMemo(() => {
     const fromApi = meta?.regions ?? [];
@@ -330,6 +349,15 @@ export default function OperationsDashboardPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const urlStore = searchParams.get("storeId") || searchParams.get("store");
+    if (didAutoFromUrl.current || !urlStore || !meta?.stores.length) return;
+    if (storeId !== urlStore || !startDate || !endDate) return;
+    didAutoFromUrl.current = true;
+    void handleRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, startDate, endDate, meta, searchParams]);
 
   async function handleSyncStores() {
     setSyncing(true);

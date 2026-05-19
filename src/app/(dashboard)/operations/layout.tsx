@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getServerSession } from "@/lib/auth-server";
 import { isAuthEnabled } from "@/lib/auth-config";
 import { getEffectivePermissionsForRole } from "@/lib/effective-permissions";
@@ -25,7 +26,9 @@ export default async function OperationsLayout({
       initialUsername={session?.username}
       initialAllowedModuleKeys={effective?.allowedModuleKeys ?? []}
     >
-      {children}
+      <Suspense fallback={<div className="p-8 text-sm text-slate-500">載入中…</div>}>
+        {children}
+      </Suspense>
     </OperationsLayoutClient>
   );
 }

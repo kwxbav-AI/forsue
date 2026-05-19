@@ -28,7 +28,8 @@ function filterVisibleNav(
         keys.has("uploads-attendance") ||
         keys.has("uploads-daily-revenue") ||
         keys.has("uploads-employee-master") ||
-        keys.has("operations-admin")
+        keys.has("operations-admin") ||
+        keys.has("operations-dashboard")
       );
     }
     return keys.has(item.permissionKey);

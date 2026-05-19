@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
-  Upload,
   Store,
   Target,
   Clock,
@@ -9,6 +8,7 @@ import {
   Megaphone,
   DollarSign,
   BarChart3,
+  LineChart,
 } from "lucide-react";
 
 export type OpsNavItem = {
@@ -34,10 +34,10 @@ export const OPS_NAV_ITEMS: OpsNavItem[] = [
     permissionKey: "operations-dashboard",
   },
   {
-    href: "/operations/admin",
-    label: "資料匯入中心",
-    icon: Upload,
-    permissionKey: "uploads",
+    href: "/operations/performance",
+    label: "業績分析",
+    icon: LineChart,
+    permissionKey: "operations-dashboard",
   },
   {
     href: "/operations/stores",

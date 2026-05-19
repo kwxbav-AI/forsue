@@ -9,6 +9,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
+  Legend,
+  Line,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -33,21 +36,30 @@ type OverviewStore = {
   storeName: string;
   region: string;
   revenue: number;
-  laborHours: number;
-  efficiencyRatio: number | null;
+  revenueTarget: number | null;
+  revenueAchievementRate: number | null;
+  targetMetDays: number;
   status: "green" | "yellow" | "red" | "none";
   statusLabel: string;
-  achievementPct: number | null;
+};
+
+type MonthlyTrendPoint = {
+  label: string;
+  revenueWan: number;
+  achievementRate: number | null;
 };
 
 type OverviewData = {
   startDate: string;
   endDate: string;
+  monthlyTrend: MonthlyTrendPoint[];
   summary: {
     storeCount: number;
     totalRevenue: number;
+    totalTarget: number;
     totalLaborHours: number;
     efficiencyRatio: number | null;
+    revenueAchievementRate: number | null;
     green: number;
     yellow: number;
     red: number;
@@ -148,11 +160,19 @@ export default function OperationsOverviewPage() {
 
   const sorted = overview?.stores ?? [];
   const top5 = useMemo(
-    () => [...sorted].filter((s) => s.achievementPct != null).sort((a, b) => (b.achievementPct ?? 0) - (a.achievementPct ?? 0)).slice(0, 5),
+    () =>
+      [...sorted]
+        .filter((s) => s.revenueAchievementRate != null)
+        .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0))
+        .slice(0, 5),
     [sorted]
   );
   const bottom5 = useMemo(
-    () => [...sorted].filter((s) => s.achievementPct != null).sort((a, b) => (a.achievementPct ?? 0) - (b.achievementPct ?? 0)).slice(0, 5),
+    () =>
+      [...sorted]
+        .filter((s) => s.revenueAchievementRate != null)
+        .sort((a, b) => (a.revenueAchievementRate ?? 0) - (b.revenueAchievementRate ?? 0))
+        .slice(0, 5),
     [sorted]
   );
 
@@ -270,9 +290,13 @@ export default function OperationsOverviewPage() {
               accent="#1e40af"
             />
             <KpiCard
-              title="工效比達標率"
-              value={overview.summary.achievementRate != null ? `${overview.summary.achievementRate}%` : "—"}
-              sub={`達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
+              title="營收達成率"
+              value={
+                overview.summary.revenueAchievementRate != null ?
+                  `${overview.summary.revenueAchievementRate}%`
+                : "—"
+              }
+              sub={`月業績目標 · 達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
               icon={<Target className="h-5 w-5" />}
               accent="#16a34a"
             />
@@ -296,9 +320,59 @@ export default function OperationsOverviewPage() {
             />
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-700 mb-1">月度業績趨勢</h2>
+            <p className="text-xs text-slate-500 mb-3">萬元 / 達標率 %</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={overview.monthlyTrend ?? []}
+                margin={{ top: 8, right: 48, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis
+                  yAxisId="wan"
+                  tick={{ fontSize: 11 }}
+                  label={{ value: "萬元", angle: -90, position: "insideLeft", fontSize: 10 }}
+                />
+                <YAxis
+                  yAxisId="pct"
+                  orientation="right"
+                  domain={[0, "auto"]}
+                  tick={{ fontSize: 11 }}
+                  label={{ value: "達標率%", angle: 90, position: "insideRight", fontSize: 10 }}
+                />
+                <Tooltip
+                  formatter={(v: number, name: string) =>
+                    name === "revenueWan" ? [`${v} 萬`, "月度業績"] : [`${v}%`, "達標率"]
+                  }
+                />
+                <Legend />
+                <Line
+                  yAxisId="wan"
+                  type="monotone"
+                  dataKey="revenueWan"
+                  name="月度業績"
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  yAxisId="pct"
+                  type="monotone"
+                  dataKey="achievementRate"
+                  name="達標率"
+                  stroke="#16a34a"
+                  strokeWidth={2}
+                  dot={{ r: 4 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">門市健康分佈</h2>
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">門市營收達成分佈</h2>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70}>
@@ -317,7 +391,7 @@ export default function OperationsOverviewPage() {
             </div>
 
             <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">區域工效比達標率</h2>
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">區域營收達成率</h2>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={regionChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -332,14 +406,14 @@ export default function OperationsOverviewPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-2">達標 Top 5（工效比）</h2>
+              <h2 className="text-sm font-semibold text-slate-700 mb-2">達標 Top 5（營收達成率）</h2>
               <ul className="space-y-2 text-sm">
                 {top5.map((s, i) => (
                   <li key={s.storeId} className="flex justify-between">
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-green-700">{s.achievementPct}%</span>
+                    <span className="font-medium text-green-700">{s.revenueAchievementRate}%</span>
                   </li>
                 ))}
               </ul>
@@ -352,7 +426,7 @@ export default function OperationsOverviewPage() {
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-red-600">{s.achievementPct}%</span>
+                    <span className="font-medium text-red-600">{s.revenueAchievementRate}%</span>
                   </li>
                 ))}
               </ul>
@@ -367,7 +441,7 @@ export default function OperationsOverviewPage() {
                 <span className="text-xs font-normal text-amber-700">（C 階段）</span>
               </h2>
               <p className="mt-2 text-sm text-slate-600">
-                目前依工效比「未達標」門市：
+                目前營收未達標門市：
                 {sorted.filter((s) => s.status === "red").map((s) => s.storeName).join("、") || "無"}
               </p>
             </div>
@@ -402,7 +476,7 @@ export default function OperationsOverviewPage() {
               {sorted.map((s) => (
                 <Link
                   key={s.storeId}
-                  href={`/operations/analysis?store=${encodeURIComponent(s.storeId)}`}
+                  href={`/operations/analysis?storeId=${encodeURIComponent(s.storeId)}&startDate=${encodeURIComponent(overview.startDate)}&endDate=${encodeURIComponent(overview.endDate)}`}
                   className="rounded-lg border border-slate-100 bg-slate-50 p-3 hover:border-blue-300 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-2">
@@ -413,8 +487,9 @@ export default function OperationsOverviewPage() {
                     <span className="text-sm font-medium text-slate-800 truncate">{s.storeName}</span>
                   </div>
                   <p className="mt-2 text-lg font-bold text-slate-900">
-                    {s.achievementPct != null ? `${s.achievementPct}%` : "—"}
+                    {s.revenueAchievementRate != null ? `${s.revenueAchievementRate}%` : "—"}
                   </p>
+                  <p className="text-xs text-slate-600">達標 {s.targetMetDays} 次</p>
                   <p className="text-[10px] text-slate-500">{s.statusLabel}</p>
                 </Link>
               ))}
