@@ -14,10 +14,7 @@ import {
   listPerformanceStoresForFilter,
   sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
-import {
-  clampMetricsDateRange,
-  getPerformanceMetricsDataStartYmd,
-} from "@/lib/performance-metrics-range";
+import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +51,7 @@ export async function GET(request: NextRequest) {
       dualRegions: [...DUAL_OPS_REGIONS],
       dataSource: "reports-charts",
       dataSourceNote:
-        "與「圖表」相同公式（/api/reports/charts）；KPI 自 2026-04-01 累計至今日",
+        "與「圖表」相同公式；營收可查自 2025-01-01；KPI 自 2026-01-01 累計至今日",
     };
 
     if (!startDate || !endDate) {
@@ -72,13 +69,11 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate
     );
-    const dataStartYmd = await getPerformanceMetricsDataStartYmd();
     const todayYmd = formatDateOnlyTaipei();
-    const kpiRange = clampMetricsDateRange(
-      dataStartYmd,
-      todayYmd,
-      dataStartYmd
-    );
+    const kpiRange = {
+      startDate: OPS_KPI_CUMULATIVE_START_YMD,
+      endDate: todayYmd,
+    };
 
     const [perStore, priorPerStore] = await Promise.all([
       fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),

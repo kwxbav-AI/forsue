@@ -4,6 +4,7 @@ import { OPS_REGION_CATALOG } from "@/lib/operations-dashboard";
 import {
   buildEnrichedOverviewStores,
   buildMonthlyRevenueTrend,
+  buildOpsKpiMetrics,
 } from "@/modules/operations/services/operations-overview-enrich.service";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
@@ -22,13 +23,14 @@ export async function GET(request: NextRequest) {
     }
 
     const effective = await resolveEffectiveMetricsDateRange(startDate, endDate);
-    const [stores, monthlyTrend] = await Promise.all([
+    const [stores, monthlyTrend, kpiMetrics] = await Promise.all([
       buildEnrichedOverviewStores({
         startYmd: effective.startDate,
         endYmd: effective.endDate,
         region: region || undefined,
       }),
       buildMonthlyRevenueTrend(effective.startDate, effective.endDate),
+      buildOpsKpiMetrics(),
     ]);
 
     const regionStats = OPS_REGION_CATALOG.map((g) => {
@@ -67,6 +69,7 @@ export async function GET(request: NextRequest) {
       endDate: effective.endDate,
       region: region || null,
       monthlyTrend,
+      kpiMetrics,
       summary: {
         storeCount: stores.length,
         totalRevenue,

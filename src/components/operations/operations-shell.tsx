@@ -46,10 +46,7 @@ export function OperationsShell({
         style={{ backgroundColor: SIDEBAR_BG }}
       >
         <div className="border-b border-slate-700/80 px-4 py-5">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">
-            COO
-          </p>
-          <h1 className="text-lg font-bold leading-tight">營運決策儀表板</h1>
+          <h1 className="text-lg font-bold leading-tight">營運部Dashboard</h1>
           <p className="mt-1 text-xs text-slate-400">宜蘭 · 桃園 · 台北</p>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">

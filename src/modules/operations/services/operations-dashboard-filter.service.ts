@@ -422,6 +422,8 @@ export async function buildDashboardFilterResult(input: {
     catalogKey?: string;
   };
   applyOpsCatalogWhenEmpty: boolean;
+  /** 月趨勢等彙總場景可略過逐日趨勢以加速 */
+  skipDailyTrend?: boolean;
 }): Promise<DashboardFilterResult> {
   let filteredCharts = filterChartsBySelection(input.perStore, new Map(), input.selection);
 
@@ -497,12 +499,15 @@ export async function buildDashboardFilterResult(input: {
   const summary = aggregateSummaryRows(storeRows);
   const totals = metricsFromChartRows(filteredCharts);
 
-  const dailyTrend = await fetchDailyTrendForSelection({
-    startYmd: input.startYmd,
-    endYmd: input.endYmd,
-    selection: input.selection,
-    applyOpsCatalogWhenEmpty: input.applyOpsCatalogWhenEmpty,
-  });
+  const dailyTrend =
+    input.skipDailyTrend ?
+      []
+    : await fetchDailyTrendForSelection({
+        startYmd: input.startYmd,
+        endYmd: input.endYmd,
+        selection: input.selection,
+        applyOpsCatalogWhenEmpty: input.applyOpsCatalogWhenEmpty,
+      });
 
   return {
     filterLabel: input.filterLabel,

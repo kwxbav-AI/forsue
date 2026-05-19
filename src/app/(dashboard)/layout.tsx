@@ -95,7 +95,7 @@ export default async function DashboardLayout({
                 href="/operations/dashboard"
                 className="text-slate-600 hover:text-sky-600"
               >
-                COO 營運儀表板
+                營運部Dashboard
               </Link>
             ) : null}
           </nav>

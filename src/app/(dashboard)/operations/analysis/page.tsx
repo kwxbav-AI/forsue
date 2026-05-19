@@ -75,7 +75,9 @@ const T = {
   kpiYoyHint: "\u76F8\u8F03\u53BB\u5E74\u540C\u671F",
 } as const;
 
-const METRICS_DATA_START = "2026-04-01";
+import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
+
+const METRICS_DATA_START = OPS_REVENUE_METRICS_START_YMD;
 
 type StoreOption = {
   id: string;

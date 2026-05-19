@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
-import {
-  buildDashboardFilterResult,
-  fetchPriorYearChartsForFilter,
-} from "@/modules/operations/services/operations-dashboard-filter.service";
+import { buildDashboardFilterResult } from "@/modules/operations/services/operations-dashboard-filter.service";
 import {
   fetchChartsPerStore,
+  fetchDualRegionChartTotals,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
+import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
+import { formatDateOnlyTaipei } from "@/lib/date";
 
 export type RevenueAchievementBucket = "green" | "yellow" | "red" | "none";
 
@@ -73,13 +73,19 @@ export async function countTargetMetDaysByStore(
 }
 
 function listMonthsInRange(startYmd: string, endYmd: string) {
-  const out: { year: number; month: number; label: string }[] = [];
+  const out: { year: number; month: number; label: string; sliceStart: string; sliceEnd: string }[] =
+    [];
   const [sy, sm] = startYmd.split("-").map(Number);
   const [ey, em] = endYmd.split("-").map(Number);
   let y = sy;
   let m = sm;
   while (y < ey || (y === ey && m <= em)) {
-    out.push({ year: y, month: m, label: `${m}月` });
+    const { startYmd: ms, endYmd: me } = monthStartEndYmd(y, m);
+    const sliceStart = startYmd > ms ? startYmd : ms;
+    const sliceEnd = endYmd < me ? endYmd : me;
+    if (sliceStart <= sliceEnd) {
+      out.push({ year: y, month: m, label: `${m}月`, sliceStart, sliceEnd });
+    }
     m += 1;
     if (m > 12) {
       m = 1;
@@ -89,59 +95,59 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
   return out;
 }
 
-function shiftYear(dateStr: string, deltaYears: number): string {
-  const d = parseDateOnlyUTC(dateStr);
-  d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
-  return formatDateOnly(d);
+/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日 */
+export async function buildOpsKpiMetrics() {
+  const todayYmd = formatDateOnlyTaipei();
+  const kpiStart = OPS_KPI_CUMULATIVE_START_YMD;
+  const kpiEnd = todayYmd > kpiStart ? todayYmd : kpiStart;
+  const dualCurrent = await fetchDualRegionChartTotals(kpiStart, kpiEnd);
+  return {
+    totalRevenue: dualCurrent.revenue,
+    totalLaborHours: dualCurrent.laborHours,
+    efficiencyRatio: dualCurrent.efficiencyRatio,
+    yoyGrowthRate: null as number | null,
+    regionLabel: "宜蘭區 + 桃園區",
+    periodStartDate: kpiStart,
+    periodEndDate: kpiEnd,
+  };
 }
 
 export async function buildMonthlyRevenueTrend(startYmd: string, endYmd: string) {
-  const months = listMonthsInRange(startYmd, endYmd);
-  const trend: {
-    year: number;
-    month: number;
-    label: string;
-    revenueWan: number;
-    achievementRate: number | null;
-  }[] = [];
+  const months = listMonthsInRange(startYmd, endYmd).slice(-24);
+  if (months.length === 0) return [];
 
-  for (const { year, month, label } of months) {
-    const { startYmd: ms, endYmd: me } = monthStartEndYmd(year, month);
-    const sliceStart = startYmd > ms ? startYmd : ms;
-    const sliceEnd = endYmd < me ? endYmd : me;
-    if (sliceStart > sliceEnd) continue;
+  const filterStores = await listPerformanceStoresForFilter();
+  const storeCount = filterStores.length;
 
-    const perStore = await fetchChartsPerStore(sliceStart, sliceEnd);
-    const priorPerStore = await fetchPriorYearChartsForFilter(
-      sliceStart,
-      sliceEnd,
-      (ymd, delta) => shiftYear(ymd, delta)
-    );
-    const filterStores = await listPerformanceStoresForFilter();
-    const result = await buildDashboardFilterResult({
-      perStore,
-      priorPerStore,
-      startYmd: sliceStart,
-      endYmd: sliceEnd,
-      filterLabel: label,
-      storeCount: filterStores.length,
-      selection: {},
-      applyOpsCatalogWhenEmpty: true,
-    });
+  const trend = await Promise.all(
+    months.map(async ({ year, month, label, sliceStart, sliceEnd }) => {
+      const perStore = await fetchChartsPerStore(sliceStart, sliceEnd);
+      const result = await buildDashboardFilterResult({
+        perStore,
+        priorPerStore: [],
+        startYmd: sliceStart,
+        endYmd: sliceEnd,
+        filterLabel: label,
+        storeCount,
+        selection: {},
+        applyOpsCatalogWhenEmpty: true,
+        skipDailyTrend: true,
+      });
 
-    const revenue = result.summary.revenue;
-    const target = result.summary.revenueForecast;
-    trend.push({
-      year,
-      month,
-      label,
-      revenueWan: Math.round((revenue / 10000) * 10) / 10,
-      achievementRate:
-        target != null && target > 0 ?
-          Math.round((revenue / target) * 1000) / 10
-        : null,
-    });
-  }
+      const revenue = result.summary.revenue;
+      const target = result.summary.revenueForecast;
+      return {
+        year,
+        month,
+        label,
+        revenueWan: Math.round((revenue / 10000) * 10) / 10,
+        achievementRate:
+          target != null && target > 0 ?
+            Math.round((revenue / target) * 1000) / 10
+          : null,
+      };
+    })
+  );
 
   return trend;
 }
@@ -152,24 +158,22 @@ export async function buildEnrichedOverviewStores(input: {
   region?: string;
 }) {
   const { startYmd, endYmd, region } = input;
-  const [perStore, priorPerStore, filterStores, metDaysMap] = await Promise.all([
+  const [perStore, filterStores, metDaysMap] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
-    fetchPriorYearChartsForFilter(startYmd, endYmd, (ymd, delta) =>
-      shiftYear(ymd, delta)
-    ),
     listPerformanceStoresForFilter(),
     countTargetMetDaysByStore(startYmd, endYmd),
   ]);
 
   const filterResult = await buildDashboardFilterResult({
     perStore,
-    priorPerStore,
+    priorPerStore: [],
     startYmd,
     endYmd,
     filterLabel: region || "全部",
     storeCount: filterStores.length,
     selection: region ? { region } : {},
     applyOpsCatalogWhenEmpty: true,
+    skipDailyTrend: true,
   });
 
   const metaByPerfId = new Map(filterStores.map((s) => [s.id, s]));

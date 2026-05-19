@@ -28,7 +28,14 @@ import {
   Megaphone,
 } from "lucide-react";
 
-const METRICS_START = "2026-04-01";
+import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
+
+function defaultOverviewStartDate() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
 const STATUS_COLOR = { green: "#16a34a", yellow: "#d97706", red: "#dc2626", none: "#94a3b8" };
 
 type OverviewStore = {
@@ -128,7 +135,7 @@ const PLACEHOLDER_CAMPAIGNS = [
 
 export default function OperationsOverviewPage() {
   const today = formatLocalDateInput();
-  const [startDate, setStartDate] = useState(METRICS_START);
+  const [startDate, setStartDate] = useState(defaultOverviewStartDate);
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState("");
   const [overview, setOverview] = useState<OverviewData | null>(null);
@@ -140,14 +147,14 @@ export default function OperationsOverviewPage() {
     try {
       const params = new URLSearchParams({ startDate, endDate });
       if (region) params.set("region", region);
-      const [ovRes, dashRes] = await Promise.all([
-        fetch(`/api/operations/overview?${params}`),
-        fetch(`/api/operations/dashboard?${params}`),
-      ]);
-      if (ovRes.ok) setOverview(await ovRes.json());
-      if (dashRes.ok) {
-        const d = await dashRes.json();
-        setKpi(d.kpiMetrics ?? null);
+      const ovRes = await fetch(`/api/operations/overview?${params}`);
+      if (ovRes.ok) {
+        const data = await ovRes.json();
+        const { kpiMetrics: kpiData, ...overviewData } = data as OverviewData & {
+          kpiMetrics?: KpiMetrics;
+        };
+        setOverview(overviewData);
+        setKpi(kpiData ?? null);
       }
     } finally {
       setLoading(false);
@@ -206,6 +213,7 @@ export default function OperationsOverviewPage() {
             <input
               type="date"
               value={startDate}
+              min={OPS_REVENUE_METRICS_START_YMD}
               onChange={(e) => setStartDate(e.target.value)}
               className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
             />

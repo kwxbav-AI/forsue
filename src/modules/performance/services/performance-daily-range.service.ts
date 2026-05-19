@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { parseDateOnlyUTC, addCalendarDaysUTC } from "@/lib/date";
+import {
+  parseDateOnlyUTC,
+  addCalendarDaysUTC,
+  formatDateOnly,
+  toDateRangeTaipei,
+} from "@/lib/date";
+import { getAttendanceDataStartDate } from "@/lib/attendance-data";
 import {
   clampMetricsDateRange,
-  getPerformanceMetricsDataStartYmd,
+  getRevenueMetricsDataStartYmd,
 } from "@/lib/performance-metrics-range";
 import { computeDailyMetricsByStoreResilient } from "./daily-store-metrics.service";
 
@@ -54,12 +60,58 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+/** 出勤上傳起日之前的區間：單次 groupBy 加總營收（避免逐日迴圈） */
+async function addBulkRevenueBeforeAttendanceStart(
+  accum: Map<
+    string,
+    {
+      storeId: string;
+      storeName: string;
+      revenueSum: number;
+      hoursSum: number;
+      dayCount: number;
+    }
+  >,
+  effStart: string,
+  revenueOnlyEnd: string,
+  attendanceStartYmd: string
+): Promise<void> {
+  if (effStart > revenueOnlyEnd || effStart >= attendanceStartYmd) return;
+
+  const { start, end } = toDateRangeTaipei(effStart, revenueOnlyEnd);
+  const grouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: { revenueDate: { gte: start, lte: end } },
+    _sum: { revenueAmount: true },
+  });
+
+  for (const g of grouped) {
+    const rev = Number(g._sum.revenueAmount ?? 0);
+    if (rev <= 0) continue;
+    let row = accum.get(g.storeId);
+    if (!row) {
+      row = {
+        storeId: g.storeId,
+        storeName: "",
+        revenueSum: 0,
+        hoursSum: 0,
+        dayCount: 0,
+      };
+      accum.set(g.storeId, row);
+    }
+    row.revenueSum += rev;
+    row.dayCount += 1;
+  }
+}
+
 /** 依上傳營收／出勤即時加總（與重算公式相同） */
 async function computeEngineRangeRows(
   effStart: string,
   effEnd: string
 ): Promise<PerformanceDailyRangeRow[]> {
   if (effStart > effEnd) return [];
+
+  const attendanceStartYmd = formatDateOnly(await getAttendanceDataStartDate());
 
   const stores = await prisma.store.findMany({
     where: { isActive: true, hideInReports: false },
@@ -87,7 +139,21 @@ async function computeEngineRangeRows(
     ])
   );
 
-  const dayStrs = listDateStrings(effStart, effEnd);
+  const revenueOnlyEnd =
+    effEnd < attendanceStartYmd ?
+      effEnd
+    : addCalendarDaysUTC(attendanceStartYmd, -1);
+  await addBulkRevenueBeforeAttendanceStart(
+    accum,
+    effStart,
+    revenueOnlyEnd,
+    attendanceStartYmd
+  );
+
+  const dayLoopStart =
+    effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
+  const dayStrs =
+    dayLoopStart <= effEnd ? listDateStrings(dayLoopStart, effEnd) : [];
   const dailyMaps = await mapWithConcurrency(
     dayStrs,
     DAY_COMPUTE_CONCURRENCY,
@@ -159,11 +225,11 @@ export async function aggregateStoreMetricsForRange(
   startDate: string,
   endDate: string
 ): Promise<PerformanceDailyRangeRow[]> {
-  const dataStartYmd = await getPerformanceMetricsDataStartYmd();
+  const revenueStartYmd = getRevenueMetricsDataStartYmd();
   const { startDate: effStart, endDate: effEnd } = clampMetricsDateRange(
     startDate,
     endDate,
-    dataStartYmd
+    revenueStartYmd
   );
 
   return computeEngineRangeRows(effStart, effEnd);
@@ -206,7 +272,7 @@ export async function resolveEffectiveMetricsDateRange(
   dataStartYmd: string;
   clamped: boolean;
 }> {
-  const dataStartYmd = await getPerformanceMetricsDataStartYmd();
+  const dataStartYmd = getRevenueMetricsDataStartYmd();
   const clamped = clampMetricsDateRange(startDate, endDate, dataStartYmd);
   return { ...clamped, dataStartYmd };
 }
