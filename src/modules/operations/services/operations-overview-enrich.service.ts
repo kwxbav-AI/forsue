@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
+import { yoyGrowthRate } from "@/lib/operations-yoy";
 import { buildDashboardFilterResult } from "@/modules/operations/services/operations-dashboard-filter.service";
+import {
+  sumOpsCatalogRevenueByMonth,
+  sumOpsCatalogTargetByMonth,
+} from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
@@ -27,6 +32,12 @@ export const REVENUE_ACHIEVEMENT_LABEL: Record<RevenueAchievementBucket, string>
   red: "未達標",
   none: "無目標",
 };
+
+function shiftYear(dateStr: string, deltaYears: number): string {
+  const d = parseDateOnlyUTC(dateStr);
+  d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
+  return formatDateOnly(d);
+}
 
 async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<string>> {
   const holidays = await prisma.holiday.findMany({
@@ -73,8 +84,13 @@ export async function countTargetMetDaysByStore(
 }
 
 function listMonthsInRange(startYmd: string, endYmd: string) {
-  const out: { year: number; month: number; label: string; sliceStart: string; sliceEnd: string }[] =
-    [];
+  const out: {
+    year: number;
+    month: number;
+    label: string;
+    sliceStart: string;
+    sliceEnd: string;
+  }[] = [];
   const [sy, sm] = startYmd.split("-").map(Number);
   const [ey, em] = endYmd.split("-").map(Number);
   let y = sy;
@@ -84,7 +100,13 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
     const sliceStart = startYmd > ms ? startYmd : ms;
     const sliceEnd = endYmd < me ? endYmd : me;
     if (sliceStart <= sliceEnd) {
-      out.push({ year: y, month: m, label: `${m}月`, sliceStart, sliceEnd });
+      out.push({
+        year: y,
+        month: m,
+        label: `${y}/${m}月`,
+        sliceStart,
+        sliceEnd,
+      });
     }
     m += 1;
     if (m > 12) {
@@ -95,61 +117,55 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
   return out;
 }
 
-/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日 */
+/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日，YoY 以 chart 公式比較去年同期 */
 export async function buildOpsKpiMetrics() {
   const todayYmd = formatDateOnlyTaipei();
   const kpiStart = OPS_KPI_CUMULATIVE_START_YMD;
   const kpiEnd = todayYmd > kpiStart ? todayYmd : kpiStart;
-  const dualCurrent = await fetchDualRegionChartTotals(kpiStart, kpiEnd);
+  const priorStart = shiftYear(kpiStart, -1);
+  const priorEnd = shiftYear(kpiEnd, -1);
+
+  const [dualCurrent, dualPrior] = await Promise.all([
+    fetchDualRegionChartTotals(kpiStart, kpiEnd),
+    fetchDualRegionChartTotals(priorStart, priorEnd),
+  ]);
+
   return {
     totalRevenue: dualCurrent.revenue,
     totalLaborHours: dualCurrent.laborHours,
     efficiencyRatio: dualCurrent.efficiencyRatio,
-    yoyGrowthRate: null as number | null,
+    yoyGrowthRate: yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue),
+    priorYearRevenue: dualPrior.revenue,
     regionLabel: "宜蘭區 + 桃園區",
     periodStartDate: kpiStart,
     periodEndDate: kpiEnd,
   };
 }
 
+/** 月度業績趨勢：單次營收查詢 + 批次目標，避免每月重跑 dashboard filter */
 export async function buildMonthlyRevenueTrend(startYmd: string, endYmd: string) {
   const months = listMonthsInRange(startYmd, endYmd).slice(-24);
   if (months.length === 0) return [];
 
-  const filterStores = await listPerformanceStoresForFilter();
-  const storeCount = filterStores.length;
+  const trendStart = months[0].sliceStart;
+  const trendEnd = months[months.length - 1].sliceEnd;
 
-  const trend = await Promise.all(
-    months.map(async ({ year, month, label, sliceStart, sliceEnd }) => {
-      const perStore = await fetchChartsPerStore(sliceStart, sliceEnd);
-      const result = await buildDashboardFilterResult({
-        perStore,
-        priorPerStore: [],
-        startYmd: sliceStart,
-        endYmd: sliceEnd,
-        filterLabel: label,
-        storeCount,
-        selection: {},
-        applyOpsCatalogWhenEmpty: true,
-        skipDailyTrend: true,
-      });
+  const [revenueByMonth, targetByMonth] = await Promise.all([
+    sumOpsCatalogRevenueByMonth(trendStart, trendEnd),
+    sumOpsCatalogTargetByMonth(trendStart, trendEnd),
+  ]);
 
-      const revenue = result.summary.revenue;
-      const target = result.summary.revenueForecast;
-      return {
-        year,
-        month,
-        label,
-        revenueWan: Math.round((revenue / 10000) * 10) / 10,
-        achievementRate:
-          target != null && target > 0 ?
-            Math.round((revenue / target) * 1000) / 10
-          : null,
-      };
-    })
-  );
-
-  return trend;
+  return months.map(({ year, month, label }) => {
+    const ym = `${year}-${String(month).padStart(2, "0")}`;
+    const revenue = revenueByMonth.get(ym) ?? 0;
+    const target = targetByMonth.get(ym) ?? 0;
+    return {
+      label,
+      revenueWan: Math.round((revenue / 10000) * 10) / 10,
+      achievementRate:
+        target > 0 ? Math.round((revenue / target) * 1000) / 10 : null,
+    };
+  });
 }
 
 export async function buildEnrichedOverviewStores(input: {
@@ -158,15 +174,19 @@ export async function buildEnrichedOverviewStores(input: {
   region?: string;
 }) {
   const { startYmd, endYmd, region } = input;
-  const [perStore, filterStores, metDaysMap] = await Promise.all([
+  const priorStart = shiftYear(startYmd, -1);
+  const priorEnd = shiftYear(endYmd, -1);
+
+  const [perStore, priorPerStore, filterStores, metDaysMap] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
+    fetchChartsPerStore(priorStart, priorEnd),
     listPerformanceStoresForFilter(),
     countTargetMetDaysByStore(startYmd, endYmd),
   ]);
 
   const filterResult = await buildDashboardFilterResult({
     perStore,
-    priorPerStore: [],
+    priorPerStore,
     startYmd,
     endYmd,
     filterLabel: region || "全部",
@@ -193,6 +213,8 @@ export async function buildEnrichedOverviewStores(input: {
         efficiencyRatio: row.efficiencyRatio,
         revenueTarget: row.revenueForecast,
         revenueAchievementRate,
+        priorYearRevenue: row.priorYearRevenue,
+        yoyGrowthRate: row.yoyGrowthRate,
         targetMetDays: metDaysMap.get(row.storeId) ?? 0,
         status: bucket,
         statusLabel: REVENUE_ACHIEVEMENT_LABEL[bucket],

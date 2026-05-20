@@ -32,9 +32,9 @@ import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
 
 function defaultOverviewStartDate() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}-01`;
+  const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const ymd = formatLocalDateInput(d);
+  return ymd < OPS_REVENUE_METRICS_START_YMD ? OPS_REVENUE_METRICS_START_YMD : ymd;
 }
 const STATUS_COLOR = { green: "#16a34a", yellow: "#d97706", red: "#dc2626", none: "#94a3b8" };
 
@@ -331,7 +331,8 @@ export default function OperationsOverviewPage() {
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-1">月度業績趨勢</h2>
             <p className="text-xs text-slate-500 mb-3">萬元 / 達標率 %</p>
-            <ResponsiveContainer width="100%" height={240}>
+            <div className="h-[260px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={overview.monthlyTrend ?? []}
                 margin={{ top: 8, right: 48, left: 8, bottom: 0 }}
@@ -364,6 +365,7 @@ export default function OperationsOverviewPage() {
                   stroke="#2563eb"
                   strokeWidth={2}
                   dot={{ r: 4 }}
+                  connectNulls
                 />
                 <Line
                   yAxisId="pct"
@@ -373,9 +375,11 @@ export default function OperationsOverviewPage() {
                   stroke="#16a34a"
                   strokeWidth={2}
                   dot={{ r: 4 }}
+                  connectNulls
                 />
               </ComposedChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

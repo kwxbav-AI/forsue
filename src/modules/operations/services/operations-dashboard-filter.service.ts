@@ -120,7 +120,7 @@ async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<str
   return new Set(holidays.map((h) => formatDateOnly(h.date)));
 }
 
-async function mapPerformanceToRetailStore(
+export async function mapPerformanceToRetailStore(
   performanceStoreIds: string[]
 ): Promise<Map<string, { retailId: string; settings: RetailLaborSettings }>> {
   if (performanceStoreIds.length === 0) return new Map();

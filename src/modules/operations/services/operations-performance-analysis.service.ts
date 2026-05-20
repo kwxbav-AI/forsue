@@ -1,10 +1,7 @@
 import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { formatDateOnlyTaipei, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
-import {
-  buildDashboardFilterResult,
-  fetchPriorYearChartsForFilter,
-} from "@/modules/operations/services/operations-dashboard-filter.service";
+import { buildDashboardFilterResult } from "@/modules/operations/services/operations-dashboard-filter.service";
 import {
   countTargetMetDaysByStore,
   revenueAchievementBucket,
@@ -13,12 +10,6 @@ import {
   fetchChartsPerStore,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
-
-function shiftYear(dateStr: string, deltaYears: number): string {
-  const d = parseDateOnlyUTC(dateStr);
-  d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
-  return formatDateOnly(d);
-}
 
 function monthsAgoEnd(months: number): { startYmd: string; endYmd: string } {
   const endYmd = formatDateOnlyTaipei();
@@ -40,7 +31,7 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
     const { startYmd: ms, endYmd: me } = monthStartEndYmd(y, m);
     const start = startYmd > ms ? startYmd : ms;
     const end = endYmd < me ? endYmd : me;
-    out.push({ year: y, month: m, label: `${m}月`, start, end });
+    out.push({ year: y, month: m, label: `${y}/${m}月`, start, end });
     m += 1;
     if (m > 12) {
       m = 1;
@@ -50,26 +41,26 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
   return out;
 }
 
-async function monthMetrics(
+async function monthMetricsLight(
   startYmd: string,
   endYmd: string,
   selection: { storeId?: string; region?: string }
 ) {
-  const [perStore, priorPerStore, filterStores] = await Promise.all([
+  const [perStore, filterStores] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
-    fetchPriorYearChartsForFilter(startYmd, endYmd, (ymd, d) => shiftYear(ymd, d)),
     listPerformanceStoresForFilter(),
   ]);
 
   return buildDashboardFilterResult({
     perStore,
-    priorPerStore,
+    priorPerStore: [],
     startYmd,
     endYmd,
     filterLabel: "",
     storeCount: filterStores.length,
     selection,
     applyOpsCatalogWhenEmpty: !selection.storeId,
+    skipDailyTrend: true,
   });
 }
 
@@ -82,53 +73,50 @@ export async function buildPerformanceAnalysis(input: {
   const filterStores = await listPerformanceStoresForFilter();
   const selection = input.storeId ? { storeId: input.storeId } : {};
 
-  const revenueTrend: {
-    label: string;
-    actualRevenue: number;
-    targetRevenue: number;
-  }[] = [];
-  const productivityTrend: {
-    label: string;
-    perCapita: number | null;
-  }[] = [];
+  const monthResults = await Promise.all(
+    monthsList.map((m) => monthMetricsLight(m.start, m.end, selection))
+  );
 
-  for (const m of monthsList) {
-    const r = await monthMetrics(m.start, m.end, selection);
-    revenueTrend.push({
-      label: m.label,
-      actualRevenue: Math.round(r.summary.revenue),
-      targetRevenue: Math.round(r.summary.revenueForecast ?? 0),
-    });
-    const perCapita =
-      r.summary.laborHours > 0 ? r.summary.revenue / r.summary.laborHours : null;
-    productivityTrend.push({
+  const revenueTrend = monthsList.map((m, i) => ({
+    label: m.label,
+    actualRevenue: Math.round(monthResults[i].summary.revenue),
+    targetRevenue: Math.round(monthResults[i].summary.revenueForecast ?? 0),
+  }));
+
+  const productivityTrend = monthsList.map((m, i) => {
+    const r = monthResults[i].summary;
+    const perCapita = r.laborHours > 0 ? r.revenue / r.laborHours : null;
+    return {
       label: m.label,
       perCapita: perCapita != null ? Math.round(perCapita) : null,
-    });
-  }
+    };
+  });
 
-  const regionalBenchmark: {
-    region: string;
-    months: { label: string; actualRevenue: number; targetRevenue: number }[];
-  }[] = [];
-
-  for (const region of DUAL_OPS_REGIONS) {
-    const months: { label: string; actualRevenue: number; targetRevenue: number }[] = [];
-    for (const m of monthsList) {
-      const r = await monthMetrics(m.start, m.end, { region, ...selection });
-      months.push({
-        label: m.label,
-        actualRevenue: Math.round(r.summary.revenue),
-        targetRevenue: Math.round(r.summary.revenueForecast ?? 0),
-      });
-    }
-    regionalBenchmark.push({ region, months });
-  }
+  const regionalBenchmark = await Promise.all(
+    DUAL_OPS_REGIONS.map(async (region) => {
+      const regionResults = await Promise.all(
+        monthsList.map((m) =>
+          monthMetricsLight(m.start, m.end, { region, ...selection })
+        )
+      );
+      return {
+        region,
+        months: monthsList.map((m, i) => ({
+          label: m.label,
+          actualRevenue: Math.round(regionResults[i].summary.revenue),
+          targetRevenue: Math.round(regionResults[i].summary.revenueForecast ?? 0),
+        })),
+      };
+    })
+  );
 
   const latest = monthsList[monthsList.length - 1];
-  const latestMet = latest ?
-    await countTargetMetDaysByStore(latest.start, latest.end)
-  : new Map<string, number>();
+  const latestResult = monthResults[monthResults.length - 1];
+
+  const latestMet =
+    latest ?
+      await countTargetMetDaysByStore(latest.start, latest.end)
+    : new Map<string, number>();
 
   const storeRanking = filterStores
     .filter((s) => !input.storeId || s.id === input.storeId)
@@ -141,8 +129,7 @@ export async function buildPerformanceAnalysis(input: {
     .sort((a, b) => b.targetMetDays - a.targetMetDays);
 
   let achievementSummary = { green: 0, yellow: 0, red: 0, total: 0 };
-  if (latest) {
-    const latestResult = await monthMetrics(latest.start, latest.end, {});
+  if (latestResult) {
     for (const row of latestResult.stores) {
       const bucket = revenueAchievementBucket(row.revenueAchievementRate);
       if (bucket === "none") continue;

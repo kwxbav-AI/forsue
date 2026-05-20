@@ -5,10 +5,10 @@ import {
   buildDashboardFilterResult,
   fetchPriorYearChartsForFilter,
 } from "@/modules/operations/services/operations-dashboard-filter.service";
+import { yoyGrowthRate } from "@/lib/operations-yoy";
 import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
-  fetchDualRegionTotalsFromPerformanceDaily,
   filterChartsByCatalogRegions,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
@@ -95,23 +95,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let dualPrior = { revenue: 0, laborHours: 0, efficiencyRatio: null as number | null };
-    let kpiYoyGrowthRate: number | null = null;
-    try {
-      dualPrior = await fetchDualRegionTotalsFromPerformanceDaily(
-        shiftYear(kpiRange.startDate, -1),
-        shiftYear(
-          effectiveRange.endDate < todayYmd ? effectiveRange.endDate : todayYmd,
-          -1
-        )
-      );
-      if (dualPrior.revenue > 0) {
-        kpiYoyGrowthRate =
-          ((dualCurrent.revenue - dualPrior.revenue) / dualPrior.revenue) * 100;
-      }
-    } catch (yoyErr) {
-      console.warn("YoY snapshot query skipped", yoyErr);
-    }
+    const priorKpiEnd = shiftYear(
+      effectiveRange.endDate < todayYmd ? effectiveRange.endDate : todayYmd,
+      -1
+    );
+    const dualPrior = await fetchDualRegionChartTotals(
+      shiftYear(kpiRange.startDate, -1),
+      priorKpiEnd
+    );
+    const kpiYoyGrowthRate = yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue);
 
     const selectedStore = storeId
       ? filterStores.find((s) => s.id === storeId)
