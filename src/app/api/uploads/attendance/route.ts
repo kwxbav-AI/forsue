@@ -15,7 +15,12 @@ export async function POST(request: NextRequest) {
     }
     const buffer = Buffer.from(await file.arrayBuffer());
     const uploadedBy = (formData.get("uploadedBy") as string) || undefined;
-    const result = await uploadAttendance(buffer, file.name, uploadedBy);
+    const replaceEntireDatesRaw = formData.get("replaceEntireDates");
+    const replaceEntireDates =
+      replaceEntireDatesRaw === "true" || replaceEntireDatesRaw === "1";
+    const result = await uploadAttendance(buffer, file.name, uploadedBy, {
+      replaceEntireDates,
+    });
     return NextResponse.json(result);
   } catch (e) {
     console.error(e);

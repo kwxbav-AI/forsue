@@ -22,6 +22,7 @@ export default function UploadsPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ key: string; message: string; row?: number }[]>([]);
   const [success, setSuccess] = useState<{ key: string; count: number } | null>(null);
+  const [replaceEntireDates, setReplaceEntireDates] = useState(false);
 
   const fetchBatches = useCallback(async () => {
     const res = await fetch("/api/uploads/batches");
@@ -32,12 +33,20 @@ export default function UploadsPage() {
     fetchBatches();
   }, [fetchBatches]);
 
-  async function handleUpload(key: string, api: string, file: File) {
+  async function handleUpload(
+    key: string,
+    api: string,
+    file: File,
+    options?: { replaceEntireDates?: boolean }
+  ) {
     setLoading(key);
     setErrors([]);
     setSuccess(null);
     const form = new FormData();
     form.append("file", file);
+    if (options?.replaceEntireDates) {
+      form.append("replaceEntireDates", "true");
+    }
     try {
       const res = await fetch(api, { method: "POST", body: form });
       const data = await res.json();
@@ -117,6 +126,23 @@ export default function UploadsPage() {
             ) : (
               <p className="mt-2 text-sm text-slate-400">尚無上傳紀錄</p>
             )}
+            {key === "ATTENDANCE" && (
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={replaceEntireDates}
+                  disabled={loading !== null}
+                  onChange={(e) => setReplaceEntireDates(e.target.checked)}
+                />
+                <span>
+                  取代當日全部出勤
+                  <span className="mt-0.5 block text-xs text-slate-400">
+                    未勾選時只更新檔案內的員工；整批重匯當日請勾選
+                  </span>
+                </span>
+              </label>
+            )}
             <label className="mt-3 block">
               <span className="sr-only">選擇檔案</span>
               <input
@@ -126,7 +152,11 @@ export default function UploadsPage() {
                 disabled={loading !== null}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleUpload(key, api, f);
+                  if (f) {
+                    handleUpload(key, api, f, {
+                      replaceEntireDates: key === "ATTENDANCE" ? replaceEntireDates : undefined,
+                    });
+                  }
                   e.target.value = "";
                 }}
               />

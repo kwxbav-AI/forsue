@@ -337,11 +337,18 @@ async function upsertEmployee(row: EmployeeMasterRow): Promise<string> {
   return created.id;
 }
 
+export type UploadAttendanceOptions = {
+  /** true：刪除檔案內日期當天全部出勤；false（預設）：只覆蓋檔案內員工＋日期 */
+  replaceEntireDates?: boolean;
+};
+
 export async function uploadAttendance(
   buffer: Buffer,
   originalName: string,
-  uploadedBy?: string
+  uploadedBy?: string,
+  options?: UploadAttendanceOptions
 ): Promise<UploadResult> {
+  const replaceEntireDates = options?.replaceEntireDates ?? false;
   const parsed = parseAttendanceSheet(buffer);
   if (parsed.errors.length > 0 && parsed.data.length === 0) {
     return {
@@ -368,9 +375,6 @@ export async function uploadAttendance(
   const uniqueTimes = new Set<number>();
   dates.forEach((d) => uniqueTimes.add(d.getTime()));
   uniqueTimes.forEach((t) => uniqueDates.push(new Date(t)));
-  await prisma.attendanceRecord.deleteMany({
-    where: { workDate: { in: uniqueDates } },
-  });
 
   const errors: ParseError[] = [...parsed.errors];
   let imported = 0;
@@ -388,6 +392,14 @@ export async function uploadAttendance(
     const eid = await getOrCreateEmployee(row.employeeCode, row.employeeName);
     employeeIdByCode.set(row.employeeCode.trim(), eid);
     rowEmployeeIds.push(eid);
+  }
+
+  const empDatePairs = new Map<string, { employeeId: string; workDate: Date }>();
+  for (const row of parsed.data) {
+    const workDate = toWorkDateUTC(row.workDate);
+    const employeeId = employeeIdByCode.get(row.employeeCode.trim())!;
+    const pairKey = `${employeeId}|${workDate.getTime()}`;
+    empDatePairs.set(pairKey, { employeeId, workDate });
   }
 
   const dispatchByEmpDate = new Map<
@@ -411,7 +423,23 @@ export async function uploadAttendance(
     }
   }
 
-  for (const row of parsed.data) {
+  await prisma.$transaction(async (tx) => {
+    if (replaceEntireDates && uniqueDates.length > 0) {
+      await tx.attendanceRecord.deleteMany({
+        where: { workDate: { in: uniqueDates } },
+      });
+    } else if (!replaceEntireDates && empDatePairs.size > 0) {
+      await tx.attendanceRecord.deleteMany({
+        where: {
+          OR: Array.from(empDatePairs.values()).map(({ employeeId, workDate }) => ({
+            employeeId,
+            workDate,
+          })),
+        },
+      });
+    }
+
+    for (const row of parsed.data) {
     const workDate = toWorkDateUTC(row.workDate);
     const employeeId = employeeIdByCode.get(row.employeeCode.trim())!;
     let originalStoreId: string | null = null;
@@ -464,7 +492,7 @@ export async function uploadAttendance(
       dispatchToStoreId,
     });
 
-    await prisma.attendanceRecord.create({
+    await tx.attendanceRecord.create({
       data: {
         workDate,
         employeeId,
@@ -487,6 +515,7 @@ export async function uploadAttendance(
     });
     imported++;
   }
+  });
 
   await prisma.uploadBatch.update({
     where: { id: batch.id },
