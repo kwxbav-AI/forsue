@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { currentMonthRangeTaipei } from "@/lib/operations-default-dates";
 import { buildPerformanceAnalysis } from "@/modules/operations/services/operations-performance-analysis.service";
+import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -7,21 +9,33 @@ export const maxDuration = 300;
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
-    const monthsRaw = sp.get("months")?.trim() || "6";
-    const months = Number(monthsRaw);
-    if (![3, 6, 12].includes(months)) {
+    const defaults = currentMonthRangeTaipei();
+    const startDate = sp.get("startDate")?.trim() || defaults.startDate;
+    const endDate = sp.get("endDate")?.trim() || defaults.endDate;
+    const region = sp.get("region")?.trim() || undefined;
+    const storeId = sp.get("storeId")?.trim() || undefined;
+
+    if (startDate > endDate) {
       return NextResponse.json(
-        { error: "months 須為 3、6 或 12" },
+        { error: "開始日不可晚於結束日" },
         { status: 400 }
       );
     }
-    const storeId = sp.get("storeId")?.trim() || undefined;
+
+    const effective = await resolveEffectiveMetricsDateRange(startDate, endDate);
 
     const data = await buildPerformanceAnalysis({
-      months: months as 3 | 6 | 12,
+      startYmd: effective.startDate,
+      endYmd: effective.endDate,
       storeId,
+      region,
     });
-    return NextResponse.json(data);
+
+    return NextResponse.json({
+      ...data,
+      startDate: effective.startDate,
+      endDate: effective.endDate,
+    });
   } catch (error) {
     console.error("GET /api/operations/performance-analysis failed", error);
     return NextResponse.json({ error: "查詢失敗" }, { status: 500 });

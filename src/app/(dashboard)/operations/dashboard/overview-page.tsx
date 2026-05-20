@@ -29,11 +29,10 @@ import {
 } from "lucide-react";
 
 import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
+import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
 
 function defaultOverviewStartDate() {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-  const ymd = formatLocalDateInput(d);
+  const ymd = currentMonthStartYmdLocal();
   return ymd < OPS_REVENUE_METRICS_START_YMD ? OPS_REVENUE_METRICS_START_YMD : ymd;
 }
 const STATUS_COLOR = { green: "#16a34a", yellow: "#d97706", red: "#dc2626", none: "#94a3b8" };

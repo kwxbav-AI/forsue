@@ -76,8 +76,7 @@ const T = {
 } as const;
 
 import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
-
-const METRICS_DATA_START = OPS_REVENUE_METRICS_START_YMD;
+import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
 
 type StoreOption = {
   id: string;
@@ -267,7 +266,7 @@ export default function OperationsDashboardPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [queried, setQueried] = useState(false);
 
-  const [startDate, setStartDate] = useState(METRICS_DATA_START);
+  const [startDate, setStartDate] = useState(currentMonthStartYmdLocal);
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState("");
   const [storeId, setStoreId] = useState("");

@@ -151,13 +151,13 @@ export async function sumOpsCatalogTargetForRange(
   return total;
 }
 
-/** 各月目標合計（營運 catalog） */
-export async function sumOpsCatalogTargetByMonth(
+/** 指定績效門市各月目標合計 */
+export async function sumTargetByMonthForPerformanceStores(
   startYmd: string,
-  endYmd: string
+  endYmd: string,
+  perfStoreIds: string[]
 ): Promise<Map<string, number>> {
-  const filterStores = await listPerformanceStoresForFilter();
-  const storeIds = filterStores.map((s) => s.id);
+  const storeIds = perfStoreIds;
   const slices = listMonthSlicesInRange(startYmd, endYmd);
   if (slices.length === 0 || storeIds.length === 0) return new Map();
 
@@ -188,4 +188,43 @@ export async function sumOpsCatalogTargetByMonth(
     byMonth.set(ym, monthTarget);
   }
   return byMonth;
+}
+
+/** 各月目標合計（營運 catalog 全部門市） */
+export async function sumOpsCatalogTargetByMonth(
+  startYmd: string,
+  endYmd: string
+): Promise<Map<string, number>> {
+  const filterStores = await listPerformanceStoresForFilter();
+  return sumTargetByMonthForPerformanceStores(
+    startYmd,
+    endYmd,
+    filterStores.map((s) => s.id)
+  );
+}
+
+export function sumRevenueTotalsByMonth(
+  byStoreMonth: Map<string, Map<string, number>>,
+  storeIds: string[]
+): Map<string, number> {
+  const monthTotals = new Map<string, number>();
+  for (const storeId of storeIds) {
+    const monthMap = byStoreMonth.get(storeId);
+    if (!monthMap) continue;
+    for (const [ym, rev] of monthMap) {
+      monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + rev);
+    }
+  }
+  return monthTotals;
+}
+
+/** 指定門市各月營收加總（單次 DB） */
+export async function sumRevenueByMonthForPerformanceStores(
+  startYmd: string,
+  endYmd: string,
+  perfStoreIds: string[]
+): Promise<Map<string, number>> {
+  if (perfStoreIds.length === 0) return new Map();
+  const byStoreMonth = await fetchRevenueByStoreAndMonth(startYmd, endYmd, perfStoreIds);
+  return sumRevenueTotalsByMonth(byStoreMonth, perfStoreIds);
 }
