@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { formatDateOnlyTaipei } from "@/lib/date";
 import { OPS_REGION_CATALOG } from "@/lib/operations-dashboard";
 import {
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     const storesPaged = paginateArray(stores, page, pageSize);
 
-    return NextResponse.json({
+    return jsonWithStatsCache({
       startDate: effective.startDate,
       endDate: effective.endDate,
       region: region || null,
