@@ -21,7 +21,7 @@ export type PerformanceDailyRangeRow = {
   dayCount: number;
 };
 
-const DAY_COMPUTE_CONCURRENCY = 4;
+const DAY_COMPUTE_CONCURRENCY = 16;
 
 function hasActivity(row: Pick<PerformanceDailyRangeRow, "revenueSum" | "hoursSum">): boolean {
   return row.revenueSum > 0 || row.hoursSum > 0;

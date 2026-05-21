@@ -224,6 +224,7 @@ model RevenueRecord {
   updatedAt     DateTime @updatedAt
   store         Store    @relation(fields: [storeId], references: [id])
   @@index([revenueDate])
+  @@index([storeId, revenueDate])
   @@unique([storeId, revenueDate, checkoutNo])
 }
 
@@ -280,6 +281,7 @@ model PerformanceDaily {
   store           Store    @relation(fields: [storeId], references: [id])
   @@unique([workDate, storeId, versionNo])
   @@index([workDate])
+  @@index([storeId, workDate])
 }
 
 model AuditLog {

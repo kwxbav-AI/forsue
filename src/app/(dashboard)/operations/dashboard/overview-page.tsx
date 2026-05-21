@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
 import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
@@ -80,6 +80,15 @@ type OverviewData = {
     red: number;
   }[];
   stores: OverviewStore[];
+  topStores?: OverviewStore[];
+  bottomStores?: OverviewStore[];
+  storesPagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
 };
 
 type KpiMetrics = {
@@ -137,6 +146,7 @@ export default function OperationsOverviewPage() {
   const [startDate, setStartDate] = useState(defaultOverviewStartDate);
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState("");
+  const [storePage, setStorePage] = useState(0);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [kpi, setKpi] = useState<KpiMetrics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -144,7 +154,12 @@ export default function OperationsOverviewPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ startDate, endDate });
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        page: String(storePage),
+        pageSize: "20",
+      });
       if (region) params.set("region", region);
       const ovRes = await fetch(`/api/operations/overview?${params}`);
       if (ovRes.ok) {
@@ -158,29 +173,20 @@ export default function OperationsOverviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, region]);
+  }, [startDate, endDate, region, storePage]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setStorePage(0);
+  }, [startDate, endDate, region]);
+
   const sorted = overview?.stores ?? [];
-  const top5 = useMemo(
-    () =>
-      [...sorted]
-        .filter((s) => s.revenueAchievementRate != null)
-        .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0))
-        .slice(0, 5),
-    [sorted]
-  );
-  const bottom5 = useMemo(
-    () =>
-      [...sorted]
-        .filter((s) => s.revenueAchievementRate != null)
-        .sort((a, b) => (a.revenueAchievementRate ?? 0) - (b.revenueAchievementRate ?? 0))
-        .slice(0, 5),
-    [sorted]
-  );
+  const top5 = overview?.topStores ?? [];
+  const bottom5 = overview?.bottomStores ?? [];
+  const storePagination = overview?.storesPagination;
 
   const pieData = overview ?
     [
@@ -453,7 +459,9 @@ export default function OperationsOverviewPage() {
               </h2>
               <p className="mt-2 text-sm text-slate-600">
                 目前營收未達標門市：
-                {sorted.filter((s) => s.status === "red").map((s) => s.storeName).join("、") || "無"}
+                {(overview?.summary.red ?? 0) > 0 ?
+                  "請見門市狀態一覽或未達標清單"
+                : "無"}
               </p>
             </div>
             <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4">
@@ -482,7 +490,33 @@ export default function OperationsOverviewPage() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-700 mb-4">門市狀態一覽</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h2 className="text-sm font-semibold text-slate-700">門市狀態一覽</h2>
+              {storePagination ?
+                <div className="flex items-center gap-2 text-sm">
+                  <button
+                    type="button"
+                    disabled={storePagination.page <= 0 || loading}
+                    onClick={() => setStorePage((p) => Math.max(0, p - 1))}
+                    className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                  >
+                    上一頁
+                  </button>
+                  <span className="text-slate-500">
+                    第 {storePagination.page + 1} / {storePagination.totalPages || 1} 頁
+                    （共 {storePagination.total} 間）
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!storePagination.hasMore || loading}
+                    onClick={() => setStorePage((p) => p + 1)}
+                    className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                  >
+                    下一頁
+                  </button>
+                </div>
+              : null}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {sorted.map((s) => (
                 <Link

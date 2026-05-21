@@ -117,8 +117,15 @@ function listMonthsInRange(startYmd: string, endYmd: string) {
   return out;
 }
 
-/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日，YoY 以 chart 公式比較去年同期 */
-export async function buildOpsKpiMetrics() {
+let kpiMetricsCache: {
+  key: string;
+  expiresAt: number;
+  data: Awaited<ReturnType<typeof buildOpsKpiMetricsUncached>>;
+} | null = null;
+
+const KPI_METRICS_CACHE_MS = 5 * 60 * 1000;
+
+async function buildOpsKpiMetricsUncached() {
   const todayYmd = formatDateOnlyTaipei();
   const kpiStart = OPS_KPI_CUMULATIVE_START_YMD;
   const kpiEnd = todayYmd > kpiStart ? todayYmd : kpiStart;
@@ -140,6 +147,19 @@ export async function buildOpsKpiMetrics() {
     periodStartDate: kpiStart,
     periodEndDate: kpiEnd,
   };
+}
+
+/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日（5 分鐘快取，避免每次載入重算長區間） */
+export async function buildOpsKpiMetrics() {
+  const todayYmd = formatDateOnlyTaipei();
+  const key = `${OPS_KPI_CUMULATIVE_START_YMD}|${todayYmd}`;
+  const now = Date.now();
+  if (kpiMetricsCache && kpiMetricsCache.key === key && kpiMetricsCache.expiresAt > now) {
+    return kpiMetricsCache.data;
+  }
+  const data = await buildOpsKpiMetricsUncached();
+  kpiMetricsCache = { key, expiresAt: now + KPI_METRICS_CACHE_MS, data };
+  return data;
 }
 
 /** 月度業績趨勢：單次營收查詢 + 批次目標，避免每月重跑 dashboard filter */
@@ -174,19 +194,16 @@ export async function buildEnrichedOverviewStores(input: {
   region?: string;
 }) {
   const { startYmd, endYmd, region } = input;
-  const priorStart = shiftYear(startYmd, -1);
-  const priorEnd = shiftYear(endYmd, -1);
 
-  const [perStore, priorPerStore, filterStores, metDaysMap] = await Promise.all([
+  const [perStore, filterStores, metDaysMap] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
-    fetchChartsPerStore(priorStart, priorEnd),
     listPerformanceStoresForFilter(),
     countTargetMetDaysByStore(startYmd, endYmd),
   ]);
 
   const filterResult = await buildDashboardFilterResult({
     perStore,
-    priorPerStore,
+    priorPerStore: [],
     startYmd,
     endYmd,
     filterLabel: region || "全部",

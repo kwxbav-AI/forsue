@@ -6,6 +6,7 @@ import {
   buildMonthlyRevenueTrend,
   buildOpsKpiMetrics,
 } from "@/modules/operations/services/operations-overview-enrich.service";
+import { paginateArray, parseApiPagination } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     const startDate = sp.get("startDate")?.trim();
     const endDate = sp.get("endDate")?.trim() || formatDateOnlyTaipei();
     const region = sp.get("region")?.trim() || "";
+    const { page, pageSize } = parseApiPagination(sp, { pageSize: 20, maxPageSize: 50 });
 
     if (!startDate) {
       return NextResponse.json({ error: "請提供 startDate" }, { status: 400 });
@@ -64,6 +66,16 @@ export async function GET(request: NextRequest) {
     const totalLaborHours = stores.reduce((a, s) => a + s.laborHours, 0);
     const withTarget = stores.filter((s) => s.status !== "none").length;
 
+    const withRate = stores.filter((s) => s.revenueAchievementRate != null);
+    const topStores = [...withRate]
+      .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0))
+      .slice(0, 5);
+    const bottomStores = [...withRate]
+      .sort((a, b) => (a.revenueAchievementRate ?? 0) - (b.revenueAchievementRate ?? 0))
+      .slice(0, 5);
+
+    const storesPaged = paginateArray(stores, page, pageSize);
+
     return NextResponse.json({
       startDate: effective.startDate,
       endDate: effective.endDate,
@@ -85,7 +97,10 @@ export async function GET(request: NextRequest) {
           withTarget > 0 ? Math.round((green / withTarget) * 1000) / 10 : null,
       },
       regionStats,
-      stores,
+      topStores,
+      bottomStores,
+      stores: storesPaged.items,
+      storesPagination: storesPaged.pagination,
     });
   } catch (error) {
     console.error("GET /api/operations/overview failed", error);

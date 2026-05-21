@@ -15,6 +15,7 @@ import {
   sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
 import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
+import { parseApiPagination, paginateArray } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
 export const dynamic = "force-dynamic";
@@ -117,6 +118,10 @@ export async function GET(request: NextRequest) {
       ? 1
       : getOpsCatalogStoreCount(region || undefined);
 
+    const skipDailyTrend = sp.get("skipDailyTrend") !== "0";
+    const includeStores = sp.get("includeStores") === "1";
+    const { page, pageSize } = parseApiPagination(sp, { pageSize: 50, maxPageSize: 100 });
+
     const filteredResult = await buildDashboardFilterResult({
       perStore,
       priorPerStore,
@@ -131,7 +136,13 @@ export async function GET(request: NextRequest) {
         catalogKey: selectedStore?.catalogKey,
       },
       applyOpsCatalogWhenEmpty: !storeId && !region,
+      skipDailyTrend,
     });
+
+    const storesPaged =
+      includeStores ?
+        paginateArray(filteredResult.stores, page, pageSize)
+      : { items: [] as typeof filteredResult.stores, pagination: null };
 
     return NextResponse.json({
       meta,
@@ -144,6 +155,8 @@ export async function GET(request: NextRequest) {
         dateRangeClamped: effectiveRange.clamped,
         region: region || null,
         storeId: storeId || null,
+        page: includeStores ? page : null,
+        pageSize: includeStores ? pageSize : null,
       },
       kpiMetrics: {
         totalRevenue: dualCurrent.revenue,
@@ -176,8 +189,9 @@ export async function GET(request: NextRequest) {
         laborHoursDifference: filteredResult.summary.overtimeHours,
         workingDaysInRange: filteredResult.workingDaysInRange,
         dailyTrend: filteredResult.dailyTrend,
-        stores: filteredResult.stores,
+        stores: storesPaged.items,
       },
+      storesPagination: storesPaged.pagination,
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

@@ -272,6 +272,7 @@ export default function OperationsDashboardPage() {
   const [storeId, setStoreId] = useState("");
   const didInitSelection = useRef(false);
   const didAutoFromUrl = useRef(false);
+  const didAutoLoadDefault = useRef(false);
 
   const loadMeta = useCallback(async () => {
     const res = await fetch("/api/operations/dashboard");
@@ -331,7 +332,13 @@ export default function OperationsDashboardPage() {
     setFiltered(null);
     setKpiMetrics(null);
 
-    const params = new URLSearchParams({ startDate, endDate });
+    const params = new URLSearchParams({
+      startDate,
+      endDate,
+      skipDailyTrend: "1",
+      page: "0",
+      pageSize: "1",
+    });
     if (storeId) params.set("storeId", storeId);
     else if (region) params.set("region", region);
 
@@ -359,6 +366,15 @@ export default function OperationsDashboardPage() {
     void handleRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, startDate, endDate, meta, searchParams]);
+
+  useEffect(() => {
+    if (didAutoLoadDefault.current || didAutoFromUrl.current || !meta?.stores.length || !storeId) {
+      return;
+    }
+    didAutoLoadDefault.current = true;
+    void handleRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta, storeId, startDate, endDate]);
 
   async function handleSyncStores() {
     setSyncing(true);
