@@ -3,7 +3,7 @@ import {
   formatDateOnly,
   formatDateOnlyTaipei,
   parseDateOnlyUTC,
-  toDateRangeTaipei,
+  toDateRange,
 } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import {
@@ -68,6 +68,15 @@ function resolveMonthRange(year: number, month: number) {
   return { startYmd, endYmd };
 }
 
+/** 與 DB @db.Date（UTC 日曆日）及上傳 toWorkDateUTC 一致 */
+function workDateYmd(d: Date): string {
+  return formatDateOnly(d);
+}
+
+function isYmdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
+  return ymd >= startYmd && ymd <= endYmd;
+}
+
 function homeStoreId(
   att: {
     employeeId: string;
@@ -102,7 +111,8 @@ export async function buildOperationsWorkHours(input: {
   const filterStores = await listPerformanceStoresForFilter();
   const storeNameById = new Map(filterStores.map((s) => [s.id, s.storeName]));
 
-  const { start, end } = toDateRangeTaipei(startYmd, endYmd);
+  // 勿用 toDateRangeTaipei：gte 帶 16:00 UTC 與 @db.Date 比對時會被截成前一日，誤含 4/30、3/30
+  const { start, end } = toDateRange(startYmd, endYmd);
 
   const [attendances, dispatches, adjustments, deductions, contentEntries] =
     await Promise.all([
@@ -193,6 +203,7 @@ export async function buildOperationsWorkHours(input: {
 
   const employeeIdsInScope = new Set<string>();
   for (const a of attendances) {
+    if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
     const sid = homeStoreId(a, fallbackHome);
     if (!sid || !storeNameById.has(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
@@ -236,6 +247,7 @@ export async function buildOperationsWorkHours(input: {
   const shortageByEmployee = new Map<string, number>();
 
   for (const a of attendances) {
+    if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
     const sid = homeStoreId(a, fallbackHome);
     if (!sid || !storeNameById.has(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
@@ -262,9 +274,9 @@ export async function buildOperationsWorkHours(input: {
     }
 
     if (wh <= 0 && scheduled != null && scheduled > 0) {
-      bumpAnomaly(a.employeeId, base, "缺勤異常", `${formatDateOnly(a.workDate)} 表定 ${scheduled}h 實際 0h`);
+      bumpAnomaly(a.employeeId, base, "缺勤異常", `${workDateYmd(a.workDate)} 表定 ${scheduled}h 實際 0h`);
     } else if (isLeaveShift(a.shiftType, scheduled, wh) && wh <= 0) {
-      bumpAnomaly(a.employeeId, base, "缺勤異常", `${formatDateOnly(a.workDate)} 請假/未到`);
+      bumpAnomaly(a.employeeId, base, "缺勤異常", `${workDateYmd(a.workDate)} 請假/未到`);
     }
 
     if (scheduled != null && scheduled > 0 && wh > 0 && wh < scheduled * 0.5) {
@@ -396,6 +408,8 @@ export async function buildOperationsWorkHours(input: {
   const adjustmentRows: AdjustmentRow[] = [];
 
   for (const d of dispatches) {
+    const ymd = workDateYmd(d.workDate);
+    if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
     const hours = Number(d.actualHours ?? d.dispatchHours ?? 0);
     if (hours === 0) continue;
     if (input.storeId && d.fromStoreId !== input.storeId && d.toStoreId !== input.storeId) {
@@ -403,7 +417,7 @@ export async function buildOperationsWorkHours(input: {
     }
     adjustmentRows.push({
       id: d.id,
-      workDate: formatDateOnly(d.workDate),
+      workDate: ymd,
       category: "人力支援",
       storeId: d.toStoreId,
       storeName: storeNameById.get(d.toStoreId) ?? d.toStoreId,
@@ -415,7 +429,7 @@ export async function buildOperationsWorkHours(input: {
     if (d.fromStoreId) {
       adjustmentRows.push({
         id: `${d.id}-out`,
-        workDate: formatDateOnly(d.workDate),
+        workDate: ymd,
         category: "人力支援（調出）",
         storeId: d.fromStoreId,
         storeName: storeNameById.get(d.fromStoreId) ?? d.fromStoreId,
@@ -428,13 +442,15 @@ export async function buildOperationsWorkHours(input: {
   }
 
   for (const adj of adjustments) {
+    const ymd = workDateYmd(adj.workDate);
+    if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
     if (input.storeId && adj.storeId && adj.storeId !== input.storeId) continue;
     const label = ADJUSTMENT_LABELS[adj.adjustmentType] ?? adj.adjustmentType;
     const category =
       adj.adjustmentType === "RESERVE_STAFF" ? "儲備人力" : label;
     adjustmentRows.push({
       id: adj.id,
-      workDate: formatDateOnly(adj.workDate),
+      workDate: ymd,
       category,
       storeId: adj.storeId,
       storeName: adj.storeId ? (storeNameById.get(adj.storeId) ?? adj.storeId) : "—",
@@ -446,6 +462,8 @@ export async function buildOperationsWorkHours(input: {
   }
 
   for (const ded of deductions) {
+    const ymd = workDateYmd(ded.workDate);
+    if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
     if (input.storeId && ded.storeId !== input.storeId) continue;
     const reason = DEDUCTION_LABELS[ded.reason] ?? ded.reason;
     const category =
@@ -454,7 +472,7 @@ export async function buildOperationsWorkHours(input: {
       : `${reason}扣除`;
     adjustmentRows.push({
       id: ded.id,
-      workDate: formatDateOnly(ded.workDate),
+      workDate: ymd,
       category,
       storeId: ded.storeId,
       storeName: ded.store.name,
@@ -466,6 +484,8 @@ export async function buildOperationsWorkHours(input: {
   }
 
   for (const ce of contentEntries) {
+    const ymd = workDateYmd(ce.workDate);
+    if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
     const key = ce.branch.trim();
     const sid =
       branchToStoreId.get(key) ?? branchToStoreId.get(key.replace(/店$/, ""));
@@ -474,7 +494,7 @@ export async function buildOperationsWorkHours(input: {
     if (hours <= 0) continue;
     adjustmentRows.push({
       id: ce.id,
-      workDate: formatDateOnly(ce.workDate),
+      workDate: ymd,
       category: "現貨文時數扣除",
       storeId: sid ?? null,
       storeName: sid ? (storeNameById.get(sid) ?? ce.branch) : ce.branch,
