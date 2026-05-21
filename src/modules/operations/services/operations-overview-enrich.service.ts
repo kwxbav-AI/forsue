@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { countTargetMetDaysByStore } from "@/modules/performance/services/target-summary.service";
 import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { yoyGrowthRate } from "@/lib/operations-yoy";
@@ -37,50 +37,6 @@ function shiftYear(dateStr: string, deltaYears: number): string {
   const d = parseDateOnlyUTC(dateStr);
   d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
   return formatDateOnly(d);
-}
-
-async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<string>> {
-  const holidays = await prisma.holiday.findMany({
-    where: {
-      isActive: true,
-      date: {
-        gte: parseDateOnlyUTC(startYmd),
-        lte: parseDateOnlyUTC(endYmd),
-      },
-    },
-    select: { date: true },
-  });
-  return new Set(holidays.map((h) => formatDateOnly(h.date)));
-}
-
-/** 區間內各門市工效比達標天數（排除週日與假日，與達標次數統計一致） */
-export async function countTargetMetDaysByStore(
-  startYmd: string,
-  endYmd: string,
-  storeIds?: string[]
-): Promise<Map<string, number>> {
-  const start = parseDateOnlyUTC(startYmd);
-  const end = parseDateOnlyUTC(endYmd);
-  const holidaySet = await loadHolidaySet(startYmd, endYmd);
-
-  const rows = await prisma.performanceDaily.findMany({
-    where: {
-      workDate: { gte: start, lte: end },
-      versionNo: 1,
-      isTargetMet: true,
-      ...(storeIds?.length ? { storeId: { in: storeIds } } : {}),
-      store: { isActive: true },
-    },
-    select: { storeId: true, workDate: true },
-  });
-
-  const counts = new Map<string, number>();
-  for (const r of rows) {
-    const ymd = formatDateOnly(r.workDate);
-    if (r.workDate.getUTCDay() === 0 || holidaySet.has(ymd)) continue;
-    counts.set(r.storeId, (counts.get(r.storeId) ?? 0) + 1);
-  }
-  return counts;
 }
 
 function listMonthsInRange(startYmd: string, endYmd: string) {

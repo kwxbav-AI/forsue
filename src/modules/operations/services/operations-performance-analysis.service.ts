@@ -1,10 +1,8 @@
 import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { buildDashboardFilterResult } from "@/modules/operations/services/operations-dashboard-filter.service";
-import {
-  countTargetMetDaysByStore,
-  revenueAchievementBucket,
-} from "@/modules/operations/services/operations-overview-enrich.service";
+import { revenueAchievementBucket } from "@/modules/operations/services/operations-overview-enrich.service";
+import { countTargetMetDaysByStore } from "@/modules/performance/services/target-summary.service";
 import {
   fetchRevenueByStoreAndMonth,
   sumRevenueTotalsByMonth,

@@ -4,6 +4,25 @@ import { toStartOfDay } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
+function queueRecalculateDateRange(startDate: string, endDate: string): void {
+  void (async () => {
+    try {
+      const start = toStartOfDay(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      await performanceEngineService.recalculateDateRange(start, end);
+      console.info(
+        `[recalculate-daily] completed ${startDate} ~ ${endDate}`
+      );
+    } catch (e) {
+      console.error(
+        `[recalculate-daily] failed ${startDate} ~ ${endDate}`,
+        e
+      );
+    }
+  })();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -11,17 +30,25 @@ export async function POST(request: NextRequest) {
     if (date) {
       const d = toStartOfDay(date);
       await performanceEngineService.recalculateDailyPerformance(d);
-      return NextResponse.json({ success: true, date: date });
+      return NextResponse.json({ success: true, date });
     }
+
     const startDate = body.startDate as string | undefined;
     const endDate = body.endDate as string | undefined;
     if (startDate && endDate) {
-      const start = toStartOfDay(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      await performanceEngineService.recalculateDateRange(start, end);
-      return NextResponse.json({ success: true, startDate, endDate });
+      queueRecalculateDateRange(startDate, endDate);
+      return NextResponse.json(
+        {
+          status: "queued",
+          success: true,
+          startDate,
+          endDate,
+          message: "已排入背景重算，請稍後再查詢績效資料",
+        },
+        { status: 202 }
+      );
     }
+
     return NextResponse.json(
       { error: "請提供 date 或 startDate+endDate" },
       { status: 400 }

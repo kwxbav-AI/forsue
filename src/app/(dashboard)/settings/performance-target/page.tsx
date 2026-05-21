@@ -103,6 +103,13 @@ export default function PerformanceTargetPage() {
     });
     const data = await res.json().catch(() => ({}));
     setRecalcRangeLoading(false);
+    if (res.status === 202) {
+      setMessage(
+        data.message ||
+          `已排入背景重算：${startDate} ～ ${endDate}，請稍後再查詢績效資料`
+      );
+      return;
+    }
     if (!res.ok) {
       setMessage(data.error || "重算失敗");
       return;
