@@ -1,4 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+
+const SLOW_QUERY_MS = 500;
 
 /**
  * 全應用程式共用單一 PrismaClient，避免 dev 熱重載或多人連線時耗盡 DB 連線池。
@@ -7,10 +9,31 @@ import { PrismaClient } from "@prisma/client";
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-function createPrisma(): PrismaClient {
-  return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+function attachSlowQueryLogger(client: PrismaClient): void {
+  // Prisma 推斷的 $on 事件型別需搭配 log: { emit: 'event', level: 'query' }
+  (
+    client as PrismaClient<{
+      log: [{ emit: "event"; level: "query" }, { emit: "stdout"; level: "error" }];
+    }>
+  ).$on("query", (e: Prisma.QueryEvent) => {
+    if (e.duration > SLOW_QUERY_MS) {
+      console.warn(`[slow-query] ${e.duration}ms`, e.query.slice(0, 150));
+    }
   });
+}
+
+function createPrisma(): PrismaClient {
+  const client = new PrismaClient({
+    log: [
+      { emit: "event", level: "query" },
+      { emit: "stdout", level: "error" },
+      ...(process.env.NODE_ENV === "development"
+        ? [{ emit: "stdout" as const, level: "warn" as const }]
+        : []),
+    ],
+  });
+  attachSlowQueryLogger(client);
+  return client;
 }
 
 function getClient(): PrismaClient {

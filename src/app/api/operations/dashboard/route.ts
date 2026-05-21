@@ -15,6 +15,7 @@ import {
   sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
 import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
+import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { parseApiPagination, paginateArray } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
         paginateArray(filteredResult.stores, page, pageSize)
       : { items: [] as typeof filteredResult.stores, pagination: null };
 
-    return NextResponse.json({
+    return jsonWithStatsCache({
       meta,
       query: {
         startDate: effectiveRange.startDate,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { buildTargetSummaryReport } from "@/modules/performance/services/target-summary.service";
 
 export const dynamic = "force-dynamic";
@@ -23,5 +24,5 @@ export async function GET(request: NextRequest) {
     storeId,
   });
 
-  return NextResponse.json(result);
+  return jsonWithStatsCache(result);
 }
