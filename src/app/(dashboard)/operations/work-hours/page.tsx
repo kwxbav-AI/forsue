@@ -27,13 +27,14 @@ type WorkHoursData = {
       totalHours: number;
       regularHours: number;
       overtimeHours: number;
+      hasAnomaly?: boolean;
     }[];
   };
   anomalies: {
     counts: {
       excessiveOvertime: number;
       absence: number;
-      lateFrequent: number;
+      clockAnomaly: number;
       insufficient: number;
     };
     list: {
@@ -258,7 +259,17 @@ export default function OperationsWorkHoursPage() {
                   <tbody>
                     {o.storeSummary.map((s) => (
                       <tr key={s.storeId} className="border-b border-slate-100">
-                        <td className="py-2 pr-4 font-medium text-slate-800">{s.storeName}</td>
+                        <td className="py-2 pr-4 font-medium text-slate-800">
+                          <span className="inline-flex items-center gap-1.5">
+                            {s.hasAnomaly ?
+                              <AlertTriangle
+                                className="h-4 w-4 shrink-0 text-amber-500"
+                                aria-label="本月有工時異常人員"
+                              />
+                            : null}
+                            {s.storeName}
+                          </span>
+                        </td>
                         <td className="py-2 pr-4 text-right">{s.headcount}</td>
                         <td className="py-2 pr-4 text-right">{s.totalHours}h</td>
                         <td className="py-2 pr-4 text-right">{s.regularHours}h</td>
@@ -278,7 +289,7 @@ export default function OperationsWorkHoursPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <AnomalyCountCard label="加班過多" count={a?.counts.excessiveOvertime ?? 0} bg="bg-sky-50" />
             <AnomalyCountCard label="缺勤異常" count={a?.counts.absence ?? 0} bg="bg-rose-50" />
-            <AnomalyCountCard label="遲到頻繁" count={a?.counts.lateFrequent ?? 0} bg="bg-amber-50" />
+            <AnomalyCountCard label="打卡異常" count={a?.counts.clockAnomaly ?? 0} bg="bg-amber-50" />
             <AnomalyCountCard label="工時不足" count={a?.counts.insufficient ?? 0} bg="bg-orange-50" />
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

@@ -77,6 +77,41 @@ function isYmdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
   return ymd >= startYmd && ymd <= endYmd;
 }
 
+/** 顯示用：2026-05-01 → 5/1 */
+function formatMonthDayLabel(ymd: string): string {
+  const [, m, d] = ymd.split("-").map(Number);
+  return `${m}/${d}`;
+}
+
+type AttendanceForClockAnomaly = {
+  workDate: Date;
+  employeeId: string;
+  clockInStoreText: string | null;
+  clockOutStoreText: string | null;
+  clockInStoreId: string | null;
+  clockOutStoreId: string | null;
+};
+
+function describeClockAnomalyDetail(
+  att: AttendanceForClockAnomaly,
+  dispatchByEmpDate: Map<string, { toStoreName: string }>,
+  storeNameById: Map<string, string>
+): string {
+  const ymd = workDateYmd(att.workDate);
+  const label = formatMonthDayLabel(ymd);
+  const dispatch = dispatchByEmpDate.get(`${att.employeeId}|${ymd}`);
+  if (dispatch) {
+    return `${label}支援${dispatch.toStoreName}`;
+  }
+  const clockId = att.clockInStoreId ?? att.clockOutStoreId;
+  const clockName =
+    att.clockInStoreText?.trim() ||
+    att.clockOutStoreText?.trim() ||
+    (clockId ? storeNameById.get(clockId) : null) ||
+    "其他門市";
+  return `${label}支援${clockName}`;
+}
+
 function homeStoreId(
   att: {
     employeeId: string;
@@ -140,6 +175,15 @@ export async function buildOperationsWorkHours(input: {
       select: { id: true, workDate: true, branch: true, deductedMinutes: true },
     }),
   ]);
+
+  const dispatchByEmpDate = new Map<string, { toStoreName: string }>();
+  for (const d of dispatches) {
+    const ymd = workDateYmd(d.workDate);
+    if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
+    dispatchByEmpDate.set(`${d.employeeId}|${ymd}`, {
+      toStoreName: storeNameById.get(d.toStoreId) ?? d.toStoreId,
+    });
+  }
 
   const branchToStoreId = new Map<string, string>();
   for (const s of filterStores) {
@@ -243,7 +287,7 @@ export async function buildOperationsWorkHours(input: {
   };
 
   const overtimeByEmployee = new Map<string, number>();
-  const mismatchByEmployee = new Map<string, number>();
+  const mismatchDetailsByEmployee = new Map<string, string[]>();
   const shortageByEmployee = new Map<string, number>();
 
   for (const a of attendances) {
@@ -270,7 +314,11 @@ export async function buildOperationsWorkHours(input: {
 
     const status = String(a.locationMatchStatus ?? "UNKNOWN");
     if (status.startsWith("MISMATCH") || status === "NEED_REVIEW") {
-      mismatchByEmployee.set(a.employeeId, (mismatchByEmployee.get(a.employeeId) ?? 0) + 1);
+      const detail = describeClockAnomalyDetail(a, dispatchByEmpDate, storeNameById);
+      const prev = mismatchDetailsByEmployee.get(a.employeeId) ?? [];
+      if (!prev.includes(detail)) {
+        mismatchDetailsByEmployee.set(a.employeeId, [...prev, detail]);
+      }
     }
 
     if (wh <= 0 && scheduled != null && scheduled > 0) {
@@ -308,25 +356,24 @@ export async function buildOperationsWorkHours(input: {
     }
   }
 
-  for (const [eid, cnt] of mismatchByEmployee) {
-    if (cnt >= 3) {
-      const a = attendances.find((x) => x.employeeId === eid);
-      if (!a) continue;
-      const sid = homeStoreId(a, fallbackHome);
-      if (!sid) continue;
-      bumpAnomaly(
-        eid,
-        {
-          employeeId: eid,
-          employeeName: a.employee.name,
-          employeeCode: a.employee.employeeCode,
-          storeId: sid,
-          storeName: storeNameById.get(sid) ?? sid,
-        },
-        "遲到頻繁",
-        `打卡地點異常 ${cnt} 次`
-      );
-    }
+  for (const [eid, details] of mismatchDetailsByEmployee) {
+    if (details.length < 3) continue;
+    const a = attendances.find((x) => x.employeeId === eid);
+    if (!a) continue;
+    const sid = homeStoreId(a, fallbackHome);
+    if (!sid) continue;
+    bumpAnomaly(
+      eid,
+      {
+        employeeId: eid,
+        employeeName: a.employee.name,
+        employeeCode: a.employee.employeeCode,
+        storeId: sid,
+        storeName: storeNameById.get(sid) ?? sid,
+      },
+      "打卡異常",
+      details.join("、")
+    );
   }
 
   for (const [eid, gap] of shortageByEmployee) {
@@ -351,10 +398,11 @@ export async function buildOperationsWorkHours(input: {
   }
 
   const anomalyList = [...anomalyByEmployee.values()];
+  const storeIdsWithAnomaly = new Set(anomalyList.map((r) => r.storeId));
   const anomalyCounts = {
     excessiveOvertime: anomalyList.filter((r) => r.types.includes("加班過多")).length,
     absence: anomalyList.filter((r) => r.types.includes("缺勤異常")).length,
-    lateFrequent: anomalyList.filter((r) => r.types.includes("遲到頻繁")).length,
+    clockAnomaly: anomalyList.filter((r) => r.types.includes("打卡異常")).length,
     insufficient: anomalyList.filter((r) => r.types.includes("工時不足")).length,
   };
 
@@ -368,6 +416,7 @@ export async function buildOperationsWorkHours(input: {
       totalHours: Math.round(s.totalHours * 10) / 10,
       regularHours: Math.round(Math.max(0, s.totalHours - s.overtimeHours) * 10) / 10,
       overtimeHours: Math.round(s.overtimeHours * 10) / 10,
+      hasAnomaly: storeIdsWithAnomaly.has(s.storeId),
     }))
     .sort((a, b) => b.totalHours - a.totalHours);
 
