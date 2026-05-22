@@ -16,6 +16,9 @@ type Store = {
 type Entry = {
   id: string;
   workDate: string;
+  createdByCode?: string | null;
+  createdByName?: string | null;
+  filledAt?: string;
   branch: string;
   totalArticles: number | null;
   contentDesc1: string | null;
@@ -576,8 +579,14 @@ export default function ContentEntriesPage() {
                 <th className="sticky left-0 z-20 w-[120px] min-w-[120px] whitespace-nowrap bg-slate-100 px-2 py-2 text-left font-medium text-slate-700">
                   日期
                 </th>
-                <th className="sticky left-[120px] z-20 w-[140px] min-w-[140px] whitespace-nowrap bg-slate-100 px-2 py-2 text-left font-medium text-slate-700">
+                <th className="sticky left-[120px] z-20 w-[88px] min-w-[88px] max-w-[88px] whitespace-nowrap bg-slate-100 px-1.5 py-2 text-left font-medium text-slate-700">
                   分店
+                </th>
+                <th className="whitespace-nowrap px-1.5 py-2 text-left font-medium text-slate-700 w-[72px]">
+                  填寫人
+                </th>
+                <th className="whitespace-nowrap px-1.5 py-2 text-left font-medium text-slate-700 w-[120px]">
+                  填寫時間
                 </th>
                 <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
                   總篇數
@@ -585,8 +594,8 @@ export default function ContentEntriesPage() {
                 <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
                   內容說明1
                 </th>
-                <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
-                  篇數1(網址)
+                <th className="whitespace-nowrap px-1 py-2 text-left font-medium text-slate-700 w-[56px]">
+                  篇數1
                 </th>
                 <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
                   商品1
@@ -597,8 +606,8 @@ export default function ContentEntriesPage() {
                 <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
                   內容說明2
                 </th>
-                <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
-                  篇數2(網址)
+                <th className="whitespace-nowrap px-1 py-2 text-left font-medium text-slate-700 w-[56px]">
+                  篇數2
                 </th>
                 <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
                   商品2
@@ -609,8 +618,8 @@ export default function ContentEntriesPage() {
                 <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
                   內容說明3
                 </th>
-                <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">
-                  篇數3(網址)
+                <th className="whitespace-nowrap px-1 py-2 text-left font-medium text-slate-700 w-[56px]">
+                  篇數3
                 </th>
                 <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">
                   商品3
@@ -632,12 +641,18 @@ export default function ContentEntriesPage() {
                   <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white px-2 py-1.5">
                     {formatWorkDate(row.workDate)}
                   </td>
-                  <td className="sticky left-[120px] z-[5] w-[140px] min-w-[140px] bg-white px-2 py-1.5 font-medium">
+                  <td className="sticky left-[120px] z-[5] w-[88px] min-w-[88px] max-w-[88px] truncate bg-white px-1.5 py-1.5 font-medium" title={row.branch}>
                     {row.branch}
+                  </td>
+                  <td className="px-1.5 py-1.5 text-xs text-slate-600 whitespace-nowrap">
+                    {row.createdByName ?? row.createdByCode ?? "—"}
+                  </td>
+                  <td className="px-1.5 py-1.5 text-xs text-slate-500 whitespace-nowrap tabular-nums">
+                    {row.filledAt ?? "—"}
                   </td>
                   <td className="px-2 py-1.5 text-right">{row.totalArticles ?? "—"}</td>
                   <td className="px-2 py-1.5 text-slate-600">{row.contentDesc1 ?? "—"}</td>
-                  <td className="max-w-[120px] px-2 py-1.5">
+                  <td className="w-[56px] max-w-[56px] px-1 py-1.5">
                     {row.articleUrl1 ? (
                       <a
                         href={/^https?:\/\//i.test(row.articleUrl1) ? row.articleUrl1 : `https://${row.articleUrl1}`}
@@ -655,7 +670,7 @@ export default function ContentEntriesPage() {
                   <td className="px-2 py-1.5 text-right">{row.productCount1 ?? "—"}</td>
                   <td className="px-2 py-1.5 text-right">{row.commentCount1 ?? "—"}</td>
                   <td className="px-2 py-1.5 text-slate-600">{row.contentDesc2 ?? "—"}</td>
-                  <td className="max-w-[120px] px-2 py-1.5">
+                  <td className="w-[56px] max-w-[56px] px-1 py-1.5">
                     {row.articleUrl2 ? (
                       <a
                         href={/^https?:\/\//i.test(row.articleUrl2) ? row.articleUrl2 : `https://${row.articleUrl2}`}
@@ -673,7 +688,7 @@ export default function ContentEntriesPage() {
                   <td className="px-2 py-1.5 text-right">{row.productCount2 ?? "—"}</td>
                   <td className="px-2 py-1.5 text-right">{row.commentCount2 ?? "—"}</td>
                   <td className="px-2 py-1.5 text-slate-600">{row.contentDesc3 ?? "—"}</td>
-                  <td className="max-w-[120px] px-2 py-1.5">
+                  <td className="w-[56px] max-w-[56px] px-1 py-1.5">
                     {row.articleUrl3 ? (
                       <a
                         href={/^https?:\/\//i.test(row.articleUrl3) ? row.articleUrl3 : `https://${row.articleUrl3}`}

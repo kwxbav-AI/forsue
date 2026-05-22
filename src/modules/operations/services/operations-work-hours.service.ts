@@ -10,6 +10,7 @@ import {
   computeTotalWorkHoursByStore,
 } from "@/modules/performance/services/attendance-allocation.service";
 import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
+import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 import { addCalendarDaysUTC } from "@/lib/date";
 
 const DAY_CONCURRENCY = 12;
@@ -144,6 +145,14 @@ export async function buildOperationsWorkHours(input: {
   const days = listDaysInRange(startYmd, endYmd);
   const filterStores = await listPerformanceStoresForFilter();
   const storeNameById = new Map(filterStores.map((s) => [s.id, s.storeName]));
+  /** 月加班／異常清單僅顯示桃園＋宜蘭各 10 間門市 */
+  const dualRegionStoreIds = new Set(
+    filterStores
+      .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
+      .map((s) => s.id)
+  );
+  const isDualRegionStore = (storeId: string | null | undefined) =>
+    Boolean(storeId && dualRegionStoreIds.has(storeId));
 
   const resolveStoreName = (storeId: string | null | undefined, fallback?: string) => {
     if (!storeId) return fallback?.trim() || "—";
@@ -387,6 +396,7 @@ export async function buildOperationsWorkHours(input: {
     if (!a) continue;
     const sid = homeStoreId(a, fallbackHome);
     if (!sid || !storeNameById.has(sid)) continue;
+    if (!isDualRegionStore(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
     monthlyOvertime.push({
       employeeId: eid,
@@ -462,7 +472,9 @@ export async function buildOperationsWorkHours(input: {
     }
   }
 
-  const anomalyList = [...anomalyByEmployee.values()];
+  const anomalyList = [...anomalyByEmployee.values()].filter((r) =>
+    isDualRegionStore(r.storeId)
+  );
   const storeIdsWithAnomaly = new Set(anomalyList.map((r) => r.storeId));
   const anomalyCounts = {
     excessiveOvertime: anomalyList.filter((r) => r.types.includes("加班過多")).length,

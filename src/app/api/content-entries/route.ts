@@ -5,6 +5,11 @@ import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hasModuleEffectivePermission } from "@/lib/permissions-db";
+import {
+  creatorDisplayName,
+  formatFilledAtTaipei,
+  resolveCreatorNamesByCode,
+} from "@/lib/record-creator-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -75,12 +80,24 @@ export async function GET(request: NextRequest) {
     orderBy: [{ workDate: "desc" }, { branch: "asc" }],
     ...(take ? { take } : {}),
   });
+  const creatorCodes = list.map((r) => r.createdBy?.trim()).filter(Boolean) as string[];
+  const nameByCode = await resolveCreatorNamesByCode(creatorCodes);
   const canSee = await canSeeDeductedMinutes(request);
-  return NextResponse.json(canSee ? list : list.map((r) => maskDeductedMinutes(r)));
+  const payload = list.map((r) => {
+    const base = canSee ? r : maskDeductedMinutes(r);
+    return {
+      ...base,
+      createdByCode: r.createdBy?.trim() || null,
+      createdByName: creatorDisplayName(r.createdBy, nameByCode),
+      filledAt: formatFilledAtTaipei(r.createdAt),
+    };
+  });
+  return NextResponse.json(payload);
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSessionFromRequest(request);
     const body = await request.json();
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) {
@@ -116,10 +133,20 @@ export async function POST(request: NextRequest) {
         productCount3: parsed.data.productCount3 ?? null,
         commentCount3: parsed.data.commentCount3 ?? null,
         deductedMinutes,
+        createdBy: session?.username?.trim() || null,
       },
     });
     const canSee = await canSeeDeductedMinutes(request);
-    return NextResponse.json(canSee ? created : maskDeductedMinutes(created));
+    const nameByCode = await resolveCreatorNamesByCode(
+      created.createdBy ? [created.createdBy] : []
+    );
+    const row = {
+      ...(canSee ? created : maskDeductedMinutes(created)),
+      createdByCode: created.createdBy?.trim() || null,
+      createdByName: creatorDisplayName(created.createdBy, nameByCode),
+      filledAt: formatFilledAtTaipei(created.createdAt),
+    };
+    return NextResponse.json(row);
   } catch (e) {
     console.error(e);
     return NextResponse.json(

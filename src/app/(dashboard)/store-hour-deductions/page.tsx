@@ -22,6 +22,9 @@ type Row = {
   reason: string;
   hours: number;
   note: string | null;
+  createdByCode?: string | null;
+  createdByName?: string | null;
+  filledAt?: string;
 };
 
 const REASON_OPTIONS = [
@@ -270,6 +273,8 @@ export default function StoreHourDeductionsPage() {
                   <th className="sticky left-[120px] z-20 w-[160px] min-w-[160px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                     門市
                   </th>
+                  <th className="px-2 py-2 text-left font-medium text-slate-700 w-[80px]">填寫人</th>
+                  <th className="px-2 py-2 text-left font-medium text-slate-700 w-[128px]">填寫時間</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">原因</th>
                   <th className="px-4 py-2 text-right font-medium text-slate-700">時數</th>
                   <th className="px-4 py-2 text-left font-medium text-slate-700">備註</th>
@@ -284,6 +289,12 @@ export default function StoreHourDeductionsPage() {
                     </td>
                     <td className="sticky left-[120px] z-[5] w-[160px] min-w-[160px] bg-white px-4 py-2">
                       {r.storeName}
+                    </td>
+                    <td className="px-2 py-2 text-xs text-slate-600 whitespace-nowrap">
+                      {r.createdByName ?? r.createdByCode ?? "—"}
+                    </td>
+                    <td className="px-2 py-2 text-xs text-slate-500 whitespace-nowrap tabular-nums">
+                      {r.filledAt ?? "—"}
                     </td>
                     <td className="px-4 py-2">{REASON_LABELS[r.reason] ?? r.reason}</td>
                     <td className="px-4 py-2 text-right">{r.hours}</td>

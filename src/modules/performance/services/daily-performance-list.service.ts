@@ -49,7 +49,11 @@ async function mapWithConcurrency<T, R>(
 
 export type DailyPerformanceListRow = {
   id: string;
+  /** 單日 YYYY-MM-DD；區間為 M/D～M/D */
   workDate: string;
+  periodStart?: string;
+  periodEnd?: string;
+  aggregated?: boolean;
   storeId: string;
   storeName: string;
   storeCode: string | null;
@@ -61,6 +65,11 @@ export type DailyPerformanceListRow = {
   isTargetMet: boolean;
   calculatedAt: string;
 };
+
+function formatMdLabel(ymd: string): string {
+  const [, m, d] = ymd.split("-").map(Number);
+  return `${m}/${d}`;
+}
 
 function filterStoresByRegionAndId(
   stores: { id: string; name: string; code: string | null; department: string | null }[],
@@ -124,47 +133,123 @@ export async function listDailyPerformanceRows(input: {
 
   const rows: DailyPerformanceListRow[] = [];
   const now = new Date().toISOString();
+  const isRange = effective.startDate !== effective.endDate;
 
-  for (const day of dailyMaps) {
-    for (const store of filteredStores) {
-      const live = day.metrics.get(store.id);
-      const revenueAmount = live?.revenue ?? 0;
-      const totalWorkHours = round2(live?.laborHours ?? 0);
-      if (revenueAmount <= 0 && totalWorkHours <= 0) continue;
+  if (!isRange) {
+    for (const day of dailyMaps) {
+      for (const store of filteredStores) {
+        const live = day.metrics.get(store.id);
+        const revenueAmount = live?.revenue ?? 0;
+        const totalWorkHours = round2(live?.laborHours ?? 0);
+        if (revenueAmount <= 0 && totalWorkHours <= 0) continue;
 
-      let efficiencyRatio = 0;
-      if (totalWorkHours > 0) {
-        efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
+        let efficiencyRatio = 0;
+        if (totalWorkHours > 0) {
+          efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
+        }
+        const isTargetMet =
+          totalWorkHours > 0 ?
+            day.weekDay === 6 ?
+              efficiencyRatio >= 5500
+            : efficiencyRatio >= 4000
+          : false;
+
+        rows.push({
+          id: `${day.ymd}-${store.id}`,
+          workDate: day.ymd,
+          storeId: store.id,
+          storeName: store.name,
+          storeCode: store.code,
+          region: inferRetailRegion(store.name, store.department) ?? "",
+          revenueAmount,
+          totalWorkHours,
+          efficiencyRatio,
+          targetValue: day.targetValue,
+          isTargetMet,
+          calculatedAt: now,
+        });
       }
-      const isTargetMet =
-        totalWorkHours > 0 ?
-          day.weekDay === 6 ?
-            efficiencyRatio >= 5500
-          : efficiencyRatio >= 4000
-        : false;
+    }
+    rows.sort(
+      (a, b) =>
+        a.workDate.localeCompare(b.workDate) ||
+        a.storeName.localeCompare(b.storeName, "zh-Hant")
+    );
+  } else {
+    type Agg = {
+      store: (typeof filteredStores)[number];
+      revenueAmount: number;
+      totalWorkHours: number;
+      targetValueSum: number;
+      metDays: number;
+      activeDays: number;
+    };
+    const byStore = new Map<string, Agg>();
 
+    for (const day of dailyMaps) {
+      for (const store of filteredStores) {
+        const live = day.metrics.get(store.id);
+        const revenueAmount = live?.revenue ?? 0;
+        const totalWorkHours = round2(live?.laborHours ?? 0);
+        if (revenueAmount <= 0 && totalWorkHours <= 0) continue;
+
+        let efficiencyRatio = 0;
+        if (totalWorkHours > 0) {
+          efficiencyRatio = new Decimal(revenueAmount).div(totalWorkHours).toNumber();
+        }
+        const dayMet =
+          totalWorkHours > 0 ?
+            day.weekDay === 6 ?
+              efficiencyRatio >= 5500
+            : efficiencyRatio >= 4000
+          : false;
+
+        const prev = byStore.get(store.id);
+        if (prev) {
+          prev.revenueAmount += revenueAmount;
+          prev.totalWorkHours = round2(prev.totalWorkHours + totalWorkHours);
+          prev.targetValueSum += day.targetValue;
+          if (dayMet) prev.metDays += 1;
+          prev.activeDays += 1;
+        } else {
+          byStore.set(store.id, {
+            store,
+            revenueAmount,
+            totalWorkHours,
+            targetValueSum: day.targetValue,
+            metDays: dayMet ? 1 : 0,
+            activeDays: 1,
+          });
+        }
+      }
+    }
+
+    const periodLabel = `${formatMdLabel(effective.startDate)}～${formatMdLabel(effective.endDate)}`;
+    for (const [storeId, agg] of byStore) {
+      const efficiencyRatio =
+        agg.totalWorkHours > 0 ?
+          new Decimal(agg.revenueAmount).div(agg.totalWorkHours).toNumber()
+        : 0;
       rows.push({
-        id: `${day.ymd}-${store.id}`,
-        workDate: day.ymd,
-        storeId: store.id,
-        storeName: store.name,
-        storeCode: store.code,
-        region: inferRetailRegion(store.name, store.department) ?? "",
-        revenueAmount,
-        totalWorkHours,
+        id: `${effective.startDate}-${effective.endDate}-${storeId}`,
+        workDate: periodLabel,
+        periodStart: effective.startDate,
+        periodEnd: effective.endDate,
+        aggregated: true,
+        storeId,
+        storeName: agg.store.name,
+        storeCode: agg.store.code,
+        region: inferRetailRegion(agg.store.name, agg.store.department) ?? "",
+        revenueAmount: agg.revenueAmount,
+        totalWorkHours: agg.totalWorkHours,
         efficiencyRatio,
-        targetValue: day.targetValue,
-        isTargetMet,
+        targetValue: agg.targetValueSum,
+        isTargetMet: agg.activeDays > 0 && agg.metDays === agg.activeDays,
         calculatedAt: now,
       });
     }
+    rows.sort((a, b) => a.storeName.localeCompare(b.storeName, "zh-Hant"));
   }
-
-  rows.sort(
-    (a, b) =>
-      a.workDate.localeCompare(b.workDate) ||
-      a.storeName.localeCompare(b.storeName, "zh-Hant")
-  );
 
   return {
     startDate: effective.startDate,

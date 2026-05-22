@@ -56,6 +56,7 @@ model StoreHourDeduction {
   reason    StoreDeductionReason
   hours     Decimal               @db.Decimal(10, 2)
   note      String?
+  createdBy String?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
   store     Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -326,6 +327,7 @@ model ContentEntry {
   productCount3   Int?
   commentCount3   Int?
   deductedMinutes Int?     // 扣工時（分鐘），依規則計算後儲存
+  createdBy       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
