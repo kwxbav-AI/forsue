@@ -171,91 +171,97 @@ export async function importStoreTargetsFromExcel(input: {
 
   const unmatchedStores: string[] = [];
   const storeIdByKey = new Map<string, string>();
-  let upserted = 0;
   let skipped = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const key of allKeys) {
-      const salesRow = salesByKey.get(key);
-      const hoursRow = hoursByKey.get(key);
-      const label = salesRow?.storeLabel ?? hoursRow?.storeLabel ?? key;
-      const region = salesRow?.region ?? hoursRow?.region ?? "";
+  type WriteRow = {
+    storeId: string;
+    year: number;
+    month: number;
+    salesTarget: number;
+    laborHourTarget: number;
+    rplhTarget: number | null;
+    note: string | null;
+  };
+  const rowsToWrite: WriteRow[] = [];
 
-      let storeId = storeIdByKey.get(key);
-      if (!storeId) {
-        const retail = resolveRetailStore(key, label, retailStores);
-        if (!retail) {
-          unmatchedStores.push(label);
-          continue;
-        }
-        storeId = retail.id;
-        storeIdByKey.set(key, storeId);
+  for (const key of allKeys) {
+    const salesRow = salesByKey.get(key);
+    const hoursRow = hoursByKey.get(key);
+    const label = salesRow?.storeLabel ?? hoursRow?.storeLabel ?? key;
+    const region = salesRow?.region ?? hoursRow?.region ?? "";
 
-        if (region) {
-          await tx.retailStore.update({
-            where: { id: storeId },
-            data: { region },
-          });
-        }
+    let storeId = storeIdByKey.get(key);
+    if (!storeId) {
+      const retail = resolveRetailStore(key, label, retailStores);
+      if (!retail) {
+        unmatchedStores.push(label);
+        continue;
       }
+      storeId = retail.id;
+      storeIdByKey.set(key, storeId);
 
-      for (let month = 1; month <= 12; month++) {
-        const salesVal = salesRow?.months.get(month);
-        const hoursVal = hoursRow?.months.get(month);
-        const existing = existingByStoreMonth.get(`${storeId}|${month}`);
-
-        const salesTarget =
-          salesVal ??
-          (existing ? Number(existing.salesTarget) : null);
-        const laborHourTarget =
-          hoursVal ??
-          (existing ? Number(existing.laborHourTarget) : null);
-
-        if (
-          salesTarget == null ||
-          laborHourTarget == null ||
-          salesTarget <= 0 ||
-          laborHourTarget <= 0
-        ) {
-          if (salesVal != null || hoursVal != null) {
-            skipped += 1;
-            warnings.push(
-              `${label} ${year}/${month}：缺少業績或工時目標，略過（需兩檔皆提供或資料庫已有另一項）`
-            );
-          }
-          continue;
-        }
-
-        const rplh = computeRplhTarget(salesTarget, laborHourTarget);
-        const note =
-          salesRow?.note ??
-          (existing?.note ? String(existing.note) : null) ??
-          null;
-
-        await tx.storeTarget.upsert({
-          where: {
-            storeId_year_month: { storeId, year, month },
-          },
-          create: {
-            storeId,
-            year,
-            month,
-            salesTarget,
-            laborHourTarget,
-            rplhTarget: rplh ? Number(rplh) : null,
-            note,
-          },
-          update: {
-            salesTarget,
-            laborHourTarget,
-            rplhTarget: rplh ? Number(rplh) : null,
-            note,
-          },
+      if (region) {
+        await prisma.retailStore.update({
+          where: { id: storeId },
+          data: { region },
         });
-        upserted += 1;
       }
     }
-  });
+
+    for (let month = 1; month <= 12; month++) {
+      const salesVal = salesRow?.months.get(month);
+      const hoursVal = hoursRow?.months.get(month);
+      const existing = existingByStoreMonth.get(`${storeId}|${month}`);
+
+      const salesTarget =
+        salesVal ?? (existing ? Number(existing.salesTarget) : null);
+      const laborHourTarget =
+        hoursVal ?? (existing ? Number(existing.laborHourTarget) : null);
+
+      if (
+        salesTarget == null ||
+        laborHourTarget == null ||
+        salesTarget <= 0 ||
+        laborHourTarget <= 0
+      ) {
+        if (salesVal != null || hoursVal != null) {
+          skipped += 1;
+          if (warnings.length < 50) {
+            warnings.push(
+              `${label} ${year}/${month}：缺少業績或工時，略過（需兩檔皆有或 DB 已有另一項）`
+            );
+          }
+        }
+        continue;
+      }
+
+      const rplh = computeRplhTarget(salesTarget, laborHourTarget);
+      rowsToWrite.push({
+        storeId,
+        year,
+        month,
+        salesTarget,
+        laborHourTarget,
+        rplhTarget: rplh ? Number(rplh) : null,
+        note:
+          salesRow?.note ??
+          (existing?.note ? String(existing.note) : null) ??
+          null,
+      });
+    }
+  }
+
+  const storeIdsToReplace = [...storeIdByKey.values()];
+  if (rowsToWrite.length > 0) {
+    await prisma.$transaction([
+      prisma.storeTarget.deleteMany({
+        where: { year, storeId: { in: storeIdsToReplace } },
+      }),
+      prisma.storeTarget.createMany({ data: rowsToWrite }),
+    ]);
+  }
+
+  const upserted = rowsToWrite.length;
 
   return {
     year,

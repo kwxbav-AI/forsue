@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
       ...(month ? { month } : {}),
     },
     include: { store: { select: { storeName: true, region: true } } },
-    orderBy: [{ year: "desc" }, { month: "desc" }, { store: { storeName: "asc" } }],
+    orderBy: month
+      ? [{ year: "desc" }, { month: "desc" }, { store: { storeName: "asc" } }]
+      : [{ store: { storeName: "asc" } }, { month: "asc" }],
   });
   return NextResponse.json(list.map(serializeStoreTarget));
 }
