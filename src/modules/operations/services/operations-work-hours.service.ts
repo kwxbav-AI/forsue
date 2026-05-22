@@ -146,6 +146,11 @@ export async function buildOperationsWorkHours(input: {
   const filterStores = await listPerformanceStoresForFilter();
   const storeNameById = new Map(filterStores.map((s) => [s.id, s.storeName]));
 
+  const resolveStoreName = (storeId: string | null | undefined, fallback?: string) => {
+    if (!storeId) return fallback?.trim() || "—";
+    return storeNameById.get(storeId) ?? (fallback?.trim() || storeId);
+  };
+
   // 勿用 toDateRangeTaipei：gte 帶 16:00 UTC 與 @db.Date 比對時會被截成前一日，誤含 4/30、3/30
   const { start, end } = toDateRange(startYmd, endYmd);
 
@@ -181,7 +186,7 @@ export async function buildOperationsWorkHours(input: {
     const ymd = workDateYmd(d.workDate);
     if (!isYmdInRange(ymd, startYmd, endYmd)) continue;
     dispatchByEmpDate.set(`${d.employeeId}|${ymd}`, {
-      toStoreName: storeNameById.get(d.toStoreId) ?? d.toStoreId,
+      toStoreName: resolveStoreName(d.toStoreId),
     });
   }
 
@@ -190,6 +195,35 @@ export async function buildOperationsWorkHours(input: {
     const n = s.storeName.trim();
     branchToStoreId.set(n, s.id);
     if (!n.endsWith("店")) branchToStoreId.set(`${n}店`, s.id);
+  }
+
+  const extraStoreIds = new Set<string>();
+  for (const adj of adjustments) {
+    if (adj.storeId) extraStoreIds.add(adj.storeId);
+  }
+  for (const d of dispatches) {
+    extraStoreIds.add(d.toStoreId);
+    if (d.fromStoreId) extraStoreIds.add(d.fromStoreId);
+  }
+  for (const ded of deductions) {
+    extraStoreIds.add(ded.storeId);
+  }
+  const missingIds = [...extraStoreIds].filter((id) => !storeNameById.has(id));
+  if (missingIds.length > 0) {
+    const [perfStores, retailStores] = await Promise.all([
+      prisma.store.findMany({
+        where: { id: { in: missingIds } },
+        select: { id: true, name: true },
+      }),
+      prisma.retailStore.findMany({
+        where: { id: { in: missingIds } },
+        select: { id: true, storeName: true },
+      }),
+    ]);
+    for (const s of perfStores) storeNameById.set(s.id, s.name);
+    for (const r of retailStores) {
+      if (!storeNameById.has(r.id)) storeNameById.set(r.id, r.storeName);
+    }
   }
 
   const fallbackHome = new Map<string, string>();
@@ -335,6 +369,36 @@ export async function buildOperationsWorkHours(input: {
     }
   }
 
+  type MonthlyOvertimeRow = {
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    storeId: string;
+    storeName: string;
+    overtimeHours: number;
+    alertRatioPct: number;
+  };
+
+  const monthlyOvertime: MonthlyOvertimeRow[] = [];
+  for (const [eid, ot] of overtimeByEmployee) {
+    if (ot <= 0) continue;
+    const a = attendances.find((x) => x.employeeId === eid);
+    if (!a) continue;
+    const sid = homeStoreId(a, fallbackHome);
+    if (!sid || !storeNameById.has(sid)) continue;
+    if (input.storeId && sid !== input.storeId) continue;
+    monthlyOvertime.push({
+      employeeId: eid,
+      employeeName: a.employee.name,
+      employeeCode: a.employee.employeeCode,
+      storeId: sid,
+      storeName: resolveStoreName(sid),
+      overtimeHours: Math.round(ot * 10) / 10,
+      alertRatioPct: Math.round((ot / 46) * 1000) / 10,
+    });
+  }
+  monthlyOvertime.sort((a, b) => b.overtimeHours - a.overtimeHours);
+
   for (const [eid, ot] of overtimeByEmployee) {
     if (ot > 12) {
       const a = attendances.find((x) => x.employeeId === eid);
@@ -469,7 +533,7 @@ export async function buildOperationsWorkHours(input: {
       workDate: ymd,
       category: "人力支援",
       storeId: d.toStoreId,
-      storeName: storeNameById.get(d.toStoreId) ?? d.toStoreId,
+      storeName: resolveStoreName(d.toStoreId),
       employeeName: d.employee.name,
       employeeCode: d.employee.employeeCode,
       hours: Math.round(hours * 100) / 100,
@@ -481,7 +545,7 @@ export async function buildOperationsWorkHours(input: {
         workDate: ymd,
         category: "人力支援（調出）",
         storeId: d.fromStoreId,
-        storeName: storeNameById.get(d.fromStoreId) ?? d.fromStoreId,
+        storeName: resolveStoreName(d.fromStoreId),
         employeeName: d.employee.name,
         employeeCode: d.employee.employeeCode,
         hours: -Math.round(hours * 100) / 100,
@@ -502,7 +566,7 @@ export async function buildOperationsWorkHours(input: {
       workDate: ymd,
       category,
       storeId: adj.storeId,
-      storeName: adj.storeId ? (storeNameById.get(adj.storeId) ?? adj.storeId) : "—",
+      storeName: resolveStoreName(adj.storeId),
       employeeName: adj.employee.name,
       employeeCode: adj.employee.employeeCode,
       hours: Math.round(Number(adj.adjustmentHours) * 100) / 100,
@@ -546,7 +610,7 @@ export async function buildOperationsWorkHours(input: {
       workDate: ymd,
       category: "現貨文時數扣除",
       storeId: sid ?? null,
-      storeName: sid ? (storeNameById.get(sid) ?? ce.branch) : ce.branch,
+      storeName: sid ? resolveStoreName(sid, ce.branch) : ce.branch.trim() || "—",
       employeeName: "—",
       employeeCode: "—",
       hours: -Math.round(hours * 100) / 100,
@@ -578,6 +642,7 @@ export async function buildOperationsWorkHours(input: {
     anomalies: {
       counts: anomalyCounts,
       list: anomalyList,
+      monthlyOvertime,
     },
     perCapita: {
       companyAvgPerCapita:

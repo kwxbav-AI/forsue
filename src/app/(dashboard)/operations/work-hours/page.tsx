@@ -45,6 +45,14 @@ type WorkHoursData = {
       types: string[];
       detail: string;
     }[];
+    monthlyOvertime: {
+      employeeId: string;
+      employeeName: string;
+      employeeCode: string;
+      storeName: string;
+      overtimeHours: number;
+      alertRatioPct: number;
+    }[];
   };
   perCapita: {
     companyAvgPerCapita: number | null;
@@ -379,6 +387,12 @@ export default function OperationsWorkHoursPage() {
   );
 }
 
+function overtimeAlertRowClass(ratioPct: number): string {
+  if (ratioPct > 75) return "bg-red-50";
+  if (ratioPct > 50) return "bg-amber-50";
+  return "bg-emerald-50";
+}
+
 function IssuesTab({
   anomalies,
   adjustments,
@@ -394,9 +408,53 @@ function IssuesTab({
     anomalies?.list.filter((r) =>
       anomalyFilter === "all" ? true : r.types.includes(anomalyFilter)
     ) ?? [];
+  const monthlyOvertime = anomalies?.monthlyOvertime ?? [];
 
   return (
     <div className="space-y-8">
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">月加班</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            加班警示 = 月加班時數 ÷ 46h（%）· ≤50% 淡綠、51–75% 淡黃、&gt;75% 淡紅
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {monthlyOvertime.length ?
+            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="py-2 pr-3">門市</th>
+                    <th className="py-2 pr-3">員工</th>
+                    <th className="py-2 pr-3 text-right">月加班時數</th>
+                    <th className="py-2 text-right">加班警示</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyOvertime.map((r) => (
+                    <tr
+                      key={r.employeeId}
+                      className={`border-b border-slate-100 ${overtimeAlertRowClass(r.alertRatioPct)}`}
+                    >
+                      <td className="py-2 pr-3 font-medium text-slate-800">{r.storeName}</td>
+                      <td className="py-2 pr-3">
+                        {r.employeeName}
+                        <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.overtimeHours}h</td>
+                      <td className="py-2 text-right tabular-nums font-medium">
+                        {r.alertRatioPct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          : <EmptyState text="本月尚無加班時數記錄" />}
+        </div>
+      </section>
+
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">異常偵測</h2>

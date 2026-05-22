@@ -25,6 +25,9 @@ import {
   Clock,
   Store,
   AlertTriangle,
+  Users,
+  Receipt,
+  Upload,
 } from "lucide-react";
 
 import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
@@ -36,6 +39,14 @@ function defaultOverviewStartDate() {
 }
 
 const STATUS_COLOR = { green: "#16a34a", yellow: "#d97706", red: "#dc2626", none: "#94a3b8" };
+
+/** 門市狀態長條圖：依營收達成率著色 */
+function achievementBarFill(rate: number | null | undefined): string {
+  if (rate == null || Number.isNaN(rate)) return "#fbcfe8";
+  if (rate >= 100) return "#dbeafe";
+  if (rate >= 80) return "#fef9c3";
+  return "#fbcfe8";
+}
 const REGION_PIE_COLOR: Record<string, string> = {
   "桃園區": "#1e40af",
   "宜蘭區": "#6d28d9",
@@ -100,6 +111,11 @@ type OverviewData = {
   bottomStores?: OverviewStore[];
   priorityAlerts?: PriorityAlert[];
   dualRegionRevenueShare?: { region: string; revenue: number; sharePct: number }[];
+  customerMetrics?: {
+    totalCustomerCount: number;
+    avgOrderValue: number | null;
+    daysWithData: number;
+  };
 };
 
 type KpiMetrics = {
@@ -198,6 +214,9 @@ export default function OperationsOverviewPage() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [kpi, setKpi] = useState<KpiMetrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [importingTraffic, setImportingTraffic] = useState(false);
+  const [trafficMessage, setTrafficMessage] = useState<string | null>(null);
+  const trafficInputRef = useRef<HTMLInputElement>(null);
   const heavyLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -260,9 +279,43 @@ export default function OperationsOverviewPage() {
         statusLabel: s.statusLabel,
         laborHours: s.laborHours,
         efficiencyRatio: s.efficiencyRatio,
-        fill: STATUS_COLOR[s.status],
+        fill: achievementBarFill(s.revenueAchievementRate),
       }));
   }, [overview]);
+
+  async function handleTrafficImport() {
+    const file = trafficInputRef.current?.files?.[0];
+    if (!file) {
+      setTrafficMessage("請選擇 Excel 檔案");
+      return;
+    }
+    setImportingTraffic(true);
+    setTrafficMessage(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/operations/customer-traffic/import", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        warnings?: string[];
+      };
+      if (!res.ok) {
+        setTrafficMessage(data.error || "匯入失敗");
+        return;
+      }
+      setTrafficMessage(
+        [data.message, ...(data.warnings ?? [])].filter(Boolean).join(" · ")
+      );
+      if (trafficInputRef.current) trafficInputRef.current.value = "";
+      void load();
+    } finally {
+      setImportingTraffic(false);
+    }
+  }
 
   const pieData = overview ?
     [
@@ -273,7 +326,8 @@ export default function OperationsOverviewPage() {
   : [];
 
   const regionChart = overview?.regionStats ?? [];
-  const chartHeight = Math.max(280, storeShareChart.length * 32);
+  const customerMetrics = overview?.customerMetrics;
+  const storeChartHeight = Math.max(320, storeShareChart.length * 28);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -371,7 +425,7 @@ export default function OperationsOverviewPage() {
 
       {overview ?
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             <KpiCard
               title="區間營業額"
               value={formatMoney(overview.summary.totalRevenue)}
@@ -404,6 +458,61 @@ export default function OperationsOverviewPage() {
               icon={<Activity className="h-5 w-5" />}
               accent="#0d9488"
             />
+            <KpiCard
+              title="來客數（結帳單）"
+              value={
+                customerMetrics && customerMetrics.totalCustomerCount > 0 ?
+                  customerMetrics.totalCustomerCount.toLocaleString("zh-TW")
+                : "—"
+              }
+              sub={
+                customerMetrics?.daysWithData ?
+                  `區間 ${customerMetrics.daysWithData} 天有資料`
+                : "請上傳來客／客單 Excel"
+              }
+              icon={<Users className="h-5 w-5" />}
+              accent="#c026d3"
+            />
+            <KpiCard
+              title="平均客單價"
+              value={
+                customerMetrics?.avgOrderValue != null ?
+                  `${formatMoney(customerMetrics.avgOrderValue)} 元`
+                : "—"
+              }
+              sub="銷售總額 ÷ 來客數"
+              icon={<Receipt className="h-5 w-5" />}
+              accent="#ea580c"
+            />
+          </div>
+
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <p className="text-sm font-medium text-slate-800">來客數／平均客單上傳</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Excel 欄位：日期、部門（門市）、來客數、銷售總額、平均客單（民國年日期如 114.02.03）
+                </p>
+              </div>
+              <input
+                ref={trafficInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="text-sm text-slate-600 max-w-xs"
+              />
+              <button
+                type="button"
+                onClick={() => void handleTrafficImport()}
+                disabled={importingTraffic}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+              >
+                <Upload className="h-4 w-4" />
+                {importingTraffic ? "匯入中…" : "上傳匯入"}
+              </button>
+            </div>
+            {trafficMessage ?
+              <p className="text-xs text-slate-600 mt-2">{trafficMessage}</p>
+            : null}
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -546,30 +655,51 @@ export default function OperationsOverviewPage() {
                 依營收達成率、工效比偏低、總工時偏高綜合排序（相較同區間門市中位數）
               </p>
               {priorityAlerts.length ?
-                <ul className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                   {priorityAlerts.map((a, i) => (
-                    <li
+                    <div
                       key={a.storeId}
-                      className="rounded-lg border border-amber-200/80 bg-white px-3 py-2 text-sm"
+                      className="rounded-lg border border-amber-200/70 bg-white overflow-hidden"
                     >
-                      <div className="flex justify-between gap-2">
-                        <Link
-                          href={`/operations/analysis?storeId=${encodeURIComponent(a.storeId)}&startDate=${encodeURIComponent(overview.startDate)}&endDate=${encodeURIComponent(overview.endDate)}`}
-                          className="font-medium text-slate-800 hover:text-blue-700"
-                        >
-                          {i + 1}. {a.storeName}
-                        </Link>
-                        <span className="text-xs text-amber-700 shrink-0">優先 {a.priorityScore}</span>
+                      <div className="flex items-stretch gap-0">
+                        <div className="w-8 shrink-0 flex items-center justify-center bg-amber-100 text-amber-900 text-xs font-bold">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 px-3 py-2.5 min-w-0">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <Link
+                              href={`/operations/analysis?storeId=${encodeURIComponent(a.storeId)}&startDate=${encodeURIComponent(overview.startDate)}&endDate=${encodeURIComponent(overview.endDate)}`}
+                              className="font-semibold text-slate-900 hover:text-blue-700"
+                            >
+                              {a.storeName}
+                            </Link>
+                            <span className="text-xs text-slate-500">{a.region}</span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {a.reasons.map((r) => (
+                              <span
+                                key={r}
+                                className="inline-block rounded-md bg-amber-50 border border-amber-100 px-2 py-0.5 text-xs text-amber-950 leading-snug"
+                              >
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-[11px] text-slate-500 tabular-nums">
+                            營收 {formatMoney(a.revenue)} 元
+                            {a.revenueAchievementRate != null ?
+                              ` · 達成 ${a.revenueAchievementRate.toFixed(1)}%`
+                            : ""}
+                            {a.efficiencyRatio != null ?
+                              ` · 工效 ${Math.round(a.efficiencyRatio).toLocaleString("zh-TW")}`
+                            : ""}
+                            {a.laborHours > 0 ? ` · 工時 ${a.laborHours.toFixed(1)}h` : ""}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">{a.region}</p>
-                      <ul className="mt-1.5 text-xs text-slate-600 list-disc list-inside">
-                        {a.reasons.map((r) => (
-                          <li key={r}>{r}</li>
-                        ))}
-                      </ul>
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               : <p className="text-sm text-slate-600">目前無需優先關注的門市</p>}
             </div>
 
@@ -578,19 +708,16 @@ export default function OperationsOverviewPage() {
               <p className="text-xs text-slate-500 mb-3">區間內兩區實際營收結構（宜蘭＋桃園）</p>
               {dualShare.length ?
                 <>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart margin={{ top: 12, right: 12, bottom: 8, left: 12 }}>
                       <Pie
                         data={dualShare.map((r) => ({ name: r.region, value: r.revenue }))}
                         dataKey="value"
                         nameKey="name"
                         cx="50%"
-                        cy="50%"
-                        innerRadius={48}
-                        outerRadius={78}
-                        label={({ name, percent }) =>
-                          `${name} ${((percent ?? 0) * 100).toFixed(1)}%`
-                        }
+                        cy="52%"
+                        innerRadius={52}
+                        outerRadius={72}
                       >
                         {dualShare.map((r) => (
                           <Cell key={r.region} fill={REGION_PIE_COLOR[r.region] ?? "#94a3b8"} />
@@ -623,31 +750,31 @@ export default function OperationsOverviewPage() {
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-1">門市狀態一覽</h2>
             <p className="text-xs text-slate-500 mb-3">
-              各門市實際營收占區間總額比例 · 滑鼠移入顯示營收、達成率、達標次數
+              各門市實際營收占區間總額比例（直立長條）· 顏色依營收達成率：&lt;80% 粉紅、80–99% 淡黃、≥100% 淡藍
             </p>
             {storeShareChart.length ?
-              <div style={{ height: chartHeight }} className="w-full min-w-0">
+              <div style={{ height: storeChartHeight }} className="w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    layout="vertical"
                     data={storeShareChart}
-                    margin={{ top: 4, right: 24, left: 4, bottom: 4 }}
+                    margin={{ top: 8, right: 12, left: 4, bottom: 64 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis
-                      type="number"
+                      dataKey="storeName"
+                      tick={{ fontSize: 10 }}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                      height={72}
+                    />
+                    <YAxis
                       tick={{ fontSize: 10 }}
                       tickFormatter={(v) => `${Number(v).toFixed(0)}%`}
                       domain={[0, "dataMax"]}
                     />
-                    <YAxis
-                      type="category"
-                      dataKey="storeName"
-                      width={76}
-                      tick={{ fontSize: 10 }}
-                    />
                     <Tooltip content={<StoreShareTooltip />} />
-                    <Bar dataKey="sharePct" name="營收占比" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                    <Bar dataKey="sharePct" name="營收占比" radius={[4, 4, 0, 0]} maxBarSize={40}>
                       {storeShareChart.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
