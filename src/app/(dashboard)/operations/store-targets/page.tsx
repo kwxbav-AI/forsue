@@ -1,14 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-
-type RetailStore = {
-  id: string;
-  storeName: string;
-  region: string | null;
-  isActive: boolean;
-};
+import { FileSpreadsheet, Upload } from "lucide-react";
 
 type StoreTarget = {
   id: string;
@@ -23,29 +17,29 @@ type StoreTarget = {
   note: string | null;
 };
 
-const emptyForm = {
-  storeId: "",
-  year: new Date().getFullYear(),
-  month: new Date().getMonth() + 1,
-  salesTarget: "",
-  laborHourTarget: "",
-  note: "",
+type ImportResult = {
+  ok: boolean;
+  message?: string;
+  upserted?: number;
+  skipped?: number;
+  matchedStores?: number;
+  unmatchedStores?: string[];
+  warnings?: string[];
+  error?: string;
 };
 
 export default function StoreTargetsPage() {
-  const [stores, setStores] = useState<RetailStore[]>([]);
   const [list, setList] = useState<StoreTarget[]>([]);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [filterYear, setFilterYear] = useState(emptyForm.year);
-  const [filterMonth, setFilterMonth] = useState(emptyForm.month);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
-
-  const loadStores = useCallback(async () => {
-    const res = await fetch("/api/operations/stores?activeOnly=1");
-    if (res.ok) setStores(await res.json());
-  }, []);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [filterYear, setFilterYear] = useState(2026);
+  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+  const [importYear, setImportYear] = useState(2026);
+  const salesInputRef = useRef<HTMLInputElement>(null);
+  const hoursInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -57,217 +51,189 @@ export default function StoreTargetsPage() {
   }, [filterYear, filterMonth]);
 
   useEffect(() => {
-    loadStores();
-  }, [loadStores]);
-
-  useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
-  function resetForm() {
-    setEditingId(null);
-    setForm({ ...emptyForm, year: filterYear, month: filterMonth });
+  async function syncStores() {
+    setSyncing(true);
     setMessage(null);
-  }
-
-  function startEdit(row: StoreTarget) {
-    setEditingId(row.id);
-    setForm({
-      storeId: row.storeId,
-      year: row.year,
-      month: row.month,
-      salesTarget: String(row.salesTarget),
-      laborHourTarget: String(row.laborHourTarget),
-      note: row.note ?? "",
-    });
-    setMessage(null);
-  }
-
-  const previewRplh =
-    form.salesTarget && form.laborHourTarget
-      ? (Number(form.salesTarget) / Number(form.laborHourTarget)).toFixed(2)
-      : null;
-
-  async function submit() {
-    setMessage(null);
-    if (!form.storeId) {
-      setMessage("\u8acb\u9078\u64c7\u9580\u5e02");
-      return;
-    }
-    const salesTarget = Number(form.salesTarget);
-    const laborHourTarget = Number(form.laborHourTarget);
-    if (!salesTarget || salesTarget <= 0 || !laborHourTarget || laborHourTarget <= 0) {
-      setMessage("\u8acb\u8f38\u5165\u6709\u6548\u7684\u696d\u7e3e\u8207\u5de5\u6642\u76ee\u6a19");
-      return;
-    }
-
-    const payload = {
-      storeId: form.storeId,
-      year: form.year,
-      month: form.month,
-      salesTarget,
-      laborHourTarget,
-      note: form.note || null,
-    };
-
-    const res = editingId
-      ? await fetch(`/api/operations/store-targets/${editingId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-      : await fetch("/api/operations/store-targets", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
+    const res = await fetch("/api/operations/stores/sync", { method: "POST" });
     const data = await res.json().catch(() => ({}));
+    setSyncing(false);
     if (!res.ok) {
-      setMessage(data.error || "\u5132\u5b58\u5931\u6557");
+      setMessage(data.error || "同步門市失敗");
       return;
     }
-    resetForm();
-    refresh();
+    setMessage(`已同步 ${data.synced ?? 0} 間門市至營運資料（新建 ${data.created ?? 0}、更新 ${data.updated ?? 0}）`);
+  }
+
+  async function handleImport() {
+    const salesFile = salesInputRef.current?.files?.[0];
+    const hoursFile = hoursInputRef.current?.files?.[0];
+    if (!salesFile || !hoursFile) {
+      setMessage("請同時選擇兩個 Excel 檔案");
+      return;
+    }
+
+    setImporting(true);
+    setMessage(null);
+    setImportResult(null);
+
+    const form = new FormData();
+    form.append("salesFile", salesFile);
+    form.append("hoursFile", hoursFile);
+    form.append("year", String(importYear));
+
+    const res = await fetch("/api/operations/store-targets/import", {
+      method: "POST",
+      body: form,
+    });
+    const data = (await res.json().catch(() => ({}))) as ImportResult;
+    setImporting(false);
+
+    if (!res.ok) {
+      setMessage(data.error || "匯入失敗");
+      return;
+    }
+
+    setImportResult(data);
+    setFilterYear(importYear);
+    setMessage(data.message ?? "匯入完成");
+    if (salesInputRef.current) salesInputRef.current.value = "";
+    if (hoursInputRef.current) hoursInputRef.current.value = "";
+    void refresh();
   }
 
   async function remove(id: string) {
-    if (!confirm("\u78ba\u5b9a\u8981\u522a\u9664\u6b64\u76ee\u6a19\u8a2d\u5b9a\uff1f")) return;
+    if (!confirm("確定要刪除此目標設定？")) return;
     const res = await fetch(`/api/operations/store-targets/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(data.error || "\u522a\u9664\u5931\u6557");
+      setMessage(data.error || "刪除失敗");
       return;
     }
-    if (editingId === id) resetForm();
-    refresh();
+    void refresh();
   }
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">{"\u9580\u5e02\u76ee\u6a19\u8a2d\u5b9a"}</h1>
+          <h1 className="text-xl font-bold text-slate-800">門市目標設定</h1>
           <p className="mt-1 text-sm text-slate-500">
-            RPLH = {"\u6708\u696d\u7e3e\u76ee\u6a19"} / {"\u6708\u5de5\u6642\u76ee\u6a19"}（{"\u5132\u5b58\u6642\u81ea\u52d5\u8a08\u7b97"}）
+            以 Excel 匯入各門市每月業績目標與目標工時；RPLH 儲存時自動計算。資料供營運總覽、門市績效分析、業績分析使用。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void syncStores()}
+            disabled={syncing}
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {syncing ? "同步中…" : "同步績效門市"}
+          </button>
           <Link
             href="/operations/dashboard"
             className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            {"\u71df\u904b\u7e3d\u89bd"}
-          </Link>
-          <Link
-            href="/"
-            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            {"\u56de\u9996\u9801"}
+            營運總覽
           </Link>
         </div>
       </div>
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-slate-800">
-          {editingId ? "\u7de8\u8f2f\u76ee\u6a19" : "\u65b0\u589e\u76ee\u6a19"}
+      <div className="mb-6 rounded-xl border border-sky-100 bg-sky-50/40 p-5">
+        <h2 className="mb-2 flex items-center gap-2 font-semibold text-slate-800">
+          <FileSpreadsheet className="h-5 w-5 text-sky-600" />
+          Excel 批次匯入
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="text-sm">
-            <span className="text-slate-600">{"\u9580\u5e02"}</span>
-            <select
-              value={form.storeId}
-              onChange={(e) => setForm((f) => ({ ...f, storeId: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            >
-              <option value="">{"\u8acb\u9078\u64c7"}</option>
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.storeName}
-                  {s.region ? `（${s.region}）` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-slate-600">{"\u5e74"}</span>
+        <ul className="mb-4 list-disc pl-5 text-sm text-slate-600 space-y-1">
+          <li>
+            <strong>檔案 1（月業績目標）</strong>：A 區域、B 門市、C～N 欄為 2026-01～12 各月業績
+          </li>
+          <li>
+            <strong>檔案 2（月目標工時）</strong>：A 區域、B 門市、F～Q 欄為 2026-01～12 各月單店總工時
+          </li>
+          <li>門市名稱可含「店」字（如五福店），系統會自動對應營運門市</li>
+        </ul>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end">
+          <label className="text-sm block">
+            <span className="text-slate-600">目標年度</span>
             <input
               type="number"
-              value={form.year}
-              onChange={(e) => setForm((f) => ({ ...f, year: Number(e.target.value) }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              value={importYear}
+              onChange={(e) => setImportYear(Number(e.target.value))}
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
             />
           </label>
-          <label className="text-sm">
-            <span className="text-slate-600">{"\u6708"}</span>
+          <label className="text-sm block sm:col-span-1">
+            <span className="text-slate-600">2026年月業績目標.xlsx</span>
             <input
-              type="number"
-              min={1}
-              max={12}
-              value={form.month}
-              onChange={(e) => setForm((f) => ({ ...f, month: Number(e.target.value) }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              ref={salesInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="mt-1 block w-full text-sm text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white file:text-sm"
             />
           </label>
-          <label className="text-sm">
-            <span className="text-slate-600">{"\u6708\u696d\u7e3e\u76ee\u6a19"}</span>
+          <label className="text-sm block sm:col-span-1">
+            <span className="text-slate-600">2026年目標工時.xlsx</span>
             <input
-              type="number"
-              value={form.salesTarget}
-              onChange={(e) => setForm((f) => ({ ...f, salesTarget: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              ref={hoursInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="mt-1 block w-full text-sm text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-white file:text-sm"
             />
           </label>
-          <label className="text-sm">
-            <span className="text-slate-600">{"\u6708\u5de5\u6642\u76ee\u6a19"}</span>
-            <input
-              type="number"
-              value={form.laborHourTarget}
-              onChange={(e) => setForm((f) => ({ ...f, laborHourTarget: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="text-slate-600">RPLH（{"\u9810\u89bd"}）</span>
-            <input
-              readOnly
-              value={previewRplh ?? ""}
-              className="mt-1 w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-sm sm:col-span-2 lg:col-span-3">
-            <span className="text-slate-600">{"\u5099\u8a3b"}</span>
-            <input
-              value={form.note}
-              onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            />
-          </label>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={submit}
-            className="rounded bg-sky-600 px-4 py-1.5 text-sm text-white hover:bg-sky-700"
+            onClick={() => void handleImport()}
+            disabled={importing}
+            className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
           >
-            {editingId ? "\u5132\u5b58\u8b8a\u66f4" : "\u65b0\u589e"}
+            <Upload className={`h-4 w-4 ${importing ? "animate-pulse" : ""}`} />
+            {importing ? "匯入中…" : "開始匯入"}
           </button>
-          {editingId ? (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-            >
-              {"\u53d6\u6d88"}
-            </button>
-          ) : null}
         </div>
-        {message ? <p className="mt-3 text-sm text-red-600">{message}</p> : null}
+
+        {importResult?.ok ?
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <p>
+              成功寫入 <strong>{importResult.upserted}</strong> 筆；
+              對應 <strong>{importResult.matchedStores}</strong> 間門市
+              {importResult.skipped ? `；略過 ${importResult.skipped} 筆` : ""}
+            </p>
+            {importResult.unmatchedStores?.length ?
+              <p className="mt-1 text-amber-800">
+                無法對應門市：{importResult.unmatchedStores.join("、")}
+                （請先「同步績效門市」或至門市管理確認名稱）
+              </p>
+            : null}
+            {importResult.warnings?.length ?
+              <details className="mt-2">
+                <summary className="cursor-pointer text-emerald-800">匯入提示（{importResult.warnings.length}）</summary>
+                <ul className="mt-1 max-h-32 overflow-auto list-disc pl-4 text-xs">
+                  {importResult.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </details>
+            : null}
+          </div>
+        : null}
       </div>
+
+      {message ?
+        <p
+          className={`mb-4 text-sm ${message.includes("失敗") || message.includes("錯誤") ? "text-red-600" : "text-slate-700"}`}
+        >
+          {message}
+        </p>
+      : null}
 
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          <span className="text-slate-600">{"\u7be9\u9078\u5e74"}</span>
+          <span className="text-slate-600">檢視年份</span>
           <input
             type="number"
             value={filterYear}
@@ -276,7 +242,7 @@ export default function StoreTargetsPage() {
           />
         </label>
         <label className="text-sm">
-          <span className="text-slate-600">{"\u7be9\u9078\u6708"}</span>
+          <span className="text-slate-600">檢視月份</span>
           <input
             type="number"
             min={1}
@@ -289,21 +255,22 @@ export default function StoreTargetsPage() {
       </div>
 
       <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
-        {loading ? (
-          <p className="p-4 text-sm text-slate-500">{"\u8f09\u5165\u4e2d..."}</p>
-        ) : list.length === 0 ? (
-          <p className="p-4 text-sm text-slate-500">{"\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u76ee\u6a19"}</p>
-        ) : (
-          <table className="w-full min-w-[800px] text-sm">
+        {loading ?
+          <p className="p-4 text-sm text-slate-500">載入中…</p>
+        : list.length === 0 ?
+          <p className="p-4 text-sm text-slate-500">
+            此年月尚無目標，請匯入 Excel 或調整篩選條件。
+          </p>
+        : <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                <th className="px-3 py-2">{"\u9580\u5e02"}</th>
-                <th className="px-3 py-2">{"\u5340\u57df"}</th>
-                <th className="px-3 py-2">{"\u5e74\u6708"}</th>
-                <th className="px-3 py-2 text-right">{"\u696d\u7e3e"}</th>
-                <th className="px-3 py-2 text-right">{"\u5de5\u6642"}</th>
+                <th className="px-3 py-2">門市</th>
+                <th className="px-3 py-2">區域</th>
+                <th className="px-3 py-2">年月</th>
+                <th className="px-3 py-2 text-right">業績目標</th>
+                <th className="px-3 py-2 text-right">工時目標</th>
                 <th className="px-3 py-2 text-right">RPLH</th>
-                <th className="px-3 py-2">{"\u5099\u8a3b"}</th>
+                <th className="px-3 py-2">備註</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -322,28 +289,23 @@ export default function StoreTargetsPage() {
                   <td className="px-3 py-2 text-right">
                     {row.rplhTarget != null ? row.rplhTarget.toFixed(2) : "-"}
                   </td>
-                  <td className="px-3 py-2 text-slate-600">{row.note ?? ""}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="px-3 py-2 text-slate-600 max-w-[200px] truncate">
+                    {row.note ?? ""}
+                  </td>
+                  <td className="px-3 py-2 text-right">
                     <button
                       type="button"
-                      onClick={() => startEdit(row)}
-                      className="mr-2 text-sky-600 hover:underline"
-                    >
-                      {"\u7de8\u8f2f"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(row.id)}
+                      onClick={() => void remove(row.id)}
                       className="text-red-600 hover:underline"
                     >
-                      {"\u522a\u9664"}
+                      刪除
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
+        }
       </div>
     </div>
   );

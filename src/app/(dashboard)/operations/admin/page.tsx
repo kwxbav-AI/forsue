@@ -227,7 +227,7 @@ export default function OperationsAdminPage() {
           <Link href="/operations/store-targets" className="mx-1 text-blue-700 hover:underline">
             門市目標
           </Link>
-          維護。
+          維護；月目標請以 Excel 批次匯入（業績目標 + 目標工時兩檔）。
         </p>
       </div>
     </div>
