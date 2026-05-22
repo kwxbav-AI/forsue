@@ -77,12 +77,21 @@ type WorkHoursData = {
 
 const TABS = [
   { id: "overview", label: "工時概況", icon: BarChart3 },
-  { id: "anomaly", label: "異常偵測", icon: AlertTriangle },
+  { id: "issues", label: "異常與調整", icon: AlertTriangle },
   { id: "perCapita", label: "人均產值", icon: TrendingUp },
-  { id: "adjustments", label: "特殊調整", icon: Clock },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+const ANOMALY_FILTERS = [
+  { id: "all", label: "全部異常" },
+  { id: "加班過多", label: "加班過多" },
+  { id: "缺勤異常", label: "缺勤異常" },
+  { id: "打卡異常", label: "打卡異常" },
+  { id: "工時不足", label: "工時不足" },
+] as const;
+
+type AnomalyFilterId = (typeof ANOMALY_FILTERS)[number]["id"];
 
 function currentYearMonth() {
   const now = new Date();
@@ -96,6 +105,7 @@ export default function OperationsWorkHoursPage() {
   const [storeId, setStoreId] = useState("");
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [tab, setTab] = useState<TabId>("overview");
+  const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilterId>("all");
   const [data, setData] = useState<WorkHoursData | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -140,7 +150,7 @@ export default function OperationsWorkHoursPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">人員工時管理</h1>
           <p className="text-sm text-slate-500 mt-1">
-            工時概況 · 異常偵測 · 人均產值 · 特殊調整紀錄
+            工時概況 · 異常與調整 · 人均產值
             {data ? ` · ${data.startDate} ~ ${data.endDate}` : ""}
           </p>
         </div>
@@ -260,14 +270,14 @@ export default function OperationsWorkHoursPage() {
                     {o.storeSummary.map((s) => (
                       <tr key={s.storeId} className="border-b border-slate-100">
                         <td className="py-2 pr-4 font-medium text-slate-800">
-                          <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1">
+                            {s.storeName}
                             {s.hasAnomaly ?
                               <AlertTriangle
                                 className="h-4 w-4 shrink-0 text-amber-500"
                                 aria-label="本月有工時異常人員"
                               />
                             : null}
-                            {s.storeName}
                           </span>
                         </td>
                         <td className="py-2 pr-4 text-right">{s.headcount}</td>
@@ -284,45 +294,13 @@ export default function OperationsWorkHoursPage() {
         </>
       : null}
 
-      {data && tab === "anomaly" ?
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <AnomalyCountCard label="加班過多" count={a?.counts.excessiveOvertime ?? 0} bg="bg-sky-50" />
-            <AnomalyCountCard label="缺勤異常" count={a?.counts.absence ?? 0} bg="bg-rose-50" />
-            <AnomalyCountCard label="打卡異常" count={a?.counts.clockAnomaly ?? 0} bg="bg-amber-50" />
-            <AnomalyCountCard label="工時不足" count={a?.counts.insufficient ?? 0} bg="bg-orange-50" />
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-800 mb-3">異常人員明細</h2>
-            {a?.list.length ?
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-slate-500">
-                      <th className="py-2 pr-3">員工</th>
-                      <th className="py-2 pr-3">門市</th>
-                      <th className="py-2 pr-3">異常類型</th>
-                      <th className="py-2">說明</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {a.list.map((r) => (
-                      <tr key={r.employeeId} className="border-b border-slate-100">
-                        <td className="py-2 pr-3">
-                          {r.employeeName}
-                          <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
-                        </td>
-                        <td className="py-2 pr-3">{r.storeName}</td>
-                        <td className="py-2 pr-3">{r.types.join("、")}</td>
-                        <td className="py-2 text-slate-600">{r.detail}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            : <EmptyState text="本月無工時異常記錄" />}
-          </div>
-        </>
+      {data && tab === "issues" ?
+        <IssuesTab
+          anomalies={a}
+          adjustments={adj}
+          anomalyFilter={anomalyFilter}
+          onAnomalyFilterChange={setAnomalyFilter}
+        />
       : null}
 
       {data && tab === "perCapita" ?
@@ -397,72 +375,156 @@ export default function OperationsWorkHoursPage() {
         </>
       : null}
 
-      {data && tab === "adjustments" ?
-        <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-              <p className="text-sm text-slate-500">記錄筆數</p>
-              <p className="text-3xl font-bold text-slate-800 mt-1">{adj?.recordCount ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-sky-50 border border-sky-100 p-4 text-center">
-              <p className="text-sm text-sky-700">加時合計</p>
-              <p className="text-3xl font-bold text-sky-900 mt-1">+{adj?.addHours ?? 0}h</p>
-            </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-center">
-              <p className="text-sm text-amber-800">減時合計</p>
-              <p className="text-3xl font-bold text-amber-900 mt-1">{adj?.deductHours ?? 0}h</p>
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-800 mb-1">特殊工時調整明細</h2>
-            <p className="text-xs text-slate-500 mb-3">
-              含人力支援、儲備人力、效期/清掃/現貨文登記等工時異動
-            </p>
-            {adj?.rows.length ?
-              <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="border-b text-left text-slate-500">
-                      <th className="py-2 pr-3">日期</th>
-                      <th className="py-2 pr-3">類型</th>
-                      <th className="py-2 pr-3">門市</th>
-                      <th className="py-2 pr-3">員工</th>
-                      <th className="py-2 pr-3 text-right">時數</th>
-                      <th className="py-2">備註</th>
+    </div>
+  );
+}
+
+function IssuesTab({
+  anomalies,
+  adjustments,
+  anomalyFilter,
+  onAnomalyFilterChange,
+}: {
+  anomalies: WorkHoursData["anomalies"] | undefined;
+  adjustments: WorkHoursData["adjustments"] | undefined;
+  anomalyFilter: AnomalyFilterId;
+  onAnomalyFilterChange: (id: AnomalyFilterId) => void;
+}) {
+  const filteredList =
+    anomalies?.list.filter((r) =>
+      anomalyFilter === "all" ? true : r.types.includes(anomalyFilter)
+    ) ?? [];
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">異常偵測</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            加班過多、缺勤、打卡與工時不足等人員異常
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ANOMALY_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => onAnomalyFilterChange(f.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                anomalyFilter === f.id ?
+                  "bg-slate-800 text-white border-slate-800"
+                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <AnomalyCountCard label="加班過多" count={anomalies?.counts.excessiveOvertime ?? 0} bg="bg-sky-50" />
+          <AnomalyCountCard label="缺勤異常" count={anomalies?.counts.absence ?? 0} bg="bg-rose-50" />
+          <AnomalyCountCard label="打卡異常" count={anomalies?.counts.clockAnomaly ?? 0} bg="bg-amber-50" />
+          <AnomalyCountCard label="工時不足" count={anomalies?.counts.insufficient ?? 0} bg="bg-orange-50" />
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="font-medium text-slate-800 mb-3">異常人員明細</h3>
+          {filteredList.length ?
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="py-2 pr-3">門市</th>
+                    <th className="py-2 pr-3">員工</th>
+                    <th className="py-2 pr-3">異常類型</th>
+                    <th className="py-2">說明</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredList.map((r) => (
+                    <tr key={r.employeeId} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 font-medium text-slate-800">{r.storeName}</td>
+                      <td className="py-2 pr-3">
+                        {r.employeeName}
+                        <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
+                      </td>
+                      <td className="py-2 pr-3">{r.types.join("、")}</td>
+                      <td className="py-2 text-slate-600">{r.detail}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {adj.rows.map((r) => (
-                      <tr key={r.id} className="border-b border-slate-100">
-                        <td className="py-2 pr-3 whitespace-nowrap">{r.workDate}</td>
-                        <td className="py-2 pr-3">{r.category}</td>
-                        <td className="py-2 pr-3">{r.storeName}</td>
-                        <td className="py-2 pr-3">
-                          {r.employeeName}
-                          {r.employeeCode !== "—" ?
-                            <span className="text-xs text-slate-400 ml-1">{r.employeeCode}</span>
-                          : null}
-                        </td>
-                        <td
-                          className={`py-2 pr-3 text-right font-medium ${
-                            r.hours > 0 ? "text-sky-700" : r.hours < 0 ? "text-amber-700" : ""
-                          }`}
-                        >
-                          {r.hours > 0 ? "+" : ""}
-                          {r.hours}h
-                        </td>
-                        <td className="py-2 text-slate-500 text-xs max-w-[200px] truncate">
-                          {r.note ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            : <EmptyState text="本月尚無特殊工時調整記錄" />}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          : <EmptyState text={anomalyFilter === "all" ? "本月無工時異常記錄" : "此類型無異常記錄"} />}
+        </div>
+      </section>
+
+      <section className="space-y-4 border-t border-slate-200 pt-8">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">特殊工時調整</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            人力支援、儲備人力、效期／清掃／現貨文登記等工時異動
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
+            <p className="text-sm text-slate-500">記錄筆數</p>
+            <p className="text-3xl font-bold text-slate-800 mt-1">{adjustments?.recordCount ?? 0}</p>
           </div>
-        </>
-      : null}
+          <div className="rounded-xl bg-sky-50 border border-sky-100 p-4 text-center">
+            <p className="text-sm text-sky-700">加時合計</p>
+            <p className="text-3xl font-bold text-sky-900 mt-1">+{adjustments?.addHours ?? 0}h</p>
+          </div>
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-center">
+            <p className="text-sm text-amber-800">減時合計</p>
+            <p className="text-3xl font-bold text-amber-900 mt-1">{adjustments?.deductHours ?? 0}h</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="font-medium text-slate-800 mb-3">調整明細</h3>
+          {adjustments?.rows.length ?
+            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="py-2 pr-3">日期</th>
+                    <th className="py-2 pr-3">類型</th>
+                    <th className="py-2 pr-3">門市</th>
+                    <th className="py-2 pr-3">員工</th>
+                    <th className="py-2 pr-3 text-right">時數</th>
+                    <th className="py-2">備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustments.rows.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 whitespace-nowrap">{r.workDate}</td>
+                      <td className="py-2 pr-3">{r.category}</td>
+                      <td className="py-2 pr-3">{r.storeName}</td>
+                      <td className="py-2 pr-3">
+                        {r.employeeName}
+                        {r.employeeCode !== "—" ?
+                          <span className="text-xs text-slate-400 ml-1">{r.employeeCode}</span>
+                        : null}
+                      </td>
+                      <td
+                        className={`py-2 pr-3 text-right font-medium ${
+                          r.hours > 0 ? "text-sky-700" : r.hours < 0 ? "text-amber-700" : ""
+                        }`}
+                      >
+                        {r.hours > 0 ? "+" : ""}
+                        {r.hours}h
+                      </td>
+                      <td className="py-2 text-slate-500 text-xs max-w-[200px] truncate">
+                        {r.note ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          : <EmptyState text="本月尚無特殊工時調整記錄" />}
+        </div>
+      </section>
     </div>
   );
 }

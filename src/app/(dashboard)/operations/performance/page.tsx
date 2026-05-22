@@ -76,9 +76,10 @@ function formatPctOne(n: number) {
   return `${Number(n).toFixed(1)}%`;
 }
 
+/** 桃園目標(淺藍)→桃園實際(深藍)→宜蘭目標(淺紫)→宜蘭實際(深紫) */
 const REGION_CHART_COLORS = {
-  "桃園區": { actual: "#2563eb", target: "#fbbf24" },
-  "宜蘭區": { actual: "#0d9488", target: "#a78bfa" },
+  "桃園區": { target: "#93c5fd", actual: "#1e40af" },
+  "宜蘭區": { target: "#c4b5fd", actual: "#6d28d9" },
 } as const;
 
 function AchievementBucketCard({
@@ -325,8 +326,8 @@ export default function OperationsPerformancePage() {
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
                   <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
                   <Legend />
-                  <Bar dataKey="actualRevenue" name="實際營收" fill="#2563eb" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="targetRevenue" name="目標營收" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="actualRevenue" name="實際營收" fill="#2563eb" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -377,17 +378,17 @@ export default function OperationsPerformancePage() {
                   }
                   return [
                     <Bar
-                      key={`${region}-actual`}
-                      dataKey={`${region}_actual`}
-                      name={`${region} 實際`}
-                      fill={colors.actual}
-                      radius={[4, 4, 0, 0]}
-                    />,
-                    <Bar
                       key={`${region}-target`}
                       dataKey={`${region}_target`}
                       name={`${region} 目標`}
                       fill={colors.target}
+                      radius={[4, 4, 0, 0]}
+                    />,
+                    <Bar
+                      key={`${region}-actual`}
+                      dataKey={`${region}_actual`}
+                      name={`${region} 實際`}
+                      fill={colors.actual}
                       radius={[4, 4, 0, 0]}
                     />,
                   ];

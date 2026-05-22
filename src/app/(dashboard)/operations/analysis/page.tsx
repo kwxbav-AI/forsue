@@ -34,7 +34,7 @@ const T = {
   revenue: "\u71DF\u696D\u984D",
   hours: "\u5DE5\u6642",
   efficiency: "\u5DE5\u6548\u6BD4",
-  revenueForecast: "\u71DF\u6536\u9810\u4F30\u503C",
+  revenueForecast: "\u6708\u71DF\u6536\u76ee\u6a19",
   revenueAchievement: "\u71DF\u6536\u9054\u6210\u503C",
   revenueAchievementRate: "\u71DF\u6536\u9054\u6210\u7387",
   yoy: "YoY \u71DF\u6536\u6210\u9577\u7387",
@@ -47,7 +47,9 @@ const T = {
   overtimeRatio: "\u52A0\u73ED\u6642\u6578\u5360\u6BD4",
   presetCompare: "\u9810\u8A2D\u5DE5\u6642\u6BD4\u8F03",
   periodPresetHours: "\u5340\u9593\u76EE\u6A19\u5DE5\u6642\u5408\u8A08",
-  periodPresetHint: "\u4f9d\u9580\u5e02\u76ee\u6a19\u8a2d\u5b9a\u4e4b\u6708\u5de5\u6642\u76ee\u6a19\uff0c\u6309\u5340\u9593\u5de5\u4f5c\u5929\u6578\u6bd4\u4f8b\u6524\u63d0",
+  periodPresetHint: "\u4f9d\u9580\u5e02\u76ee\u6a19\u8a2d\u5b9a\uff0c\u6309\u5340\u9593\u5de5\u4f5c\u5929\u6bd4\u4f8b\u6524\u63d0",
+  monthlyLaborHourTarget: "\u55ae\u6708\u76ee\u6a19\u7e3d\u5de5\u6642",
+  monthlyLaborHourHint: "\u9580\u5e02\u76ee\u6a19\u532f\u5165\u4e4b\u7576\u6708\u5de5\u6642\u76ee\u6a19\u5408\u8a08\uff08\u6574\u6708\uff09",
   hoursDiff: "\u5DE5\u6642\u5DEE\u7570",
   hoursDiffSub: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642 \u2212 \u5340\u9593\u76ee\u6a19\u5de5\u6642",
   settingsWarn:
@@ -99,6 +101,7 @@ type FilteredMetrics = {
   filterLabel: string;
   hasData?: boolean;
   revenueForecast?: number | null;
+  monthlyLaborHourTarget?: number | null;
   revenueAchievement?: number;
   revenueAchievementRate?: number | null;
   yoyGrowthRate?: number | null;
@@ -338,7 +341,7 @@ export default function OperationsDashboardPage() {
     const params = new URLSearchParams({
       startDate,
       endDate,
-      skipDailyTrend: "1",
+      skipDailyTrend: "0",
       page: "0",
       pageSize: "1",
     });
@@ -387,7 +390,8 @@ export default function OperationsDashboardPage() {
   }
 
   const m = filtered;
-  const hasLaborTarget = m?.defaultLaborHours != null;
+  const hasLaborTarget =
+    m?.defaultLaborHours != null || m?.monthlyLaborHourTarget != null;
   const chartData = m?.dailyTrend ?? [];
 
   return (
@@ -650,6 +654,14 @@ export default function OperationsDashboardPage() {
 
             <PanelCard title={T.presetCompare}>
               <div className="space-y-3">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                  <p className="text-xs text-slate-500">{T.monthlyLaborHourTarget}</p>
+                  <p className="text-lg font-bold text-slate-800">
+                    {dashHours(m.monthlyLaborHourTarget)}
+                    <span className="ml-1 text-xs font-normal text-slate-500">{T.hr}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{T.monthlyLaborHourHint}</p>
+                </div>
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
                   <p className="text-xs text-slate-500">{T.periodPresetHours}</p>
                   <p className="text-lg font-bold text-slate-800">

@@ -25,7 +25,9 @@ export type DashboardFilterStoreRow = {
   revenue: number;
   laborHours: number;
   efficiencyRatio: number | null;
+  /** 區間內各月營收目標合計（整月目標，不按比例攤提） */
   revenueForecast: number | null;
+  monthlyLaborHourTarget: number | null;
   revenueAchievement: number;
   revenueAchievementRate: number | null;
   yoyGrowthRate: number | null;
@@ -73,10 +75,63 @@ type RetailLaborSettings = {
 };
 
 type StoreMetricsContext = {
-  salesForecast: number;
+  monthlySalesTarget: number;
+  monthlyLaborHourTarget: number;
   labor: RetailLaborSettings;
-  periodDefaultLaborHours: number | null;
+  periodLaborHourTarget: number | null;
 };
+
+function sumFullMonthSalesTargetFromTargets(
+  retailStoreId: string,
+  slices: MonthSlice[],
+  targets: Array<{
+    storeId: string;
+    year: number;
+    month: number;
+    salesTarget: unknown;
+  }>
+): number {
+  const targetByYm = new Map(
+    targets
+      .filter((t) => t.storeId === retailStoreId)
+      .map((t) => [`${t.year}-${t.month}`, t] as const)
+  );
+  let total = 0;
+  for (const slice of slices) {
+    const row = targetByYm.get(`${slice.year}-${slice.month}`);
+    if (row) total += Number(row.salesTarget);
+  }
+  return total;
+}
+
+function sumFullMonthLaborHourTargetFromTargets(
+  retailStoreId: string,
+  slices: MonthSlice[],
+  targets: Array<{
+    storeId: string;
+    year: number;
+    month: number;
+    laborHourTarget: unknown;
+  }>
+): number {
+  const targetByYm = new Map(
+    targets
+      .filter((t) => t.storeId === retailStoreId)
+      .map((t) => [`${t.year}-${t.month}`, t] as const)
+  );
+  let total = 0;
+  for (const slice of slices) {
+    const row = targetByYm.get(`${slice.year}-${slice.month}`);
+    if (row) total += Number(row.laborHourTarget);
+  }
+  return total;
+}
+
+function pctRateOneDecimal(numerator: number, denominator: number): number | null {
+  const r = pctRate(numerator, denominator);
+  if (r == null) return null;
+  return Math.round(r * 10) / 10;
+}
 
 function listMonthSlicesInRange(startYmd: string, endYmd: string): MonthSlice[] {
   const slices: MonthSlice[] = [];
@@ -306,7 +361,9 @@ function buildStoreRow(
 ): DashboardFilterStoreRow {
   const revenue = chart.revenueSum;
   const laborHours = chart.hoursSum;
-  const overtimeHours = computeOvertimeHours(laborHours, ctx.periodDefaultLaborHours);
+  const overtimeRaw = computeOvertimeHours(laborHours, ctx.periodLaborHourTarget);
+  const overtimeHours =
+    overtimeRaw != null ? Math.abs(overtimeRaw) : null;
 
   return {
     storeId: chart.storeId,
@@ -314,21 +371,28 @@ function buildStoreRow(
     revenue,
     laborHours,
     efficiencyRatio: chart.efficiencyRatio,
-    revenueForecast: ctx.salesForecast > 0 ? ctx.salesForecast : null,
+    revenueForecast:
+      ctx.monthlySalesTarget > 0 ? ctx.monthlySalesTarget : null,
+    monthlyLaborHourTarget:
+      ctx.monthlyLaborHourTarget > 0 ? ctx.monthlyLaborHourTarget : null,
     revenueAchievement: revenue,
     revenueAchievementRate:
-      ctx.salesForecast > 0 ? pctRate(revenue, ctx.salesForecast) : null,
+      ctx.monthlySalesTarget > 0 ?
+        pctRateOneDecimal(revenue, ctx.monthlySalesTarget)
+      : null,
     yoyGrowthRate: yoyRate(revenue, priorRevenue),
     priorYearRevenue: priorRevenue,
     actualAttendanceHours: laborHours,
     overtimeHours,
     overtimeRatio:
-      overtimeHours != null ? pctRate(overtimeHours, laborHours) : null,
+      overtimeHours != null && laborHours > 0 ?
+        pctRateOneDecimal(overtimeHours, laborHours)
+      : null,
     weekdayBusinessHours: ctx.labor.weekdayBusinessHours,
     saturdayBusinessHours: ctx.labor.saturdayBusinessHours,
     dailyBusinessHours: ctx.labor.dailyBusinessHours,
     businessHoursLabel: formatRetailBusinessHoursDisplay(ctx.labor),
-    defaultLaborHours: ctx.periodDefaultLaborHours,
+    defaultLaborHours: ctx.periodLaborHourTarget,
   };
 }
 
@@ -341,6 +405,7 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
       laborHours: 0,
       efficiencyRatio: null,
       revenueForecast: null,
+      monthlyLaborHourTarget: null,
       revenueAchievement: 0,
       revenueAchievementRate: null,
       yoyGrowthRate: null,
@@ -360,29 +425,36 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
 
   let revenue = 0;
   let laborHours = 0;
-  let revenueForecast = 0;
+  let monthlySalesTarget = 0;
+  let monthlyLaborHourTarget = 0;
   let priorYearRevenue = 0;
-  let defaultLaborHours = 0;
+  let periodLaborTarget = 0;
   let hasDefaultLabor = false;
-  let hasForecast = false;
+  let hasSalesTarget = false;
+  let hasMonthlyLabor = false;
 
   for (const r of rows) {
     revenue += r.revenue;
     laborHours += r.laborHours;
     priorYearRevenue += r.priorYearRevenue;
     if (r.revenueForecast != null && r.revenueForecast > 0) {
-      revenueForecast += r.revenueForecast;
-      hasForecast = true;
+      monthlySalesTarget += r.revenueForecast;
+      hasSalesTarget = true;
+    }
+    if (r.monthlyLaborHourTarget != null && r.monthlyLaborHourTarget > 0) {
+      monthlyLaborHourTarget += r.monthlyLaborHourTarget;
+      hasMonthlyLabor = true;
     }
     if (r.defaultLaborHours != null) {
-      defaultLaborHours += r.defaultLaborHours;
+      periodLaborTarget += r.defaultLaborHours;
       hasDefaultLabor = true;
     }
   }
 
-  const overtimeHours = hasDefaultLabor ?
-    computeOvertimeHours(laborHours, defaultLaborHours)
+  const overtimeRaw = hasDefaultLabor ?
+    computeOvertimeHours(laborHours, periodLaborTarget)
   : null;
+  const overtimeHours = overtimeRaw != null ? Math.abs(overtimeRaw) : null;
 
   return {
     storeId: "",
@@ -390,20 +462,24 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
     revenue,
     laborHours,
     efficiencyRatio: laborHours > 0 ? revenue / laborHours : null,
-    revenueForecast: hasForecast ? revenueForecast : null,
+    revenueForecast: hasSalesTarget ? monthlySalesTarget : null,
+    monthlyLaborHourTarget: hasMonthlyLabor ? monthlyLaborHourTarget : null,
     revenueAchievement: revenue,
-    revenueAchievementRate: hasForecast ? pctRate(revenue, revenueForecast) : null,
+    revenueAchievementRate:
+      hasSalesTarget ? pctRateOneDecimal(revenue, monthlySalesTarget) : null,
     yoyGrowthRate: yoyRate(revenue, priorYearRevenue),
     priorYearRevenue,
     actualAttendanceHours: laborHours,
     overtimeHours,
     overtimeRatio:
-      overtimeHours != null ? pctRate(overtimeHours, laborHours) : null,
+      overtimeHours != null && laborHours > 0 ?
+        pctRateOneDecimal(overtimeHours, laborHours)
+      : null,
     weekdayBusinessHours: null,
     saturdayBusinessHours: null,
     dailyBusinessHours: null,
     businessHoursLabel: "—",
-    defaultLaborHours: hasDefaultLabor ? defaultLaborHours : null,
+    defaultLaborHours: hasDefaultLabor ? periodLaborTarget : null,
   };
 }
 
@@ -594,19 +670,23 @@ export async function buildDashboardFilterResult(input: {
       labor,
       workingDaysInRange
     );
-    const salesForecast =
+    const monthlySalesTarget =
       retailId ?
-        prorateSalesForecastFromTargets(
-          retailId,
-          slices,
-          targetRows,
-          holidaySet
-        )
+        sumFullMonthSalesTargetFromTargets(retailId, slices, targetRows)
+      : 0;
+    const monthlyLaborHourTarget =
+      retailId ?
+        sumFullMonthLaborHourTargetFromTargets(retailId, slices, targetRows)
       : 0;
 
     return buildStoreRow(
       chart,
-      { salesForecast, labor, periodDefaultLaborHours: periodDefault },
+      {
+        monthlySalesTarget,
+        monthlyLaborHourTarget,
+        labor,
+        periodLaborHourTarget: periodDefault,
+      },
       priorByStoreId.get(chart.storeId) ?? 0
     );
   });

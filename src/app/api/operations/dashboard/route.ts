@@ -190,6 +190,7 @@ export async function GET(request: NextRequest) {
         dailyBusinessHours: filteredResult.summary.dailyBusinessHours,
         businessHoursLabel: filteredResult.summary.businessHoursLabel,
         defaultLaborHours: filteredResult.summary.defaultLaborHours,
+        monthlyLaborHourTarget: filteredResult.summary.monthlyLaborHourTarget,
         laborHoursDifference: filteredResult.summary.overtimeHours,
         workingDaysInRange: filteredResult.workingDaysInRange,
         dailyTrend: filteredResult.dailyTrend,
