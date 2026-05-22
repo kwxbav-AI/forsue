@@ -3,7 +3,6 @@ import {
   formatDateOnly,
   formatDateOnlyTaipei,
   parseDateOnlyUTC,
-  toDateRange,
 } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import {
@@ -68,9 +67,9 @@ function resolveMonthRange(year: number, month: number) {
   return { startYmd, endYmd };
 }
 
-/** 與 DB @db.Date（UTC 日曆日）及上傳 toWorkDateUTC 一致 */
+/** 營運日 YMD（與上傳 toWorkDateUTC、@db.Date 一致；讀取時用台北日曆避免邊界錯位） */
 function workDateYmd(d: Date): string {
-  return formatDateOnly(d);
+  return formatDateOnlyTaipei(d);
 }
 
 function isYmdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
@@ -151,35 +150,37 @@ export async function buildOperationsWorkHours(input: {
     return storeNameById.get(storeId) ?? (fallback?.trim() || storeId);
   };
 
-  // 勿用 toDateRangeTaipei：gte 帶 16:00 UTC 與 @db.Date 比對時會被截成前一日，誤含 4/30、3/30
-  const { start, end } = toDateRange(startYmd, endYmd);
+  // @db.Date 用 in 精確比對各營運日，避免 gte/lte 與時區造成誤含前月末日（4/30、3/30）
+  const workDatesInRange = days.map((ymd) => parseDateOnlyUTC(ymd));
+  const workDateWhere =
+    workDatesInRange.length > 0 ? { workDate: { in: workDatesInRange } } : { workDate: { in: [] as Date[] } };
 
   const [attendances, dispatches, adjustments, deductions, contentEntries] =
     await Promise.all([
-    prisma.attendanceRecord.findMany({
-      where: { workDate: { gte: start, lte: end } },
-      include: { employee: { select: { id: true, name: true, employeeCode: true, defaultStoreId: true } } },
-    }),
-    prisma.dispatchRecord.findMany({
-      where: { workDate: { gte: start, lte: end }, confirmStatus: "已確認" },
-      include: { employee: { select: { id: true, name: true, employeeCode: true } } },
-    }),
-    prisma.workhourAdjustment.findMany({
-      where: { workDate: { gte: start, lte: end } },
-      include: { employee: { select: { id: true, name: true, employeeCode: true } } },
-    }),
-    prisma.storeHourDeduction.findMany({
-      where: { workDate: { gte: start, lte: end } },
-      include: { store: { select: { id: true, name: true } } },
-    }),
-    prisma.contentEntry.findMany({
-      where: {
-        workDate: { gte: start, lte: end },
-        deductedMinutes: { not: null, gt: 0 },
-      },
-      select: { id: true, workDate: true, branch: true, deductedMinutes: true },
-    }),
-  ]);
+      prisma.attendanceRecord.findMany({
+        where: workDateWhere,
+        include: { employee: { select: { id: true, name: true, employeeCode: true, defaultStoreId: true } } },
+      }),
+      prisma.dispatchRecord.findMany({
+        where: { ...workDateWhere, confirmStatus: "已確認" },
+        include: { employee: { select: { id: true, name: true, employeeCode: true } } },
+      }),
+      prisma.workhourAdjustment.findMany({
+        where: workDateWhere,
+        include: { employee: { select: { id: true, name: true, employeeCode: true } } },
+      }),
+      prisma.storeHourDeduction.findMany({
+        where: workDateWhere,
+        include: { store: { select: { id: true, name: true } } },
+      }),
+      prisma.contentEntry.findMany({
+        where: {
+          ...workDateWhere,
+          deductedMinutes: { not: null, gt: 0 },
+        },
+        select: { id: true, workDate: true, branch: true, deductedMinutes: true },
+      }),
+    ]);
 
   const dispatchByEmpDate = new Map<string, { toStoreName: string }>();
   for (const d of dispatches) {
@@ -618,7 +619,12 @@ export async function buildOperationsWorkHours(input: {
     });
   }
 
-  adjustmentRows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.category.localeCompare(b.category));
+  adjustmentRows.sort(
+    (a, b) => a.workDate.localeCompare(b.workDate) || a.category.localeCompare(b.category)
+  );
+  for (const row of adjustmentRows) {
+    row.workDate = formatMonthDayLabel(row.workDate);
+  }
 
   const addHours = adjustmentRows.filter((r) => r.hours > 0).reduce((a, r) => a + r.hours, 0);
   const deductHours = adjustmentRows
