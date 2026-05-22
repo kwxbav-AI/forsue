@@ -4,7 +4,7 @@ import { formatDateOnlyTaipei } from "@/lib/date";
 import { OPS_REGION_CATALOG } from "@/lib/operations-dashboard";
 import {
   buildEnrichedOverviewStores,
-  buildMonthlyRevenueTrend,
+  buildYearToDateMonthlyRevenueTrend,
   buildOpsKpiMetrics,
 } from "@/modules/operations/services/operations-overview-enrich.service";
 import { paginateArray, parseApiPagination } from "@/lib/api-pagination";
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         endYmd: effective.endDate,
         region: region || undefined,
       }),
-      buildMonthlyRevenueTrend(effective.startDate, effective.endDate),
+      buildYearToDateMonthlyRevenueTrend(),
       buildOpsKpiMetrics(),
     ]);
 

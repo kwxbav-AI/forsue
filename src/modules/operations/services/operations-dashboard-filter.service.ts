@@ -10,6 +10,7 @@ import {
   storeNameMatchesCatalogKey,
   storeNamesEquivalent,
 } from "@/lib/operations-dashboard";
+import { formatRetailBusinessHoursDisplay } from "@/lib/retail-store-hours";
 import {
   type ChartsPerStoreRow,
   fetchChartsPerStore,
@@ -32,9 +33,15 @@ export type DashboardFilterStoreRow = {
   actualAttendanceHours: number;
   overtimeHours: number | null;
   overtimeRatio: number | null;
-  /** 人工設定：每日營業時長 */
+  /** 平日營業時長（週一～五） */
+  weekdayBusinessHours: number | null;
+  /** 週六營業時長 */
+  saturdayBusinessHours: number | null;
+  /** 舊欄位，等同平日 */
   dailyBusinessHours: number | null;
-  /** 篩選區間預設工時合計（每日預設工時 × 工作天數） */
+  /** 顯示用：平日 X / 週六 Y hr */
+  businessHoursLabel: string;
+  /** 篩選區間目標工時合計（門市目標月工時依工作天比例攤提） */
   defaultLaborHours: number | null;
 };
 
@@ -59,6 +66,8 @@ export type DashboardFilterResult = {
 type MonthSlice = { year: number; month: number; overlapStart: string; overlapEnd: string };
 
 type RetailLaborSettings = {
+  weekdayBusinessHours: number | null;
+  saturdayBusinessHours: number | null;
   dailyBusinessHours: number | null;
   defaultLaborHoursPerDay: number | null;
 };
@@ -137,6 +146,8 @@ export async function mapPerformanceToRetailStore(
       id: true,
       storeName: true,
       dailyBusinessHours: true,
+      weekdayBusinessHours: true,
+      saturdayBusinessHours: true,
       defaultLaborHoursPerDay: true,
     },
   });
@@ -163,12 +174,54 @@ export async function mapPerformanceToRetailStore(
     out.set(s.id, {
       retailId: retail.id,
       settings: {
-        dailyBusinessHours: toOptionalNumber(retail.dailyBusinessHours),
+        weekdayBusinessHours:
+          toOptionalNumber(retail.weekdayBusinessHours) ??
+          toOptionalNumber(retail.dailyBusinessHours),
+        saturdayBusinessHours: toOptionalNumber(retail.saturdayBusinessHours),
+        dailyBusinessHours:
+          toOptionalNumber(retail.weekdayBusinessHours) ??
+          toOptionalNumber(retail.dailyBusinessHours),
         defaultLaborHoursPerDay: toOptionalNumber(retail.defaultLaborHoursPerDay),
       },
     });
   }
   return out;
+}
+
+function prorateLaborHourTargetFromTargets(
+  retailStoreId: string,
+  slices: MonthSlice[],
+  targets: Array<{
+    storeId: string;
+    year: number;
+    month: number;
+    laborHourTarget: unknown;
+  }>,
+  holidaySet: Set<string>
+): number {
+  const targetByYm = new Map(
+    targets
+      .filter((t) => t.storeId === retailStoreId)
+      .map((t) => [`${t.year}-${t.month}`, t] as const)
+  );
+
+  let laborHourTarget = 0;
+  for (const slice of slices) {
+    const row = targetByYm.get(`${slice.year}-${slice.month}`);
+    if (!row) continue;
+
+    const { startYmd: ms, endYmd: me } = monthStartEndYmd(slice.year, slice.month);
+    const monthWd = countWorkingDaysInRangeUTC(ms, me, holidaySet);
+    const overlapWd = countWorkingDaysInRangeUTC(
+      slice.overlapStart,
+      slice.overlapEnd,
+      holidaySet
+    );
+    if (monthWd <= 0 || overlapWd <= 0) continue;
+
+    laborHourTarget += Number(row.laborHourTarget) * (overlapWd / monthWd);
+  }
+  return laborHourTarget;
 }
 
 function prorateSalesForecastFromTargets(
@@ -207,17 +260,35 @@ function prorateSalesForecastFromTargets(
   return salesForecast;
 }
 
-function periodDefaultLaborHours(
+function periodLaborHourTarget(
+  retailStoreId: string | undefined,
+  slices: MonthSlice[],
+  targets: Array<{
+    storeId: string;
+    year: number;
+    month: number;
+    laborHourTarget: unknown;
+  }>,
+  holidaySet: Set<string>,
   settings: RetailLaborSettings,
   workingDaysInRange: number
 ): number | null {
-  if (
-    settings.defaultLaborHoursPerDay == null ||
-    workingDaysInRange <= 0
-  ) {
-    return null;
+  if (retailStoreId && slices.length > 0 && targets.length > 0) {
+    const fromTargets = prorateLaborHourTargetFromTargets(
+      retailStoreId,
+      slices,
+      targets,
+      holidaySet
+    );
+    if (fromTargets > 0) return fromTargets;
   }
-  return settings.defaultLaborHoursPerDay * workingDaysInRange;
+  if (
+    settings.defaultLaborHoursPerDay != null &&
+    workingDaysInRange > 0
+  ) {
+    return settings.defaultLaborHoursPerDay * workingDaysInRange;
+  }
+  return null;
 }
 
 function computeOvertimeHours(
@@ -253,7 +324,10 @@ function buildStoreRow(
     overtimeHours,
     overtimeRatio:
       overtimeHours != null ? pctRate(overtimeHours, laborHours) : null,
+    weekdayBusinessHours: ctx.labor.weekdayBusinessHours,
+    saturdayBusinessHours: ctx.labor.saturdayBusinessHours,
     dailyBusinessHours: ctx.labor.dailyBusinessHours,
+    businessHoursLabel: formatRetailBusinessHoursDisplay(ctx.labor),
     defaultLaborHours: ctx.periodDefaultLaborHours,
   };
 }
@@ -274,7 +348,10 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
       actualAttendanceHours: 0,
       overtimeHours: null,
       overtimeRatio: null,
+      weekdayBusinessHours: null,
+      saturdayBusinessHours: null,
       dailyBusinessHours: null,
+      businessHoursLabel: "—",
       defaultLaborHours: null,
     };
   }
@@ -322,7 +399,10 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
     overtimeHours,
     overtimeRatio:
       overtimeHours != null ? pctRate(overtimeHours, laborHours) : null,
+    weekdayBusinessHours: null,
+    saturdayBusinessHours: null,
     dailyBusinessHours: null,
+    businessHoursLabel: "—",
     defaultLaborHours: hasDefaultLabor ? defaultLaborHours : null,
   };
 }
@@ -490,6 +570,7 @@ export async function buildDashboardFilterResult(input: {
           year: true,
           month: true,
           salesTarget: true,
+          laborHourTarget: true,
         },
       })
     : [];
@@ -500,10 +581,19 @@ export async function buildDashboardFilterResult(input: {
       linked?.retailId ??
       retailIdByStoreNameKey.get(normalizeStoreKey(chart.storeName));
     const labor = linked?.settings ?? {
+      weekdayBusinessHours: null,
+      saturdayBusinessHours: null,
       dailyBusinessHours: null,
       defaultLaborHoursPerDay: null,
     };
-    const periodDefault = periodDefaultLaborHours(labor, workingDaysInRange);
+    const periodDefault = periodLaborHourTarget(
+      retailId,
+      slices,
+      targetRows,
+      holidaySet,
+      labor,
+      workingDaysInRange
+    );
     const salesForecast =
       retailId ?
         prorateSalesForecastFromTargets(

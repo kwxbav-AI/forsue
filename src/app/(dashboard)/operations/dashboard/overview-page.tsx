@@ -104,6 +104,11 @@ function formatMoney(n: number) {
   return Math.round(n).toLocaleString("zh-TW");
 }
 
+function formatPctOne(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${Number(n).toFixed(1)}%`;
+}
+
 function KpiCard({
   title,
   value,
@@ -305,9 +310,7 @@ export default function OperationsOverviewPage() {
             <KpiCard
               title="營收達成率"
               value={
-                overview.summary.revenueAchievementRate != null ?
-                  `${overview.summary.revenueAchievementRate}%`
-                : "—"
+                formatPctOne(overview.summary.revenueAchievementRate)
               }
               sub={`月業績目標 · 達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
               icon={<Target className="h-5 w-5" />}
@@ -335,7 +338,9 @@ export default function OperationsOverviewPage() {
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-1">月度業績趨勢</h2>
-            <p className="text-xs text-slate-500 mb-3">萬元 / 達標率 %</p>
+            <p className="text-xs text-slate-500 mb-3">
+              當年度 1 月至今（不受上方日期篩選影響）· 萬元 / 達標率 %
+            </p>
             <div className="h-[260px] w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
@@ -430,7 +435,9 @@ export default function OperationsOverviewPage() {
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-green-700">{s.revenueAchievementRate}%</span>
+                    <span className="font-medium text-green-700">
+                      {formatPctOne(s.revenueAchievementRate)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -443,7 +450,9 @@ export default function OperationsOverviewPage() {
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-red-600">{s.revenueAchievementRate}%</span>
+                    <span className="font-medium text-red-600">
+                      {formatPctOne(s.revenueAchievementRate)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -532,7 +541,7 @@ export default function OperationsOverviewPage() {
                     <span className="text-sm font-medium text-slate-800 truncate">{s.storeName}</span>
                   </div>
                   <p className="mt-2 text-lg font-bold text-slate-900">
-                    {s.revenueAchievementRate != null ? `${s.revenueAchievementRate}%` : "—"}
+                    {formatPctOne(s.revenueAchievementRate)}
                   </p>
                   <p className="text-xs text-slate-600">達標 {s.targetMetDays} 次</p>
                   <p className="text-[10px] text-slate-500">{s.statusLabel}</p>

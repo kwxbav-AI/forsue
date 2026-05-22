@@ -450,6 +450,8 @@ model RetailStore {
   region                 String?
   managerName             String?  @map("manager_name")
   dailyBusinessHours      Decimal? @map("daily_business_hours") @db.Decimal(10, 2)
+  weekdayBusinessHours    Decimal? @map("weekday_business_hours") @db.Decimal(10, 2)
+  saturdayBusinessHours   Decimal? @map("saturday_business_hours") @db.Decimal(10, 2)
   defaultLaborHoursPerDay Decimal? @map("default_labor_hours_per_day") @db.Decimal(10, 2)
   isActive               Boolean  @default(true) @map("is_active")
   createdAt              DateTime @default(now()) @map("created_at")

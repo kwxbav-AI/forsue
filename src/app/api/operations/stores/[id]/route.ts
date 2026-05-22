@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { serializeRetailStore } from "@/lib/operations-serialize";
+import { normalizeRetailBusinessHours } from "@/lib/retail-store-hours";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ const bodySchema = z.object({
   region: z.string().optional().nullable(),
   managerName: z.string().optional().nullable(),
   dailyBusinessHours: optionalHours,
+  weekdayBusinessHours: optionalHours,
+  saturdayBusinessHours: optionalHours,
   defaultLaborHoursPerDay: optionalHours,
   isActive: z.boolean().optional(),
 });
@@ -47,6 +50,8 @@ export async function PUT(
       region?: string | null;
       managerName?: string | null;
       dailyBusinessHours?: number | null;
+      weekdayBusinessHours?: number | null;
+      saturdayBusinessHours?: number | null;
       defaultLaborHoursPerDay?: number | null;
       isActive?: boolean;
     } = {};
@@ -55,8 +60,17 @@ export async function PUT(
     if (parsed.data.managerName !== undefined) {
       data.managerName = parsed.data.managerName?.trim() || null;
     }
-    if (parsed.data.dailyBusinessHours !== undefined) {
-      data.dailyBusinessHours = parsed.data.dailyBusinessHours;
+    if (
+      parsed.data.dailyBusinessHours !== undefined ||
+      parsed.data.weekdayBusinessHours !== undefined ||
+      parsed.data.saturdayBusinessHours !== undefined
+    ) {
+      const bizHours = normalizeRetailBusinessHours({
+        dailyBusinessHours: parsed.data.dailyBusinessHours,
+        weekdayBusinessHours: parsed.data.weekdayBusinessHours,
+        saturdayBusinessHours: parsed.data.saturdayBusinessHours,
+      });
+      Object.assign(data, bizHours);
     }
     if (parsed.data.defaultLaborHoursPerDay !== undefined) {
       data.defaultLaborHoursPerDay = parsed.data.defaultLaborHoursPerDay;

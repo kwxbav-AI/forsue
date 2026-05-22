@@ -187,27 +187,34 @@ export async function buildPerformanceAnalysis(input: {
     .sort((a, b) => b.targetMetDays - a.targetMetDays);
 
   let achievementSummary = { green: 0, yellow: 0, red: 0, total: 0 };
+  const achievementStores: {
+    green: string[];
+    yellow: string[];
+    red: string[];
+  } = { green: [], yellow: [], red: [] };
+
   for (const row of rangeResult.stores) {
     const bucket = revenueAchievementBucket(row.revenueAchievementRate);
     if (bucket === "none") continue;
     achievementSummary.total += 1;
-    if (bucket === "green") achievementSummary.green += 1;
-    else if (bucket === "yellow") achievementSummary.yellow += 1;
-    else achievementSummary.red += 1;
+    if (bucket === "green") {
+      achievementSummary.green += 1;
+      achievementStores.green.push(row.storeName);
+    } else if (bucket === "yellow") {
+      achievementSummary.yellow += 1;
+      achievementStores.yellow.push(row.storeName);
+    } else if (bucket === "red") {
+      achievementSummary.red += 1;
+      achievementStores.red.push(row.storeName);
+    }
   }
 
-  const greenPct =
-    achievementSummary.total > 0 ?
-      Math.round((achievementSummary.green / achievementSummary.total) * 100)
-    : 0;
-  const yellowPct =
-    achievementSummary.total > 0 ?
-      Math.round((achievementSummary.yellow / achievementSummary.total) * 100)
-    : 0;
-  const redPct =
-    achievementSummary.total > 0 ?
-      Math.round((achievementSummary.red / achievementSummary.total) * 100)
-    : 0;
+  const pctOne = (n: number, total: number) =>
+    total > 0 ? Math.round((n / total) * 1000) / 10 : 0;
+
+  const greenPct = pctOne(achievementSummary.green, achievementSummary.total);
+  const yellowPct = pctOne(achievementSummary.yellow, achievementSummary.total);
+  const redPct = pctOne(achievementSummary.red, achievementSummary.total);
 
   const latest = monthsList[monthsList.length - 1];
 
@@ -226,6 +233,7 @@ export async function buildPerformanceAnalysis(input: {
       greenPct,
       yellowPct,
       redPct,
+      achievementStores,
       monthLabel: latest?.label ?? "",
     },
   };

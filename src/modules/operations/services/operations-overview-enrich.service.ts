@@ -118,6 +118,14 @@ export async function buildOpsKpiMetrics() {
   return data;
 }
 
+/** 當年度 1 月 1 日至今的月度業績趨勢（不受總覽日期篩選影響） */
+export async function buildYearToDateMonthlyRevenueTrend() {
+  const todayYmd = formatDateOnlyTaipei();
+  const year = todayYmd.slice(0, 4);
+  const startYmd = `${year}-01-01`;
+  return buildMonthlyRevenueTrend(startYmd, todayYmd);
+}
+
 /** 月度業績趨勢：單次營收查詢 + 批次目標，避免每月重跑 dashboard filter */
 export async function buildMonthlyRevenueTrend(startYmd: string, endYmd: string) {
   const months = listMonthsInRange(startYmd, endYmd).slice(-24);

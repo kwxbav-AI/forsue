@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { serializeRetailStore } from "@/lib/operations-serialize";
+import { normalizeRetailBusinessHours } from "@/lib/retail-store-hours";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ const bodySchema = z.object({
   region: z.string().optional().nullable(),
   managerName: z.string().optional().nullable(),
   dailyBusinessHours: optionalHours,
+  weekdayBusinessHours: optionalHours,
+  saturdayBusinessHours: optionalHours,
   defaultLaborHoursPerDay: optionalHours,
   isActive: z.boolean().optional(),
 });
@@ -42,15 +45,22 @@ export async function POST(request: NextRequest) {
       region,
       managerName,
       dailyBusinessHours,
+      weekdayBusinessHours,
+      saturdayBusinessHours,
       defaultLaborHoursPerDay,
       isActive,
     } = parsed.data;
+    const bizHours = normalizeRetailBusinessHours({
+      dailyBusinessHours,
+      weekdayBusinessHours,
+      saturdayBusinessHours,
+    });
     const created = await prisma.retailStore.create({
       data: {
         storeName: storeName.trim(),
         region: region?.trim() || null,
         managerName: managerName?.trim() || null,
-        dailyBusinessHours: dailyBusinessHours ?? null,
+        ...bizHours,
         defaultLaborHoursPerDay: defaultLaborHoursPerDay ?? null,
         isActive: isActive ?? true,
       },

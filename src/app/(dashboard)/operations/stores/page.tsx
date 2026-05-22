@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { formatRetailBusinessHoursDisplay } from "@/lib/retail-store-hours";
 
 type RetailStore = {
   id: string;
@@ -9,6 +10,8 @@ type RetailStore = {
   region: string | null;
   managerName: string | null;
   dailyBusinessHours: number | null;
+  weekdayBusinessHours: number | null;
+  saturdayBusinessHours: number | null;
   defaultLaborHoursPerDay: number | null;
   isActive: boolean;
 };
@@ -17,7 +20,8 @@ const emptyForm = {
   storeName: "",
   region: "",
   managerName: "",
-  dailyBusinessHours: "",
+  weekdayBusinessHours: "",
+  saturdayBusinessHours: "",
   defaultLaborHoursPerDay: "",
   isActive: true,
 };
@@ -55,12 +59,15 @@ export default function OperationsStoresPage() {
 
   function startEdit(row: RetailStore) {
     setEditingId(row.id);
+    const weekday =
+      row.weekdayBusinessHours ?? row.dailyBusinessHours;
     setForm({
       storeName: row.storeName,
       region: row.region ?? "",
       managerName: row.managerName ?? "",
-      dailyBusinessHours:
-        row.dailyBusinessHours != null ? String(row.dailyBusinessHours) : "",
+      weekdayBusinessHours: weekday != null ? String(weekday) : "",
+      saturdayBusinessHours:
+        row.saturdayBusinessHours != null ? String(row.saturdayBusinessHours) : "",
       defaultLaborHoursPerDay:
         row.defaultLaborHoursPerDay != null ? String(row.defaultLaborHoursPerDay) : "",
       isActive: row.isActive,
@@ -71,17 +78,22 @@ export default function OperationsStoresPage() {
   async function submit() {
     setMessage(null);
     if (!form.storeName.trim()) {
-      setMessage("\u8acb\u8f38\u5165\u9580\u5e02\u540d\u7a31");
+      setMessage("請輸入門市名稱");
       return;
     }
-    const dailyBusinessHours = parseOptionalHours(form.dailyBusinessHours);
+    const weekdayBusinessHours = parseOptionalHours(form.weekdayBusinessHours);
+    const saturdayBusinessHours = parseOptionalHours(form.saturdayBusinessHours);
     const defaultLaborHoursPerDay = parseOptionalHours(form.defaultLaborHoursPerDay);
-    if (form.dailyBusinessHours.trim() && dailyBusinessHours == null) {
-      setMessage("\u71df\u696d\u6642\u9577\u8acb\u8f38\u5165\u6709\u6548\u6578\u5b57");
+    if (form.weekdayBusinessHours.trim() && weekdayBusinessHours == null) {
+      setMessage("平日營業時長請輸入有效數字");
+      return;
+    }
+    if (form.saturdayBusinessHours.trim() && saturdayBusinessHours == null) {
+      setMessage("週六營業時長請輸入有效數字");
       return;
     }
     if (form.defaultLaborHoursPerDay.trim() && defaultLaborHoursPerDay == null) {
-      setMessage("\u9810\u8a2d\u5de5\u6642\u8acb\u8f38\u5165\u6709\u6548\u6578\u5b57");
+      setMessage("預設工時請輸入有效數字");
       return;
     }
 
@@ -89,7 +101,8 @@ export default function OperationsStoresPage() {
       storeName: form.storeName.trim(),
       region: form.region.trim() || null,
       managerName: form.managerName.trim() || null,
-      dailyBusinessHours,
+      weekdayBusinessHours,
+      saturdayBusinessHours,
       defaultLaborHoursPerDay,
       isActive: form.isActive,
     };
@@ -108,7 +121,7 @@ export default function OperationsStoresPage() {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(data.error || "\u5132\u5b58\u5931\u6557");
+      setMessage(data.error || "儲存失敗");
       return;
     }
     resetForm();
@@ -116,11 +129,11 @@ export default function OperationsStoresPage() {
   }
 
   async function remove(id: string, name: string) {
-    if (!confirm(`\u78ba\u5b9a\u8981\u522a\u9664\u9580\u5e02\u300c${name}\u300d\uff1f\u76f8\u95dc\u76ee\u6a19\u8207\u7e3e\u6548\u4e5f\u6703\u4e00\u4f75\u522a\u9664\u3002`)) return;
+    if (!confirm(`確定要刪除門市「${name}」？相關目標與績效也會一併刪除。`)) return;
     const res = await fetch(`/api/operations/stores/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(data.error || "\u522a\u9664\u5931\u6557");
+      setMessage(data.error || "刪除失敗");
       return;
     }
     if (editingId === id) resetForm();
@@ -131,9 +144,9 @@ export default function OperationsStoresPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">{"\u71df\u904b\u9580\u5e02\u7ba1\u7406"}</h1>
+          <h1 className="text-xl font-bold text-slate-800">營運門市管理</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {"\u71df\u904b\u5206\u6790\u6a21\u7d44\u7528\u9580\u5e02\u4e3b\u6a94\uff08\u8207\u65e5\u5e38\u7e3e\u6548\u7cfb\u7d71\u9580\u5e02\u5206\u958b\uff09\u3002\u53ef\u8a2d\u5b9a\u300c\u6bcf\u65e5\u71df\u696d\u6642\u9577\u300d\u8207\u300c\u6bcf\u65e5\u9810\u8a2d\u5de5\u6642\u300d\u4f9b Dashboard \u52a0\u73ed\u8a08\u7b97\u3002"}
+            營運分析模組用門市主檔。可設定週一～五與週六營業時長；預設工時僅作備援（加班分析以門市目標月工時為準）。
           </p>
         </div>
         <div className="flex gap-2">
@@ -141,24 +154,24 @@ export default function OperationsStoresPage() {
             href="/operations/dashboard"
             className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            {"\u71df\u904b\u7e3d\u89bd"}
+            營運總覽
           </Link>
           <Link
             href="/"
             className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            {"\u56de\u9996\u9801"}
+            回首頁
           </Link>
         </div>
       </div>
 
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-3 font-medium text-slate-800">
-          {editingId ? "\u7de8\u8f2f\u9580\u5e02" : "\u65b0\u589e\u9580\u5e02"}
+          {editingId ? "編輯門市" : "新增門市"}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm">
-            <span className="text-slate-600">{"\u9580\u5e02\u540d\u7a31"}</span>
+            <span className="text-slate-600">門市名稱</span>
             <input
               value={form.storeName}
               onChange={(e) => setForm((f) => ({ ...f, storeName: e.target.value }))}
@@ -166,16 +179,16 @@ export default function OperationsStoresPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="text-slate-600">{"\u5340\u57df"}</span>
+            <span className="text-slate-600">區域</span>
             <input
               value={form.region}
               onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
-              placeholder={"\u4f8b\u5982\uff1a\u6843\u5712\u5340\u3001\u5b9c\u862d\u5340"}
+              placeholder="例如：桃園區、宜蘭區"
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
             />
           </label>
           <label className="text-sm">
-            <span className="text-slate-600">{"\u5340\u7763 / \u8ca0\u8cac\u4e3b\u7ba1"}</span>
+            <span className="text-slate-600">區督 / 負責主管</span>
             <input
               value={form.managerName}
               onChange={(e) => setForm((f) => ({ ...f, managerName: e.target.value }))}
@@ -183,21 +196,35 @@ export default function OperationsStoresPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="text-slate-600">{"\u9580\u5e02\u6bcf\u65e5\u71df\u696d\u6642\u9577\uff08\u5c0f\u6642\uff09"}</span>
+            <span className="text-slate-600">平日營業時長（週一～五，小時）</span>
             <input
               type="number"
               min={0}
               step={0.01}
-              value={form.dailyBusinessHours}
+              value={form.weekdayBusinessHours}
               onChange={(e) =>
-                setForm((f) => ({ ...f, dailyBusinessHours: e.target.value }))
+                setForm((f) => ({ ...f, weekdayBusinessHours: e.target.value }))
               }
-              placeholder={"\u4f8b\uff1a 12"}
+              placeholder="例： 12"
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
             />
           </label>
           <label className="text-sm">
-            <span className="text-slate-600">{"\u6bcf\u65e5\u9810\u8a2d\u5de5\u6642\uff08\u5c0f\u6642\uff09"}</span>
+            <span className="text-slate-600">週六營業時長（小時）</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={form.saturdayBusinessHours}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, saturdayBusinessHours: e.target.value }))
+              }
+              placeholder="例： 14（若與平日相同可留空）"
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-sm sm:col-span-2">
+            <span className="text-slate-600">每日預設工時（小時，選填備援）</span>
             <input
               type="number"
               min={0}
@@ -206,8 +233,8 @@ export default function OperationsStoresPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, defaultLaborHoursPerDay: e.target.value }))
               }
-              placeholder={"\u4f8b\uff1a 24"}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              placeholder="例： 24"
+              className="mt-1 w-full max-w-xs rounded border border-slate-300 px-2 py-1.5 text-sm"
             />
           </label>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
@@ -216,24 +243,24 @@ export default function OperationsStoresPage() {
               checked={form.isActive}
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
             />
-            <span className="text-slate-600">{"\u555f\u7528"}</span>
+            <span className="text-slate-600">啟用</span>
           </label>
         </div>
-        <div>
+        <div className="mt-3">
           <button
             type="button"
             onClick={submit}
             className="rounded bg-sky-600 px-4 py-1.5 text-sm text-white hover:bg-sky-700"
           >
-            {editingId ? "\u5132\u5b58" : "\u65b0\u589e"}
+            {editingId ? "儲存" : "新增"}
           </button>
           {editingId ? (
             <button
               type="button"
               onClick={resetForm}
-              className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              className="ml-2 rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
             >
-              {"\u53d6\u6d88"}
+              取消
             </button>
           ) : null}
         </div>
@@ -241,20 +268,19 @@ export default function OperationsStoresPage() {
       </div>
 
       <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
-        {loading ? (
-          <p className="p-4 text-sm text-slate-500">{"\u8f09\u5165\u4e2d..."}</p>
-        ) : list.length === 0 ? (
-          <p className="p-4 text-sm text-slate-500">{"\u5c1a\u7121\u9580\u5e02"}</p>
-        ) : (
-          <table className="w-full min-w-[640px] text-sm">
+        {loading ?
+          <p className="p-4 text-sm text-slate-500">載入中...</p>
+        : list.length === 0 ?
+          <p className="p-4 text-sm text-slate-500">尚無門市</p>
+        : <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                <th className="px-3 py-2">{"\u9580\u5e02"}</th>
-                <th className="px-3 py-2">{"\u5340\u57df"}</th>
-                <th className="px-3 py-2">{"\u8ca0\u8cac\u4e3b\u7ba1"}</th>
-                <th className="px-3 py-2 text-right">{"\u71df\u696d\u6642\u9577"}</th>
-                <th className="px-3 py-2 text-right">{"\u9810\u8a2d\u5de5\u6642"}</th>
-                <th className="px-3 py-2">{"\u72c0\u614b"}</th>
+                <th className="px-3 py-2">門市</th>
+                <th className="px-3 py-2">區域</th>
+                <th className="px-3 py-2">負責主管</th>
+                <th className="px-3 py-2">營業時長</th>
+                <th className="px-3 py-2 text-right">預設工時</th>
+                <th className="px-3 py-2">狀態</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -264,8 +290,8 @@ export default function OperationsStoresPage() {
                   <td className="px-3 py-2">{row.storeName}</td>
                   <td className="px-3 py-2">{row.region ?? "-"}</td>
                   <td className="px-3 py-2">{row.managerName ?? "-"}</td>
-                  <td className="px-3 py-2 text-right">
-                    {row.dailyBusinessHours != null ? row.dailyBusinessHours : "-"}
+                  <td className="px-3 py-2">
+                    {formatRetailBusinessHoursDisplay(row)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {row.defaultLaborHoursPerDay != null ?
@@ -273,11 +299,9 @@ export default function OperationsStoresPage() {
                     : "-"}
                   </td>
                   <td className="px-3 py-2">
-                    {row.isActive ? (
-                      <span className="text-green-600">{"\u555f\u7528"}</span>
-                    ) : (
-                      <span className="text-slate-400">{"\u505c\u7528"}</span>
-                    )}
+                    {row.isActive ?
+                      <span className="text-green-600">啟用</span>
+                    : <span className="text-slate-400">停用</span>}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button
@@ -285,21 +309,21 @@ export default function OperationsStoresPage() {
                       onClick={() => startEdit(row)}
                       className="mr-2 text-sky-600 hover:underline"
                     >
-                      {"\u7de8\u8f2f"}
+                      編輯
                     </button>
                     <button
                       type="button"
                       onClick={() => remove(row.id, row.storeName)}
                       className="text-red-600 hover:underline"
                     >
-                      {"\u522a\u9664"}
+                      刪除
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
+        }
       </div>
     </div>
   );

@@ -50,6 +50,11 @@ type PerfData = {
     greenPct: number;
     yellowPct: number;
     redPct: number;
+    achievementStores: {
+      green: string[];
+      yellow: string[];
+      red: string[];
+    };
     monthLabel: string;
   };
   stores: StoreOption[];
@@ -65,6 +70,85 @@ type TabId = (typeof TABS)[number]["id"];
 
 function formatWan(n: number) {
   return Math.round(n / 10000).toLocaleString("zh-TW");
+}
+
+function formatPctOne(n: number) {
+  return `${Number(n).toFixed(1)}%`;
+}
+
+const REGION_CHART_COLORS = {
+  "桃園區": { actual: "#2563eb", target: "#fbbf24" },
+  "宜蘭區": { actual: "#0d9488", target: "#a78bfa" },
+} as const;
+
+function AchievementBucketCard({
+  count,
+  title,
+  pct,
+  hint,
+  storeNames,
+  tone,
+}: {
+  count: number;
+  title: string;
+  pct: number;
+  hint?: string;
+  storeNames: string[];
+  tone: "green" | "amber" | "rose";
+}) {
+  const styles = {
+    green: {
+      box: "bg-green-50 border-green-100",
+      count: "text-green-700",
+      title: "text-green-800",
+      pct: "text-green-600",
+      hint: "text-green-600/80",
+      pop: "border-green-200 bg-white text-green-900",
+    },
+    amber: {
+      box: "bg-amber-50 border-amber-100",
+      count: "text-amber-700",
+      title: "text-amber-800",
+      pct: "text-amber-600",
+      hint: "text-amber-600/80",
+      pop: "border-amber-200 bg-white text-amber-900",
+    },
+    rose: {
+      box: "bg-rose-50 border-rose-100",
+      count: "text-rose-700",
+      title: "text-rose-800",
+      pct: "text-rose-600",
+      hint: "text-rose-600/80",
+      pop: "border-rose-200 bg-white text-rose-900",
+    },
+  }[tone];
+
+  return (
+    <div className={`group relative rounded-xl border p-6 text-center ${styles.box}`}>
+      <p className={`text-4xl font-bold ${styles.count}`}>{count}</p>
+      <p className={`mt-2 font-medium ${styles.title}`}>{title}</p>
+      <p className={`text-sm ${styles.pct}`}>{formatPctOne(pct)}</p>
+      {hint ? <p className={`text-[10px] mt-1 ${styles.hint}`}>{hint}</p> : null}
+      {storeNames.length > 0 ?
+        <div
+          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[min(100%,280px)] -translate-x-1/2 rounded-lg border px-3 py-2 text-left text-xs opacity-0 shadow-lg transition-opacity group-hover:opacity-100 ${styles.pop}`}
+        >
+          <p className="font-semibold mb-1">{title}清單</p>
+          <ul className="space-y-0.5">
+            {storeNames.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        </div>
+      : count > 0 ?
+        <div
+          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 rounded-lg border px-2 py-1 text-xs opacity-0 shadow group-hover:opacity-100 ${styles.pop}`}
+        >
+          無門市名稱
+        </div>
+      : null}
+    </div>
+  );
 }
 
 export default function OperationsPerformancePage() {
@@ -286,24 +370,28 @@ export default function OperationsPerformancePage() {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
                 <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
                 <Legend />
-                {data.regionalBenchmark.map((r, idx) => (
-                  <Bar
-                    key={`${r.region}-a`}
-                    dataKey={`${r.region}_actual`}
-                    name={`${r.region} 實際`}
-                    fill={idx === 0 ? "#2563eb" : "#0d9488"}
-                    radius={[4, 4, 0, 0]}
-                  />
-                ))}
-                {data.regionalBenchmark.map((r) => (
-                  <Bar
-                    key={`${r.region}-t`}
-                    dataKey={`${r.region}_target`}
-                    name={`${r.region} 目標`}
-                    fill="#e2e8f0"
-                    radius={[4, 4, 0, 0]}
-                  />
-                ))}
+                {(["桃園區", "宜蘭區"] as const).flatMap((region) => {
+                  const colors = REGION_CHART_COLORS[region];
+                  if (!data.regionalBenchmark.some((r) => r.region === region)) {
+                    return [];
+                  }
+                  return [
+                    <Bar
+                      key={`${region}-actual`}
+                      dataKey={`${region}_actual`}
+                      name={`${region} 實際`}
+                      fill={colors.actual}
+                      radius={[4, 4, 0, 0]}
+                    />,
+                    <Bar
+                      key={`${region}-target`}
+                      dataKey={`${region}_target`}
+                      name={`${region} 目標`}
+                      fill={colors.target}
+                      radius={[4, 4, 0, 0]}
+                    />,
+                  ];
+                })}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -341,23 +429,29 @@ export default function OperationsPerformancePage() {
             區間營收達成情況（{data?.startDate} ~ {data?.endDate} · 實際營收 ÷ 業績目標）
           </p>
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl bg-green-50 border border-green-100 p-6 text-center">
-              <p className="text-4xl font-bold text-green-700">{a.green}</p>
-              <p className="mt-2 font-medium text-green-800">達標門市</p>
-              <p className="text-sm text-green-600">{a.greenPct}%</p>
-            </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-100 p-6 text-center">
-              <p className="text-4xl font-bold text-amber-700">{a.yellow}</p>
-              <p className="mt-2 font-medium text-amber-800">接近達標</p>
-              <p className="text-sm text-amber-600">{a.yellowPct}%</p>
-              <p className="text-[10px] text-amber-600/80 mt-1">達成率 80%～99%</p>
-            </div>
-            <div className="rounded-xl bg-rose-50 border border-rose-100 p-6 text-center">
-              <p className="text-4xl font-bold text-rose-700">{a.red}</p>
-              <p className="mt-2 font-medium text-rose-800">未達標</p>
-              <p className="text-sm text-rose-600">{a.redPct}%</p>
-              <p className="text-[10px] text-rose-600/80 mt-1">達成率 &lt; 80%</p>
-            </div>
+            <AchievementBucketCard
+              count={a.green}
+              title="達標門市"
+              pct={a.greenPct}
+              storeNames={a.achievementStores?.green ?? []}
+              tone="green"
+            />
+            <AchievementBucketCard
+              count={a.yellow}
+              title="接近達標"
+              pct={a.yellowPct}
+              hint="達成率 80%～99%"
+              storeNames={a.achievementStores?.yellow ?? []}
+              tone="amber"
+            />
+            <AchievementBucketCard
+              count={a.red}
+              title="未達標"
+              pct={a.redPct}
+              hint="達成率 < 80%"
+              storeNames={a.achievementStores?.red ?? []}
+              tone="rose"
+            />
           </div>
         </div>
       : null}

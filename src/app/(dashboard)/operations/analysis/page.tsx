@@ -40,19 +40,19 @@ const T = {
   yoy: "YoY \u71DF\u6536\u6210\u9577\u7387",
   yoySub: "\u8F03\u53BB\u5E74\u540C\u671F",
   dailyBizHours: "\u9580\u5E02\u6BCF\u65E5\u71DF\u696D\u6642\u9577",
-  dailyBizHoursSub: "\u5E73\u5747\u6BCF\u65E5\u71DF\u696D\u6642\u9577",
+  dailyBizHoursSub: "\u9031\u4e00\uff5e\u4e94\u8207\u9031\u516d\u53ef\u5206\u5225\u8a2d\u5b9a",
   hoursDetail: "\u5DE5\u6642\u660E\u7D30",
   actualHours: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642",
   overtimeHours: "\u52A0\u73ED\u5DE5\u6642",
   overtimeRatio: "\u52A0\u73ED\u6642\u6578\u5360\u6BD4",
   presetCompare: "\u9810\u8A2D\u5DE5\u6642\u6BD4\u8F03",
-  periodPresetHours: "\u5340\u9593\u9810\u8A2D\u5DE5\u6642\u5408\u8A08",
-  periodPresetHint: "\u6BCF\u65E5\u9810\u8A2D\u5DE5\u6642 \u00D7 \u5DE5\u4F5C\u5929\u6578",
+  periodPresetHours: "\u5340\u9593\u76EE\u6A19\u5DE5\u6642\u5408\u8A08",
+  periodPresetHint: "\u4f9d\u9580\u5e02\u76ee\u6a19\u8a2d\u5b9a\u4e4b\u6708\u5de5\u6642\u76ee\u6a19\uff0c\u6309\u5340\u9593\u5de5\u4f5c\u5929\u6578\u6bd4\u4f8b\u6524\u63d0",
   hoursDiff: "\u5DE5\u6642\u5DEE\u7570",
-  hoursDiffSub: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642 \u2212 \u5340\u9593\u9810\u8A2D\u5DE5\u6642",
+  hoursDiffSub: "\u5BE6\u969B\u51FA\u52E4\u7E3D\u5DE5\u6642 \u2212 \u5340\u9593\u76ee\u6a19\u5de5\u6642",
   settingsWarn:
-    "\u8ACB\u81F3\u300C\u71DF\u904B\u9580\u5E02\u7BA1\u7406\u300D\u8A2D\u5B9A\u71DF\u696D\u6642\u9577\u8207\u9810\u8A2D\u5DE5\u6642\uFF0C\u8A2D\u5B9A\u5F8C\u5373\u53EF\u770B\u5230\u9810\u8A2D\u5DE5\u6642\u8207\u5DE5\u6642\u5DEE\u7570\u5206\u6790",
-  goSettings: "\u524D\u5F80\u8A2D\u5B9A",
+    "\u8acb\u81f3\u300c\u9580\u5e02\u76ee\u6a19\u8a2d\u5b9a\u300d\u532f\u5165\u6708\u76ee\u6a19\u5de5\u6642\uff1b\u71df\u696d\u6642\u9577\u8acb\u81f3\u300c\u71df\u904b\u9580\u5e02\u7ba1\u7406\u300d\u8a2d\u5b9a",
+  goSettings: "\u524d\u5f80\u9580\u5e02\u76ee\u6a19",
   dailyRevenueTrend: "\u6BCF\u65E5\u71DF\u696D\u984D\u8DA8\u52E2",
   dailyHoursTrend: "\u6BCF\u65E5\u5DE5\u6642\u8DA8\u52E2",
   viewDetail: "\u67E5\u770B\u660E\u7D30",
@@ -105,7 +105,10 @@ type FilteredMetrics = {
   actualAttendanceHours?: number;
   overtimeHours?: number | null;
   overtimeRatio?: number | null;
+  weekdayBusinessHours?: number | null;
+  saturdayBusinessHours?: number | null;
   dailyBusinessHours?: number | null;
+  businessHoursLabel?: string;
   defaultLaborHours?: number | null;
   laborHoursDifference?: number | null;
   workingDaysInRange?: number;
@@ -384,8 +387,7 @@ export default function OperationsDashboardPage() {
   }
 
   const m = filtered;
-  const hasLaborSettings =
-    m?.defaultLaborHours != null && m?.dailyBusinessHours != null;
+  const hasLaborTarget = m?.defaultLaborHours != null;
   const chartData = m?.dailyTrend ?? [];
 
   return (
@@ -612,8 +614,7 @@ export default function OperationsDashboardPage() {
               <div>
                 <p className="text-sm font-medium text-slate-800">{T.dailyBizHours}</p>
                 <p className="text-2xl font-bold text-slate-800">
-                  {dashHours(m.dailyBusinessHours)}
-                  <span className="ml-1 text-sm font-normal text-slate-500">{T.hr}</span>
+                  {m.businessHoursLabel ?? dashHours(m.dailyBusinessHours)}
                 </p>
                 <p className="text-xs text-slate-500">{T.dailyBizHoursSub}</p>
               </div>
@@ -665,11 +666,11 @@ export default function OperationsDashboardPage() {
                   </p>
                   <p className="mt-1 text-xs text-slate-400">{T.hoursDiffSub}</p>
                 </div>
-                {!hasLaborSettings ?
+                {!hasLaborTarget ?
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <p className="text-xs text-amber-900">{T.settingsWarn}</p>
                     <Link
-                      href="/operations/stores"
+                      href="/operations/store-targets"
                       className="mt-2 inline-block rounded-md bg-amber-400 px-3 py-1 text-xs font-medium text-amber-950 hover:bg-amber-500"
                     >
                       {T.goSettings}
