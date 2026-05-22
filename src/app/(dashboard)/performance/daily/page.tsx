@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import {
+  OPS_FILTER_REGIONS,
+  OPS_REGION_CATALOG,
+  normalizeStoreKey,
+  storeNameMatchesCatalogKey,
+} from "@/lib/operations-dashboard";
 
 type DailyRow = {
   id: string;
@@ -10,6 +16,7 @@ type DailyRow = {
   storeId: string;
   storeName: string;
   storeCode: string | null;
+  region?: string;
   revenueAmount: number;
   totalWorkHours: number;
   efficiencyRatio: number;
@@ -18,7 +25,14 @@ type DailyRow = {
   calculatedAt: string;
 };
 
-type SortKey = "storeName" | "revenueAmount" | "totalWorkHours" | "efficiencyRatio" | "targetValue" | "status";
+type SortKey =
+  | "workDate"
+  | "storeName"
+  | "revenueAmount"
+  | "totalWorkHours"
+  | "efficiencyRatio"
+  | "targetValue"
+  | "status";
 type SortDir = "asc" | "desc";
 
 type StoreDetailRow = {
@@ -40,30 +54,166 @@ type StoreDetailPayload = {
   rows: StoreDetailRow[];
 };
 
+type StoreOption = {
+  id: string;
+  name: string;
+  department?: string | null;
+};
+
 function isSaturdayYmd(ymd: string): boolean {
   return new Date(`${ymd}T00:00:00.000Z`).getUTCDay() === 6;
 }
 
+function detailTypeLabel(type: StoreDetailRow["type"]) {
+  switch (type) {
+    case "attendance":
+      return "正班";
+    case "dispatch_in":
+      return "調入支援";
+    case "dispatch_out":
+      return "調出";
+    case "adjustment":
+      return "異動";
+    default:
+      return "";
+  }
+}
+
+function HoursDetailPopover({
+  detail,
+  loading,
+  storeName,
+  workDate,
+}: {
+  detail: StoreDetailPayload | null;
+  loading: boolean;
+  storeName: string;
+  workDate: string;
+}) {
+  if (loading) {
+    return (
+      <div className="absolute left-0 top-full z-30 mt-1 w-[min(420px,90vw)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-500 shadow-lg">
+        載入工時明細…
+      </div>
+    );
+  }
+  if (!detail?.rows?.length) {
+    return (
+      <div className="absolute left-0 top-full z-30 mt-1 w-[min(320px,90vw)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-500 shadow-lg">
+        {storeName} · {workDate} 無工時明細
+      </div>
+    );
+  }
+
+  const rows = detail.rows.filter((r) => r.type !== "subtotal");
+  return (
+    <div className="absolute left-0 top-full z-30 mt-1 max-h-[280px] w-[min(480px,92vw)] overflow-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+      <p className="sticky top-0 bg-white px-1 pb-2 text-xs font-semibold text-slate-800 border-b border-slate-100">
+        {storeName} · {workDate} 工時明細
+      </p>
+      <table className="w-full text-xs mt-1">
+        <thead>
+          <tr className="text-left text-slate-500">
+            <th className="py-1 pr-2">員工</th>
+            <th className="py-1 pr-2 text-right">時數</th>
+            <th className="py-1">說明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t border-slate-50">
+              <td className="py-1 pr-2 whitespace-nowrap">
+                {r.name}
+                <span className="text-slate-400 ml-1">{r.employeeCode}</span>
+              </td>
+              <td
+                className={`py-1 pr-2 text-right tabular-nums ${
+                  r.workHours < 0 ? "text-red-700" : "text-slate-800"
+                }`}
+              >
+                {Number(r.workHours).toFixed(2)}
+              </td>
+              <td className="py-1 text-slate-600">
+                <span className="text-slate-400 mr-1">[{detailTypeLabel(r.type)}]</span>
+                {r.adjustmentReason ?? "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function PerformanceDailyPage() {
-  const [date, setDate] = useState(() => formatLocalDateInput());
+  const today = formatLocalDateInput();
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+  const [region, setRegion] = useState("");
+  const [storeId, setStoreId] = useState("");
+  const [stores, setStores] = useState<StoreOption[]>([]);
   const [list, setList] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [detailStoreId, setDetailStoreId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<StoreDetailPayload | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("storeName");
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [hoverDetail, setHoverDetail] = useState<StoreDetailPayload | null>(null);
+  const [hoverLoading, setHoverLoading] = useState(false);
+  const detailFetchRef = useRef(0);
+  const [sortKey, setSortKey] = useState<SortKey>("workDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  useEffect(() => {
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((d: StoreOption[]) => setStores(Array.isArray(d) ? d : []))
+      .catch(() => setStores([]));
+  }, []);
+
+  const storeOptions = useMemo(() => {
+    if (!region) return stores;
+    const group = OPS_REGION_CATALOG.find((g) => g.region === region);
+    if (!group) return stores;
+    const keys = new Set(group.storeNames.map(normalizeStoreKey));
+    return stores.filter((s) => {
+      const n = normalizeStoreKey(s.name);
+      if (keys.has(n)) return true;
+      return group.storeNames.some((ck) => storeNameMatchesCatalogKey(s.name, ck));
+    });
+  }, [stores, region]);
+
   const fetchList = useCallback(async () => {
+    if (startDate > endDate) {
+      setFetchError("開始日不可晚於結束日");
+      setList([]);
+      return;
+    }
     setLoading(true);
-    const res = await fetch(`/api/performance/daily?date=${date}`);
-    if (res.ok) setList(await res.json());
-    setLoading(false);
-  }, [date]);
+    setFetchError(null);
+    try {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (region) params.set("region", region);
+      if (storeId) params.set("storeId", storeId);
+      const res = await fetch(`/api/performance/daily?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setFetchError(data.error || "查詢失敗");
+        setList([]);
+        return;
+      }
+      setList(Array.isArray(data.rows) ? data.rows : Array.isArray(data) ? data : []);
+    } catch {
+      setFetchError("查詢失敗");
+      setList([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate, region, storeId]);
 
   useEffect(() => {
-    fetchList();
+    void fetchList();
   }, [fetchList]);
+
+  const showDateColumn = startDate !== endDate;
 
   const hasAnyActivity = useMemo(
     () => list.some((r) => r.revenueAmount > 0 || r.totalWorkHours > 0),
@@ -72,13 +222,15 @@ export default function PerformanceDailyPage() {
 
   const sortedList = useMemo(() => {
     const statusRank = (row: DailyRow) => {
-      if (row.totalWorkHours === 0) return -1; // 無資料
-      if (!isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000) return 2; // 超標
-      return row.isTargetMet ? 1 : 0; // 達標 / 未達標
+      if (row.totalWorkHours === 0) return -1;
+      if (!isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000) return 2;
+      return row.isTargetMet ? 1 : 0;
     };
 
     const getVal = (row: DailyRow) => {
       switch (sortKey) {
+        case "workDate":
+          return row.workDate;
         case "storeName":
           return row.storeName || "";
         case "revenueAmount":
@@ -92,7 +244,7 @@ export default function PerformanceDailyPage() {
         case "status":
           return statusRank(row);
         default:
-          return row.storeName || "";
+          return row.workDate;
       }
     };
 
@@ -100,7 +252,6 @@ export default function PerformanceDailyPage() {
     return [...list].sort((a, b) => {
       const av = getVal(a);
       const bv = getVal(b);
-
       if (typeof av === "number" && typeof bv === "number") {
         return (av - bv) * dir;
       }
@@ -122,238 +273,233 @@ export default function PerformanceDailyPage() {
     [sortDir, sortKey]
   );
 
-  useEffect(() => {
-    if (!detailStoreId || !date) {
-      setDetail(null);
-      return;
-    }
-    fetch(`/api/performance/daily/detail?date=${date}&storeId=${detailStoreId}`)
+  const loadHoverDetail = useCallback((row: DailyRow) => {
+    const key = `${row.workDate}|${row.storeId}`;
+    setHoverKey(key);
+    const reqId = ++detailFetchRef.current;
+    setHoverLoading(true);
+    setHoverDetail(null);
+    fetch(`/api/performance/daily/detail?date=${row.workDate}&storeId=${row.storeId}`)
       .then((r) => r.json())
-      .then((d: StoreDetailPayload) => setDetail(d))
-      .catch(() => setDetail(null));
-  }, [date, detailStoreId]);
+      .then((d: StoreDetailPayload) => {
+        if (detailFetchRef.current === reqId) {
+          setHoverDetail(d);
+          setHoverLoading(false);
+        }
+      })
+      .catch(() => {
+        if (detailFetchRef.current === reqId) {
+          setHoverDetail(null);
+          setHoverLoading(false);
+        }
+      });
+  }, []);
+
+  const clearHover = useCallback(() => {
+    setHoverKey(null);
+    setHoverDetail(null);
+    setHoverLoading(false);
+  }, []);
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold text-slate-800">每日工效比</h1>
-        <Link href="/" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+        <Link
+          href="/"
+          className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+        >
           回首頁
         </Link>
       </div>
 
-      <div className="mb-4 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
-        <label className="flex items-center gap-2">
-          <span className="text-sm text-slate-600">日期</span>
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-slate-600">開始日</span>
           <input
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-slate-600">結束日</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-slate-600">區域</span>
+          <select
+            value={region}
+            onChange={(e) => {
+              setRegion(e.target.value);
+              setStoreId("");
+            }}
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm min-w-[100px]"
+          >
+            <option value="">全部</option>
+            {OPS_FILTER_REGIONS.filter((r) => r === "桃園區" || r === "宜蘭區").map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-slate-600">門市</span>
+          <select
+            value={storeId}
+            onChange={(e) => setStoreId(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm min-w-[120px]"
+          >
+            <option value="">全部</option>
+            {storeOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => void fetchList()}
+          disabled={loading}
+          className="rounded bg-sky-600 px-4 py-1.5 text-sm text-white hover:bg-sky-700 disabled:opacity-60"
+        >
+          {loading ? "查詢中…" : "查詢"}
+        </button>
       </div>
+      <p className="mb-3 text-xs text-slate-500">
+        滑鼠移入門市列可預覽當日工時明細（含他店調入支援人員與時數）
+      </p>
 
-      {loading ? (
+      {loading ?
         <p className="text-sm text-slate-500">載入中…</p>
-      ) : fetchError ? (
+      : fetchError ?
         <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {fetchError}
         </p>
-      ) : list.length === 0 ? (
+      : list.length === 0 ?
         <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          無法載入門市列表，請稍後再試。
+          此條件尚無營收或出勤資料，請確認已上傳並調整篩選。
         </p>
-      ) : !hasAnyActivity ? (
+      : !hasAnyActivity ?
         <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          此日期尚無營收或出勤資料，請確認已上傳該日的營收與出勤檔案。
+          此區間尚無營收或出勤資料。
         </p>
-      ) : (
-        <>
-          <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                  <th className="sticky left-0 z-20 w-[220px] min-w-[220px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("storeName")} className="hover:underline">
-                      門市{sortIndicator("storeName")}
+      : (
+        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+                {showDateColumn ?
+                  <th className="px-3 py-2 text-left font-medium text-slate-700">
+                    <button type="button" onClick={() => toggleSort("workDate")} className="hover:underline">
+                      日期{sortIndicator("workDate")}
                     </button>
                   </th>
-                  <th className="sticky left-[220px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-right font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("revenueAmount")} className="hover:underline">
-                      營收{sortIndicator("revenueAmount")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("totalWorkHours")} className="hover:underline">
-                      總工時{sortIndicator("totalWorkHours")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("efficiencyRatio")} className="hover:underline">
-                      工效比{sortIndicator("efficiencyRatio")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("targetValue")} className="hover:underline">
-                      目標值{sortIndicator("targetValue")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-2 text-center font-medium text-slate-700">
-                    <button type="button" onClick={() => toggleSort("status")} className="hover:underline">
-                      狀態{sortIndicator("status")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedList.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100">
-                    <td className="sticky left-0 z-[5] w-[220px] min-w-[220px] bg-white px-4 py-2 font-medium">
-                      {row.storeName}
+                : null}
+                <th className="sticky left-0 z-20 min-w-[120px] bg-slate-50 px-3 py-2 text-left font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("storeName")} className="hover:underline">
+                    門市{sortIndicator("storeName")}
+                  </button>
+                </th>
+                <th className="px-3 py-2 text-right font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("revenueAmount")} className="hover:underline">
+                    營收{sortIndicator("revenueAmount")}
+                  </button>
+                </th>
+                <th className="px-3 py-2 text-right font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("totalWorkHours")} className="hover:underline">
+                    總工時{sortIndicator("totalWorkHours")}
+                  </button>
+                </th>
+                <th className="px-3 py-2 text-right font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("efficiencyRatio")} className="hover:underline">
+                    工效比{sortIndicator("efficiencyRatio")}
+                  </button>
+                </th>
+                <th className="px-3 py-2 text-right font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("targetValue")} className="hover:underline">
+                    目標值{sortIndicator("targetValue")}
+                  </button>
+                </th>
+                <th className="px-3 py-2 text-center font-medium text-slate-700">
+                  <button type="button" onClick={() => toggleSort("status")} className="hover:underline">
+                    狀態{sortIndicator("status")}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedList.map((row) => {
+                const rowKey = `${row.workDate}|${row.storeId}`;
+                const isHovered = hoverKey === rowKey;
+                return (
+                  <tr
+                    key={row.id}
+                    className={`relative border-b border-slate-100 ${isHovered ? "bg-sky-50/80" : ""}`}
+                    onMouseEnter={() => loadHoverDetail(row)}
+                    onMouseLeave={clearHover}
+                  >
+                    {showDateColumn ?
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.workDate}</td>
+                    : null}
+                    <td className="sticky left-0 z-[5] min-w-[120px] bg-inherit px-3 py-2 font-medium">
+                      <div className="relative">
+                        {row.storeName}
+                        {isHovered ?
+                          <HoursDetailPopover
+                            detail={hoverDetail}
+                            loading={hoverLoading}
+                            storeName={row.storeName}
+                            workDate={row.workDate}
+                          />
+                        : null}
+                      </div>
                     </td>
-                    <td className="sticky left-[220px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2 text-right">
+                    <td className="px-3 py-2 text-right">
                       {row.revenueAmount.toLocaleString("zh-TW")}
                     </td>
-                    <td className="px-4 py-2 text-right">{row.totalWorkHours}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {row.totalWorkHours.toFixed(2)}
+                    </td>
                     <td
-                      className={`px-4 py-2 text-right font-medium ${
-                        row.totalWorkHours === 0
-                          ? "text-slate-400"
-                          : row.isTargetMet
-                            ? "text-green-600"
-                            : "text-amber-600"
+                      className={`px-3 py-2 text-right font-medium tabular-nums ${
+                        row.totalWorkHours === 0 ?
+                          "text-slate-400"
+                        : row.isTargetMet ?
+                          "text-green-600"
+                        : "text-amber-600"
                       }`}
                     >
                       {row.totalWorkHours === 0 ? "—" : row.efficiencyRatio.toLocaleString("zh-TW")}
                     </td>
-                    <td className="px-4 py-2 text-right text-slate-600">
+                    <td className="px-3 py-2 text-right text-slate-600 tabular-nums">
                       {row.targetValue.toLocaleString("zh-TW")}
                     </td>
-                    <td className="px-4 py-2 text-center">
-                      {row.totalWorkHours === 0 ? (
+                    <td className="px-3 py-2 text-center">
+                      {row.totalWorkHours === 0 ?
                         <span className="text-slate-400">—</span>
-                      ) : !isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000 ? (
+                      : !isSaturdayYmd(row.workDate) && row.efficiencyRatio >= 6000 ?
                         <span className="rounded bg-red-50 px-2 py-0.5 text-red-700 font-semibold">
                           超標
                         </span>
-                      ) : row.isTargetMet ? (
+                      : row.isTargetMet ?
                         <span className="text-green-600">達標</span>
-                      ) : (
-                        <span className="text-amber-600">未達標</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDetailStoreId((s) => (s === row.storeId ? null : row.storeId))
-                        }
-                        className="text-sky-600 hover:underline"
-                      >
-                        {detailStoreId === row.storeId ? "收合明細" : "明細"}
-                      </button>
+                      : <span className="text-amber-600">未達標</span>}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {detail && detailStoreId && (
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-              <h3 className="mb-2 font-medium text-slate-800">
-                {list.find((r) => r.storeId === detailStoreId)?.storeName} 當日工時明細
-              </h3>
-              <div className="relative max-h-[55vh] overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left">
-                      <th className="sticky left-0 z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
-                        員工代碼
-                      </th>
-                      <th className="sticky left-[140px] z-20 w-[140px] min-w-[140px] bg-white py-1.5 font-medium text-slate-700">
-                        姓名
-                      </th>
-                      <th className="py-1.5 text-right font-medium text-slate-700">工時</th>
-                      <th className="py-1.5 pl-4 font-medium text-slate-700">原因</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const rows = Array.isArray(detail.rows) ? detail.rows : [];
-                      const byEmp = new Map<string, StoreDetailRow[]>();
-                      for (const r of rows) {
-                        const list = byEmp.get(r.employeeId) ?? [];
-                        list.push(r);
-                        byEmp.set(r.employeeId, list);
-                      }
-                      const sortedEmpIds = Array.from(byEmp.keys()).sort((a, b) => {
-                        const ac = (byEmp.get(a)?.find((x) => x.employeeCode)?.employeeCode ?? "").toLowerCase();
-                        const bc = (byEmp.get(b)?.find((x) => x.employeeCode)?.employeeCode ?? "").toLowerCase();
-                        return ac.localeCompare(bc, "zh-Hant");
-                      });
-
-                      const priority = (t: StoreDetailRow["type"]) =>
-                        t === "attendance" ? 0 : t === "dispatch_out" ? 1 : t === "dispatch_in" ? 2 : t === "adjustment" ? 3 : 9;
-
-                      const flat: { key: string; row: StoreDetailRow; kind: "main" | "detail" | "subtotal" }[] = [];
-                      for (const empId of sortedEmpIds) {
-                        const group = byEmp.get(empId) ?? [];
-                        const att = group.filter((r) => r.type === "attendance");
-                        const subtotal = group.filter((r) => r.type === "subtotal");
-                        const others = group.filter((r) => r.type !== "attendance" && r.type !== "subtotal");
-                        others.sort((a, b) => priority(a.type) - priority(b.type));
-                        for (const r of att) flat.push({ key: r.id, row: r, kind: "main" });
-                        for (const r of others) flat.push({ key: r.id, row: r, kind: "detail" });
-                        for (const r of subtotal) flat.push({ key: r.id, row: r, kind: "subtotal" });
-                      }
-
-                      if (flat.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={4} className="py-4 text-center text-slate-500">
-                              此門市當日無工時明細
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      return flat.map(({ key, row, kind }) => {
-                        const isNegative = Number.isFinite(row.workHours) && row.workHours < 0;
-                        const hoursClass = isNegative ? "text-red-700 font-medium" : "text-slate-800";
-                        const trClass =
-                          kind === "subtotal"
-                            ? "border-b border-slate-100 bg-slate-50 font-medium"
-                            : kind === "detail"
-                              ? "border-b border-slate-100 text-slate-600"
-                              : "border-b border-slate-100";
-                        const showEmp = kind === "main";
-                        return (
-                          <tr key={key} className={trClass}>
-                            <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
-                              {kind === "subtotal" ? "小計" : showEmp ? row.employeeCode : ""}
-                            </td>
-                            <td className="sticky left-[140px] z-[5] w-[140px] min-w-[140px] bg-white py-1.5">
-                              {kind === "subtotal" ? "" : showEmp ? row.name : ""}
-                            </td>
-                            <td className={`py-1.5 text-right ${hoursClass}`}>
-                              {row.workHours}
-                            </td>
-                            <td className="py-1.5 pl-4">
-                              {kind === "main" ? "" : (row.adjustmentReason ?? "—")}
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -203,6 +203,7 @@ model DispatchRecord {
   endTime         String?
   remark          String?
   uploadBatchId   String?
+  createdBy       String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   employee        Employee   @relation(fields: [employeeId], references: [id])

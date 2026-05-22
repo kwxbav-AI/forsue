@@ -11,7 +11,6 @@ import {
   buildDualRegionRevenueShare,
   buildSupervisorPriorityAlerts,
 } from "@/modules/operations/services/operations-overview-alerts.service";
-import { buildOverviewCustomerMetrics } from "@/modules/operations/services/operations-customer-metrics.service";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,14 +30,14 @@ export async function GET(request: NextRequest) {
 
     const effective = await resolveEffectiveMetricsDateRange(startDate, endDate);
 
-    const storesPromise = buildEnrichedOverviewStores({
+    const overviewBundlePromise = buildEnrichedOverviewStores({
       startYmd: effective.startDate,
       endYmd: effective.endDate,
       region: region || undefined,
     });
 
-    const [stores, monthlyTrend, kpiMetrics] = await Promise.all([
-      storesPromise,
+    const [{ stores, customerMetrics }, monthlyTrend, kpiMetrics] = await Promise.all([
+      overviewBundlePromise,
       includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
       includeKpi ? buildOpsKpiMetrics() : Promise.resolve(null),
     ]);
@@ -84,11 +83,6 @@ export async function GET(request: NextRequest) {
 
     const priorityAlerts = buildSupervisorPriorityAlerts(stores);
     const dualRegionRevenueShare = buildDualRegionRevenueShare(stores);
-    const customerMetrics = await buildOverviewCustomerMetrics({
-      startYmd: effective.startDate,
-      endYmd: effective.endDate,
-      performanceStoreIds: stores.map((s) => s.storeId),
-    });
 
     return jsonWithStatsCache({
       startDate: effective.startDate,

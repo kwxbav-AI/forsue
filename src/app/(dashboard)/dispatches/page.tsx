@@ -31,6 +31,9 @@ type DispatchRow = {
   locationMatchStatus: string | null;
   clockInStoreText: string | null;
   clockOutStoreText: string | null;
+  createdByCode: string | null;
+  createdByName: string | null;
+  filledAt: string;
 };
 
 const DISPATCH_REASONS = [
@@ -549,13 +552,15 @@ export default function DispatchesPage() {
                   <th className="sticky left-0 z-20 w-[120px] min-w-[120px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                     日期
                   </th>
-                  <th className="sticky left-[120px] z-20 w-[180px] min-w-[180px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  <th className="sticky left-[120px] z-20 w-[160px] min-w-[160px] bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
                     員工
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">調出</th>
-                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700">調入</th>
-                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">預申請時數</th>
-                  <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">實際時數</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">填寫人</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">填寫時間</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700 max-w-[100px]">調出</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700 max-w-[100px]">調入</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700 w-20">預申請</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700 w-20">實際</th>
                   <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">差異</th>
                   <th className="whitespace-nowrap px-4 py-2 text-center font-medium text-slate-700">狀態</th>
                   <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-slate-700">出勤時數</th>
@@ -598,13 +603,23 @@ export default function DispatchesPage() {
                     <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] bg-white px-4 py-2">
                       {r.workDate}
                     </td>
-                    <td className="sticky left-[120px] z-[5] w-[180px] min-w-[180px] bg-white px-4 py-2">
+                    <td className="sticky left-[120px] z-[5] w-[160px] min-w-[160px] bg-white px-2 py-2">
                       {r.employeeCode} {r.employeeName}
                     </td>
-                    <td className="min-w-[160px] whitespace-nowrap px-4 py-2 text-slate-600">{r.fromStoreName ?? "—"}</td>
-                    <td className="min-w-[160px] whitespace-nowrap px-4 py-2 text-slate-600">{r.toStoreName ?? "—"}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right">{r.dispatchHours}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right">
+                    <td className="whitespace-nowrap px-2 py-2 text-slate-600 text-xs">
+                      {r.createdByName ?? r.createdByCode ?? "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-slate-500 text-xs tabular-nums">
+                      {r.filledAt ?? "—"}
+                    </td>
+                    <td className="max-w-[100px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.fromStoreName ?? ""}>
+                      {r.fromStoreName ?? "—"}
+                    </td>
+                    <td className="max-w-[100px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.toStoreName ?? ""}>
+                      {r.toStoreName ?? "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{r.dispatchHours}</td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
                       {r.actualHours != null ? r.actualHours : "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">

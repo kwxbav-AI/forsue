@@ -27,7 +27,6 @@ import {
   AlertTriangle,
   Users,
   Receipt,
-  Upload,
 } from "lucide-react";
 
 import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
@@ -214,9 +213,6 @@ export default function OperationsOverviewPage() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [kpi, setKpi] = useState<KpiMetrics | null>(null);
   const [loading, setLoading] = useState(false);
-  const [importingTraffic, setImportingTraffic] = useState(false);
-  const [trafficMessage, setTrafficMessage] = useState<string | null>(null);
-  const trafficInputRef = useRef<HTMLInputElement>(null);
   const heavyLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -282,40 +278,6 @@ export default function OperationsOverviewPage() {
         fill: achievementBarFill(s.revenueAchievementRate),
       }));
   }, [overview]);
-
-  async function handleTrafficImport() {
-    const file = trafficInputRef.current?.files?.[0];
-    if (!file) {
-      setTrafficMessage("請選擇 Excel 檔案");
-      return;
-    }
-    setImportingTraffic(true);
-    setTrafficMessage(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/operations/customer-traffic/import", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        message?: string;
-        error?: string;
-        warnings?: string[];
-      };
-      if (!res.ok) {
-        setTrafficMessage(data.error || "匯入失敗");
-        return;
-      }
-      setTrafficMessage(
-        [data.message, ...(data.warnings ?? [])].filter(Boolean).join(" · ")
-      );
-      if (trafficInputRef.current) trafficInputRef.current.value = "";
-      void load();
-    } finally {
-      setImportingTraffic(false);
-    }
-  }
 
   const pieData = overview ?
     [
@@ -468,7 +430,7 @@ export default function OperationsOverviewPage() {
               sub={
                 customerMetrics?.daysWithData ?
                   `區間 ${customerMetrics.daysWithData} 天有資料`
-                : "請上傳來客／客單 Excel"
+                : "請至資料上傳中心匯入"
               }
               icon={<Users className="h-5 w-5" />}
               accent="#c026d3"
@@ -486,34 +448,13 @@ export default function OperationsOverviewPage() {
             />
           </div>
 
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[200px]">
-                <p className="text-sm font-medium text-slate-800">來客數／平均客單上傳</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Excel 欄位：日期、部門（門市）、來客數、銷售總額、平均客單（民國年日期如 114.02.03）
-                </p>
-              </div>
-              <input
-                ref={trafficInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="text-sm text-slate-600 max-w-xs"
-              />
-              <button
-                type="button"
-                onClick={() => void handleTrafficImport()}
-                disabled={importingTraffic}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
-              >
-                <Upload className="h-4 w-4" />
-                {importingTraffic ? "匯入中…" : "上傳匯入"}
-              </button>
-            </div>
-            {trafficMessage ?
-              <p className="text-xs text-slate-600 mt-2">{trafficMessage}</p>
-            : null}
-          </div>
+          <p className="text-xs text-slate-500 -mt-2">
+            來客數與平均客單價請至{" "}
+            <Link href="/uploads" className="text-blue-700 hover:underline">
+              資料上傳中心
+            </Link>{" "}
+            匯入「來客數／平均客單」Excel。
+          </p>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-700 mb-1">月度業績趨勢</h2>

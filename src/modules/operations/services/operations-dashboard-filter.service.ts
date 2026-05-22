@@ -584,6 +584,8 @@ export async function buildDashboardFilterResult(input: {
   applyOpsCatalogWhenEmpty: boolean;
   /** 月趨勢等彙總場景可略過逐日趨勢以加速 */
   skipDailyTrend?: boolean;
+  /** 總覽等同次請求已對應的績效→營運門市，避免重複查詢 */
+  perfToRetailPreloaded?: Map<string, { retailId: string; settings: RetailLaborSettings }>;
 }): Promise<DashboardFilterResult> {
   let filteredCharts = filterChartsBySelection(input.perStore, new Map(), input.selection);
 
@@ -605,7 +607,9 @@ export async function buildDashboardFilterResult(input: {
   const storeIds = filteredCharts.map((r) => r.storeId);
   const [holidaySet, perfToRetail] = await Promise.all([
     loadHolidaySet(input.startYmd, input.endYmd),
-    mapPerformanceToRetailStore(storeIds),
+    input.perfToRetailPreloaded ?
+      Promise.resolve(input.perfToRetailPreloaded)
+    : mapPerformanceToRetailStore(storeIds),
   ]);
 
   const workingDaysInRange = countWorkingDaysInRangeUTC(

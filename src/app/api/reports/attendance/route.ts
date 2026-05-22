@@ -13,6 +13,7 @@ import {
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
+import { resolveStoreIdsForAttendanceDepartment } from "@/lib/attendance-region-filter";
 import {
   getReserveStaffSettingForEmployeeDate,
   getReserveStaffSettingsByEmployeeDate,
@@ -189,16 +190,10 @@ export async function GET(request: Request) {
       if (!deptToStoreIds.has(dept)) deptToStoreIds.set(dept, []);
       deptToStoreIds.get(dept)!.push(s.id);
     }
-    const keyword = department.trim().toLowerCase();
-    const storeIdsForFilter =
-      keyword === ""
-        ? null
-        : allStores
-            .filter(
-              (s) =>
-                ((s.department || "") + " " + (s.name || "")).toLowerCase().includes(keyword)
-            )
-            .map((s) => s.id);
+    const storeIdsForFilter = resolveStoreIdsForAttendanceDepartment(
+      department,
+      allStores
+    );
 
     const empWhere =
       employeeCode || name

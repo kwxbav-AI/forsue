@@ -4,25 +4,34 @@ import { importCustomerTrafficFromExcel } from "@/modules/operations/services/cu
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** 相容舊路徑；請優先使用 POST /api/uploads/customer-traffic */
+/** 資料上傳中心：來客數／平均客單 Excel */
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     if (!file?.size) {
-      return NextResponse.json({ error: "請選擇 Excel 檔案" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, errors: [{ row: 0, message: "請選擇 Excel 檔案" }] },
+        { status: 400 }
+      );
     }
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await importCustomerTrafficFromExcel(buffer);
     return NextResponse.json({
-      ok: true,
+      success: true,
       importedCount: result.upserted,
-      ...result,
+      message: result.message,
+      warnings: result.warnings,
+      unmatchedDepartments: result.unmatchedDepartments,
+      skipped: result.skipped,
     });
   } catch (e) {
-    console.error("POST /api/operations/customer-traffic/import failed", e);
+    console.error("POST /api/uploads/customer-traffic failed", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "匯入失敗" },
+      {
+        success: false,
+        errors: [{ row: 0, message: e instanceof Error ? e.message : "匯入失敗" }],
+      },
       { status: 500 }
     );
   }

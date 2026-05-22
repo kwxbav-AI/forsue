@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import { ATTENDANCE_REGION_ALL_DEPARTMENTS } from "@/lib/attendance-region-filter";
 
 type AttendanceReportRow = {
   type: "attendance" | "adjustment" | "dispatch_out" | "dispatch_in" | "subtotal";
@@ -145,11 +146,18 @@ export default function AttendanceReportPage() {
               className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
             >
               <option value="">全部</option>
-              {departmentOptions.map((d) => (
+              {ATTENDANCE_REGION_ALL_DEPARTMENTS.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
               ))}
+              {departmentOptions
+                .filter((d) => !ATTENDANCE_REGION_ALL_DEPARTMENTS.includes(d as (typeof ATTENDANCE_REGION_ALL_DEPARTMENTS)[number]))
+                .map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="flex items-center gap-2 text-sm">

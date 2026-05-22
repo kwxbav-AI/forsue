@@ -3,13 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
-const FILE_TYPES = [
+const FILE_TYPES: {
+  key: string;
+  label: string;
+  api: string;
+  hint?: string;
+}[] = [
   { key: "ATTENDANCE", label: "人員出勤表", api: "/api/uploads/attendance" },
-  // 調度改為表單填報（不再上傳）
   { key: "EMPLOYEE_MASTER", label: "人員名冊", api: "/api/uploads/employee-master" },
   { key: "DAILY_REVENUE", label: "每日營收", api: "/api/uploads/daily-revenue" },
-  // 現貨文已改為「內容篇數填報」頁面，不再上傳
-] as const;
+  {
+    key: "CUSTOMER_TRAFFIC",
+    label: "來客數／平均客單",
+    api: "/api/uploads/customer-traffic",
+    hint: "欄位：日期、部門（門市）、來客數、銷售總額、平均客單（民國年如 114.02.03）",
+  },
+];
 
 type BatchInfo = {
   uploadedAt: string;
@@ -60,7 +69,7 @@ export default function UploadsPage() {
         );
         return;
       }
-      setSuccess({ key, count: data.importedCount ?? 0 });
+      setSuccess({ key, count: data.importedCount ?? data.upserted ?? 0 });
       if (data.errors?.length) {
         setErrors(
           data.errors.map((e: { row?: number; message: string }) => ({
@@ -93,6 +102,11 @@ export default function UploadsPage() {
       {success && (
         <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
           {FILE_TYPES.find((f) => f.key === success.key)?.label} 上傳成功，匯入 {success.count} 筆。
+          {success.key === "CUSTOMER_TRAFFIC" ?
+            <span className="block mt-1 text-xs text-green-700">
+              資料將顯示於營運總覽的來客數與平均客單價卡片。
+            </span>
+          : null}
         </div>
       )}
       {errors.length > 0 && (
@@ -109,12 +123,13 @@ export default function UploadsPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FILE_TYPES.map(({ key, label, api }) => (
+        {FILE_TYPES.map(({ key, label, api, hint }) => (
           <div
             key={key}
             className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
           >
             <h2 className="font-medium text-slate-800">{label}</h2>
+            {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
             {batches[key] ? (
               <p className="mt-2 text-sm text-slate-500">
                 最近上傳：{new Date(batches[key]!.uploadedAt).toLocaleString("zh-TW")}

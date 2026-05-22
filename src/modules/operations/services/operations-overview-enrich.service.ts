@@ -1,4 +1,6 @@
 import { countTargetMetDaysByStore } from "@/modules/performance/services/target-summary.service";
+import { aggregateCustomerMetricsForRetailIds } from "@/modules/operations/services/operations-customer-metrics.service";
+import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
 import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { yoyGrowthRate } from "@/lib/operations-yoy";
@@ -179,26 +181,35 @@ export async function buildEnrichedOverviewStores(input: {
     region ? filterStores.filter((s) => s.region === region) : filterStores;
   const scopedStoreIds = scopedFilterStores.map((s) => s.id);
 
-  const [perStore, metDaysMap] = await Promise.all([
+  const [perStore, metDaysMap, perfToRetail] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
     countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
+    mapPerformanceToRetailStore(scopedStoreIds),
   ]);
 
-  const filterResult = await buildDashboardFilterResult({
-    perStore,
-    priorPerStore: [],
-    startYmd,
-    endYmd,
-    filterLabel: region || "全部",
-    storeCount: filterStores.length,
-    selection: region ? { region } : {},
-    applyOpsCatalogWhenEmpty: true,
-    skipDailyTrend: true,
-  });
+  const retailIds = [
+    ...new Set([...perfToRetail.values()].map((v) => v.retailId).filter(Boolean)),
+  ];
+
+  const [filterResult, customerMetrics] = await Promise.all([
+    buildDashboardFilterResult({
+      perStore,
+      priorPerStore: [],
+      startYmd,
+      endYmd,
+      filterLabel: region || "全部",
+      storeCount: filterStores.length,
+      selection: region ? { region } : {},
+      applyOpsCatalogWhenEmpty: true,
+      skipDailyTrend: true,
+      perfToRetailPreloaded: perfToRetail,
+    }),
+    aggregateCustomerMetricsForRetailIds(retailIds, startYmd, endYmd),
+  ]);
 
   const metaByPerfId = new Map(filterStores.map((s) => [s.id, s]));
 
-  return filterResult.stores
+  const stores = filterResult.stores
     .map((row) => {
       const meta = metaByPerfId.get(row.storeId);
       const revenueAchievementRate = row.revenueAchievementRate;
@@ -221,4 +232,6 @@ export async function buildEnrichedOverviewStores(input: {
       };
     })
     .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0));
+
+  return { stores, customerMetrics };
 }

@@ -7,6 +7,7 @@ import {
   addCalendarDaysUTC,
 } from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
+import { getSessionFromRequest } from "@/lib/auth-request";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,18 @@ export async function GET(request: NextRequest) {
     orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
     take,
   });
+
+  const creatorCodes = [
+    ...new Set(list.map((d) => d.createdBy?.trim()).filter(Boolean)),
+  ] as string[];
+  const creators =
+    creatorCodes.length > 0 ?
+      await prisma.employee.findMany({
+        where: { employeeCode: { in: creatorCodes } },
+        select: { employeeCode: true, name: true },
+      })
+    : [];
+  const creatorNameByCode = new Map(creators.map((e) => [e.employeeCode, e.name]));
 
   // 避免 TypeScript 在非 ES2015 目標下對 Set 可迭代展開（...）的限制
   const employeeIds = Array.from(new Set(list.map((d) => d.employeeId)));
@@ -138,12 +151,28 @@ export async function GET(request: NextRequest) {
       const attendanceHoursRounded =
         attendanceHours != null ? Math.round(attendanceHours * 100) / 100 : null;
       const comparisonResult = compareResultByDiff(diff);
+      const createdByCode = d.createdBy?.trim() || null;
+      const filledAt = d.createdAt.toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
       return {
         id: d.id,
         workDate: workDateStr,
         employeeId: d.employeeId,
         employeeCode: d.employee.employeeCode,
         employeeName: d.employee.name,
+        createdByCode,
+        createdByName:
+          createdByCode ?
+            (creatorNameByCode.get(createdByCode) ?? createdByCode)
+          : null,
+        filledAt,
         fromStoreId: d.fromStoreId,
         toStoreId: d.toStoreId,
         fromStoreName: d.fromStoreId ? storeNameById.get(d.fromStoreId) ?? null : null,
@@ -168,6 +197,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSessionFromRequest(request);
     const body = await request.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
@@ -234,6 +264,7 @@ export async function POST(request: NextRequest) {
           startTime,
           endTime,
           remark: remark ?? null,
+          createdBy: session?.username?.trim() || null,
         },
       });
       createdIds.push(created.id);
