@@ -7,7 +7,10 @@ import {
   buildYearToDateMonthlyRevenueTrend,
   buildOpsKpiMetrics,
 } from "@/modules/operations/services/operations-overview-enrich.service";
-import { paginateArray, parseApiPagination } from "@/lib/api-pagination";
+import {
+  buildDualRegionRevenueShare,
+  buildSupervisorPriorityAlerts,
+} from "@/modules/operations/services/operations-overview-alerts.service";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,21 +21,25 @@ export async function GET(request: NextRequest) {
     const startDate = sp.get("startDate")?.trim();
     const endDate = sp.get("endDate")?.trim() || formatDateOnlyTaipei();
     const region = sp.get("region")?.trim() || "";
-    const { page, pageSize } = parseApiPagination(sp, { pageSize: 20, maxPageSize: 50 });
+    const includeMonthlyTrend = sp.get("includeMonthlyTrend") !== "0";
+    const includeKpi = sp.get("includeKpi") !== "0";
 
     if (!startDate) {
       return NextResponse.json({ error: "請提供 startDate" }, { status: 400 });
     }
 
     const effective = await resolveEffectiveMetricsDateRange(startDate, endDate);
+
+    const storesPromise = buildEnrichedOverviewStores({
+      startYmd: effective.startDate,
+      endYmd: effective.endDate,
+      region: region || undefined,
+    });
+
     const [stores, monthlyTrend, kpiMetrics] = await Promise.all([
-      buildEnrichedOverviewStores({
-        startYmd: effective.startDate,
-        endYmd: effective.endDate,
-        region: region || undefined,
-      }),
-      buildYearToDateMonthlyRevenueTrend(),
-      buildOpsKpiMetrics(),
+      storesPromise,
+      includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
+      includeKpi ? buildOpsKpiMetrics() : Promise.resolve(null),
     ]);
 
     const regionStats = OPS_REGION_CATALOG.map((g) => {
@@ -74,7 +81,8 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => (a.revenueAchievementRate ?? 0) - (b.revenueAchievementRate ?? 0))
       .slice(0, 5);
 
-    const storesPaged = paginateArray(stores, page, pageSize);
+    const priorityAlerts = buildSupervisorPriorityAlerts(stores);
+    const dualRegionRevenueShare = buildDualRegionRevenueShare(stores);
 
     return jsonWithStatsCache({
       startDate: effective.startDate,
@@ -82,6 +90,8 @@ export async function GET(request: NextRequest) {
       region: region || null,
       monthlyTrend,
       kpiMetrics,
+      priorityAlerts,
+      dualRegionRevenueShare,
       summary: {
         storeCount: stores.length,
         totalRevenue,
@@ -99,8 +109,7 @@ export async function GET(request: NextRequest) {
       regionStats,
       topStores,
       bottomStores,
-      stores: storesPaged.items,
-      storesPagination: storesPaged.pagination,
+      stores,
     });
   } catch (error) {
     console.error("GET /api/operations/overview failed", error);

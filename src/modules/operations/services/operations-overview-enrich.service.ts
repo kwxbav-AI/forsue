@@ -81,6 +81,14 @@ let kpiMetricsCache: {
 
 const KPI_METRICS_CACHE_MS = 5 * 60 * 1000;
 
+let ytdTrendCache: {
+  key: string;
+  expiresAt: number;
+  data: Awaited<ReturnType<typeof buildMonthlyRevenueTrend>>;
+} | null = null;
+
+const YTD_TREND_CACHE_MS = 10 * 60 * 1000;
+
 async function buildOpsKpiMetricsUncached() {
   const todayYmd = formatDateOnlyTaipei();
   const kpiStart = OPS_KPI_CUMULATIVE_START_YMD;
@@ -118,12 +126,19 @@ export async function buildOpsKpiMetrics() {
   return data;
 }
 
-/** 當年度 1 月 1 日至今的月度業績趨勢（不受總覽日期篩選影響） */
+/** 當年度 1 月 1 日至今的月度業績趨勢（不受總覽日期篩選影響，10 分鐘快取） */
 export async function buildYearToDateMonthlyRevenueTrend() {
   const todayYmd = formatDateOnlyTaipei();
   const year = todayYmd.slice(0, 4);
+  const key = `${year}|${todayYmd}`;
+  const now = Date.now();
+  if (ytdTrendCache && ytdTrendCache.key === key && ytdTrendCache.expiresAt > now) {
+    return ytdTrendCache.data;
+  }
   const startYmd = `${year}-01-01`;
-  return buildMonthlyRevenueTrend(startYmd, todayYmd);
+  const data = await buildMonthlyRevenueTrend(startYmd, todayYmd);
+  ytdTrendCache = { key, expiresAt: now + YTD_TREND_CACHE_MS, data };
+  return data;
 }
 
 /** 月度業績趨勢：單次營收查詢 + 批次目標，避免每月重跑 dashboard filter */
@@ -159,10 +174,14 @@ export async function buildEnrichedOverviewStores(input: {
 }) {
   const { startYmd, endYmd, region } = input;
 
-  const [perStore, filterStores, metDaysMap] = await Promise.all([
+  const filterStores = await listPerformanceStoresForFilter();
+  const scopedFilterStores =
+    region ? filterStores.filter((s) => s.region === region) : filterStores;
+  const scopedStoreIds = scopedFilterStores.map((s) => s.id);
+
+  const [perStore, metDaysMap] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
-    listPerformanceStoresForFilter(),
-    countTargetMetDaysByStore(startYmd, endYmd),
+    countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
   ]);
 
   const filterResult = await buildDashboardFilterResult({
