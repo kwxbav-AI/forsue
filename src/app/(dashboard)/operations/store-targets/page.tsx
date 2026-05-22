@@ -111,7 +111,10 @@ export default function StoreTargetsPage() {
       return;
     }
     setMessage(
-      `已同步 ${data.synced ?? 0} 間門市（新建 ${data.created ?? 0}、更新 ${data.updated ?? 0}）`
+      `已對應 ${data.matchedPerformance ?? 0} 間（新建 ${data.created ?? 0}、更新 ${data.updated ?? 0}）` +
+        (data.skippedNoPerformance > 0 ?
+          `；${data.skippedNoPerformance} 個 catalog 槽位尚無績效門市主檔`
+        : "")
     );
   }
 

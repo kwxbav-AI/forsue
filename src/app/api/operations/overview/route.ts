@@ -9,7 +9,6 @@ import {
 } from "@/modules/operations/services/operations-overview-enrich.service";
 import { paginateArray, parseApiPagination } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
-
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 

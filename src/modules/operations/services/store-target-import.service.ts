@@ -1,11 +1,9 @@
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { computeRplhTarget } from "@/lib/operations";
-import {
-  normalizeStoreKey,
-  storeNameMatchesCatalogKey,
-  storeNamesEquivalent,
-} from "@/lib/operations-dashboard";
+import { normalizeStoreKey } from "@/lib/operations-dashboard";
+import { ensureRetailStoresFromPerformance } from "@/modules/operations/services/retail-store-sync.service";
+import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 
 const MONTH_HEADER_RE = /^(\d{4})-(\d{2})$/;
 
@@ -108,26 +106,6 @@ function parseMonthlySheet(
   return { stores, warnings };
 }
 
-function resolveRetailStore(
-  storeKey: string,
-  storeLabel: string,
-  retailStores: { id: string; storeName: string; region: string | null }[]
-): { id: string; storeName: string } | null {
-  const exact = retailStores.find((r) => r.storeName.trim() === storeLabel);
-  if (exact) return exact;
-
-  const byKey = retailStores.find((r) => normalizeStoreKey(r.storeName) === storeKey);
-  if (byKey) return byKey;
-
-  const fuzzy = retailStores.find(
-    (r) =>
-      storeNameMatchesCatalogKey(r.storeName, storeKey) ||
-      storeNameMatchesCatalogKey(storeLabel, r.storeName) ||
-      storeNamesEquivalent(r.storeName, storeLabel)
-  );
-  return fuzzy ?? null;
-}
-
 export async function importStoreTargetsFromExcel(input: {
   year: number;
   salesFile: Buffer;
@@ -135,6 +113,13 @@ export async function importStoreTargetsFromExcel(input: {
 }): Promise<StoreTargetImportResult> {
   const { year, salesFile, hoursFile } = input;
   const warnings: string[] = [];
+
+  const sync = await ensureRetailStoresFromPerformance();
+  if (sync.created > 0) {
+    warnings.push(
+      `已自動建立 ${sync.created} 間營運門市（由績效門市同步），請確認後再匯入目標`
+    );
+  }
 
   const salesParsed = parseMonthlySheet(salesFile, year);
   const hoursParsed = parseMonthlySheet(hoursFile, year);

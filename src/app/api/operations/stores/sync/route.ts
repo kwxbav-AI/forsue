@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { inferRetailRegion } from "@/lib/operations-dashboard";
+import { ensureRetailStoresFromPerformance } from "@/modules/operations/services/retail-store-sync.service";
 
 export const dynamic = "force-dynamic";
 
@@ -9,40 +9,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST() {
   try {
-    const stores = await prisma.store.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-    });
-
-    let created = 0;
-    let updated = 0;
-
-    for (const s of stores) {
-      const region = inferRetailRegion(s.name, s.department);
-      const existing = await prisma.retailStore.findUnique({
-        where: { storeName: s.name },
-      });
-
-      if (existing) {
-        await prisma.retailStore.update({
-          where: { id: existing.id },
-          data: {
-            region,
-            isActive: s.isActive,
-          },
-        });
-        updated += 1;
-      } else {
-        await prisma.retailStore.create({
-          data: {
-            storeName: s.name,
-            region,
-            isActive: s.isActive,
-          },
-        });
-        created += 1;
-      }
-    }
+    const result = await ensureRetailStoresFromPerformance();
 
     const activeStoreCount = await prisma.retailStore.count({
       where: { isActive: true },
@@ -50,9 +17,7 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
-      synced: stores.length,
-      created,
-      updated,
+      ...result,
       activeStoreCount,
     });
   } catch (e) {

@@ -8,6 +8,7 @@ import {
 import {
   normalizeStoreKey,
   storeNameMatchesCatalogKey,
+  storeNamesEquivalent,
 } from "@/lib/operations-dashboard";
 import {
   type ChartsPerStoreRow,
@@ -142,19 +143,22 @@ export async function mapPerformanceToRetailStore(
   const retailByExactName = new Map(
     retailStores.map((r) => [r.storeName.trim(), r])
   );
+  const retailByNormKey = new Map(
+    retailStores.map((r) => [normalizeStoreKey(r.storeName), r])
+  );
 
   const out = new Map<string, { retailId: string; settings: RetailLaborSettings }>();
   for (const s of perfStores) {
-    let retail = retailByExactName.get(s.name.trim());
-    if (!retail) {
-      const perfKey = normalizeStoreKey(s.name);
-      retail = retailStores.find(
+    const perfKey = normalizeStoreKey(s.name);
+    let retail =
+      retailByExactName.get(s.name.trim()) ??
+      retailByNormKey.get(perfKey) ??
+      retailStores.find(
         (r) =>
-          normalizeStoreKey(r.storeName) === perfKey ||
           storeNameMatchesCatalogKey(r.storeName, perfKey) ||
-          storeNameMatchesCatalogKey(s.name, r.storeName)
+          storeNameMatchesCatalogKey(s.name, r.storeName) ||
+          storeNamesEquivalent(r.storeName, s.name)
       );
-    }
     if (!retail) continue;
     out.set(s.id, {
       retailId: retail.id,
@@ -455,12 +459,30 @@ export async function buildDashboardFilterResult(input: {
   );
 
   const slices = listMonthSlicesInRange(input.startYmd, input.endYmd);
-  const retailIds = [...new Set([...perfToRetail.values()].map((v) => v.retailId))];
+
+  const activeRetail = await prisma.retailStore.findMany({
+    where: { isActive: true },
+    select: { id: true, storeName: true },
+  });
+  const retailIdByStoreNameKey = new Map(
+    activeRetail.map((r) => [normalizeStoreKey(r.storeName), r.id])
+  );
+
+  const retailIdsForTargets = new Set<string>(
+    [...perfToRetail.values()].map((v) => v.retailId)
+  );
+  for (const chart of filteredCharts) {
+    const rid =
+      perfToRetail.get(chart.storeId)?.retailId ??
+      retailIdByStoreNameKey.get(normalizeStoreKey(chart.storeName));
+    if (rid) retailIdsForTargets.add(rid);
+  }
+
   const targetRows =
-    retailIds.length > 0 && slices.length > 0 ?
+    retailIdsForTargets.size > 0 && slices.length > 0 ?
       await prisma.storeTarget.findMany({
         where: {
-          storeId: { in: retailIds },
+          storeId: { in: [...retailIdsForTargets] },
           OR: slices.map(({ year, month }) => ({ year, month })),
         },
         select: {
@@ -474,15 +496,18 @@ export async function buildDashboardFilterResult(input: {
 
   const storeRows: DashboardFilterStoreRow[] = filteredCharts.map((chart) => {
     const linked = perfToRetail.get(chart.storeId);
+    const retailId =
+      linked?.retailId ??
+      retailIdByStoreNameKey.get(normalizeStoreKey(chart.storeName));
     const labor = linked?.settings ?? {
       dailyBusinessHours: null,
       defaultLaborHoursPerDay: null,
     };
     const periodDefault = periodDefaultLaborHours(labor, workingDaysInRange);
     const salesForecast =
-      linked ?
+      retailId ?
         prorateSalesForecastFromTargets(
-          linked.retailId,
+          retailId,
           slices,
           targetRows,
           holidaySet

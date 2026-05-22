@@ -2,8 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { formatDateOnly, parseDateOnlyUTC, toDateRangeTaipei } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { countWorkingDaysInRangeUTC } from "@/lib/month-working-calendar";
-import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
+import {
+  fetchChartsPerStore,
+  filterChartsByOpsCatalog,
+  listPerformanceStoresForFilter,
+} from "@/modules/operations/services/operations-metrics.service";
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
+import { normalizeStoreKey } from "@/lib/operations-dashboard";
 
 type MonthSlice = { year: number; month: number; overlapStart: string; overlapEnd: string };
 
@@ -96,23 +101,22 @@ export async function fetchRevenueByStoreAndMonth(
   return byStoreMonth;
 }
 
-/** 營運 catalog 各月營收加總（單次 DB + 記憶體分月，供月趨勢圖） */
+/** 營運 catalog 各月營收加總（與區間營業額相同：PerformanceDaily，供月趨勢圖） */
 export async function sumOpsCatalogRevenueByMonth(
   startYmd: string,
   endYmd: string
 ): Promise<Map<string, number>> {
-  const filterStores = await listPerformanceStoresForFilter();
-  const storeIds = filterStores.map((s) => s.id);
-  const byStoreMonth = await fetchRevenueByStoreAndMonth(startYmd, endYmd, storeIds);
-
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
   const monthTotals = new Map<string, number>();
-  for (const storeId of storeIds) {
-    const monthMap = byStoreMonth.get(storeId);
-    if (!monthMap) continue;
-    for (const [ym, rev] of monthMap) {
-      monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + rev);
-    }
+
+  for (const slice of slices) {
+    const ym = `${slice.year}-${String(slice.month).padStart(2, "0")}`;
+    const charts = await fetchChartsPerStore(slice.overlapStart, slice.overlapEnd);
+    const filtered = filterChartsByOpsCatalog(charts);
+    const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
+    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + revenue);
   }
+
   return monthTotals;
 }
 
@@ -131,7 +135,7 @@ export async function sumOpsCatalogTargetForRange(
     mapPerformanceToRetailStore(storeIds),
   ]);
 
-  const retailIds = [...new Set([...perfToRetail.values()].map((v) => v.retailId))];
+  const retailIds = [...(await collectRetailIdsForTargets(storeIds, perfToRetail))];
   if (retailIds.length === 0) return 0;
 
   const targetRows = await prisma.storeTarget.findMany({
@@ -151,6 +155,35 @@ export async function sumOpsCatalogTargetForRange(
   return total;
 }
 
+async function collectRetailIdsForTargets(
+  perfStoreIds: string[],
+  perfToRetail: Awaited<ReturnType<typeof mapPerformanceToRetailStore>>
+): Promise<Set<string>> {
+  const ids = new Set([...perfToRetail.values()].map((v) => v.retailId));
+  if (perfStoreIds.length === 0) return ids;
+
+  const [perfStores, activeRetail] = await Promise.all([
+    prisma.store.findMany({
+      where: { id: { in: perfStoreIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.retailStore.findMany({
+      where: { isActive: true },
+      select: { id: true, storeName: true },
+    }),
+  ]);
+  const retailIdByNameKey = new Map(
+    activeRetail.map((r) => [normalizeStoreKey(r.storeName), r.id])
+  );
+  for (const s of perfStores) {
+    const rid =
+      perfToRetail.get(s.id)?.retailId ??
+      retailIdByNameKey.get(normalizeStoreKey(s.name));
+    if (rid) ids.add(rid);
+  }
+  return ids;
+}
+
 /** 指定績效門市各月目標合計 */
 export async function sumTargetByMonthForPerformanceStores(
   startYmd: string,
@@ -166,7 +199,7 @@ export async function sumTargetByMonthForPerformanceStores(
     mapPerformanceToRetailStore(storeIds),
   ]);
 
-  const retailIds = [...new Set([...perfToRetail.values()].map((v) => v.retailId))];
+  const retailIds = [...(await collectRetailIdsForTargets(storeIds, perfToRetail))];
   const targetRows =
     retailIds.length > 0 ?
       await prisma.storeTarget.findMany({
