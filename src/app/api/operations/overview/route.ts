@@ -39,7 +39,9 @@ export async function GET(request: NextRequest) {
     const [{ stores, customerMetrics }, monthlyTrend, kpiMetrics] = await Promise.all([
       overviewBundlePromise,
       includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
-      includeKpi ? buildOpsKpiMetrics() : Promise.resolve(null),
+      includeKpi ?
+        buildOpsKpiMetrics(effective.startDate, effective.endDate)
+      : Promise.resolve(null),
     ]);
 
     const regionStats = OPS_REGION_CATALOG.map((g) => {

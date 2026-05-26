@@ -14,7 +14,6 @@ import {
   fetchDualRegionChartTotals,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
-import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
 import { formatDateOnlyTaipei } from "@/lib/date";
 
 export type RevenueAchievementBucket = "green" | "yellow" | "red" | "none";
@@ -91,15 +90,12 @@ let ytdTrendCache: {
 
 const YTD_TREND_CACHE_MS = 10 * 60 * 1000;
 
-async function buildOpsKpiMetricsUncached() {
-  const todayYmd = formatDateOnlyTaipei();
-  const kpiStart = OPS_KPI_CUMULATIVE_START_YMD;
-  const kpiEnd = todayYmd > kpiStart ? todayYmd : kpiStart;
-  const priorStart = shiftYear(kpiStart, -1);
-  const priorEnd = shiftYear(kpiEnd, -1);
+async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
+  const priorStart = shiftYear(startYmd, -1);
+  const priorEnd = shiftYear(endYmd, -1);
 
   const [dualCurrent, dualPrior] = await Promise.all([
-    fetchDualRegionChartTotals(kpiStart, kpiEnd),
+    fetchDualRegionChartTotals(startYmd, endYmd),
     fetchDualRegionChartTotals(priorStart, priorEnd),
   ]);
 
@@ -110,20 +106,19 @@ async function buildOpsKpiMetricsUncached() {
     yoyGrowthRate: yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue),
     priorYearRevenue: dualPrior.revenue,
     regionLabel: "宜蘭區 + 桃園區",
-    periodStartDate: kpiStart,
-    periodEndDate: kpiEnd,
+    periodStartDate: startYmd,
+    periodEndDate: endYmd,
   };
 }
 
-/** 宜蘭+桃園 KPI：2026-01-01 起累計至今日（5 分鐘快取，避免每次載入重算長區間） */
-export async function buildOpsKpiMetrics() {
-  const todayYmd = formatDateOnlyTaipei();
-  const key = `${OPS_KPI_CUMULATIVE_START_YMD}|${todayYmd}`;
+/** 宜蘭+桃園 KPI：依篩選日期區間累計（5 分鐘快取） */
+export async function buildOpsKpiMetrics(startYmd: string, endYmd: string) {
+  const key = `${startYmd}|${endYmd}`;
   const now = Date.now();
   if (kpiMetricsCache && kpiMetricsCache.key === key && kpiMetricsCache.expiresAt > now) {
     return kpiMetricsCache.data;
   }
-  const data = await buildOpsKpiMetricsUncached();
+  const data = await buildOpsKpiMetricsUncached(startYmd, endYmd);
   kpiMetricsCache = { key, expiresAt: now + KPI_METRICS_CACHE_MS, data };
   return data;
 }

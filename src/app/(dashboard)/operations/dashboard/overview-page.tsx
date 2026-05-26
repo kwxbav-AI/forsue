@@ -37,18 +37,24 @@ function defaultOverviewStartDate() {
   return ymd < OPS_REVENUE_METRICS_START_YMD ? OPS_REVENUE_METRICS_START_YMD : ymd;
 }
 
-const STATUS_COLOR = { green: "#16a34a", yellow: "#d97706", red: "#dc2626", none: "#94a3b8" };
+/** 門市營收達成分佈與門市狀態圖共用色 */
+const ACHIEVEMENT_COLOR = {
+  green: "#bbf7d0",
+  yellow: "#fef9c3",
+  red: "#fbcfe8",
+  none: "#e2e8f0",
+};
 
-/** 門市狀態長條圖：依營收達成率著色 */
 function achievementBarFill(rate: number | null | undefined): string {
-  if (rate == null || Number.isNaN(rate)) return "#fbcfe8";
-  if (rate >= 100) return "#dbeafe";
-  if (rate >= 80) return "#fef9c3";
-  return "#fbcfe8";
+  if (rate == null || Number.isNaN(rate)) return ACHIEVEMENT_COLOR.red;
+  if (rate >= 100) return ACHIEVEMENT_COLOR.green;
+  if (rate >= 80) return ACHIEVEMENT_COLOR.yellow;
+  return ACHIEVEMENT_COLOR.red;
 }
+
 const REGION_PIE_COLOR: Record<string, string> = {
-  "桃園區": "#1e40af",
-  "宜蘭區": "#6d28d9",
+  桃園區: "#e9a2a6",
+  宜蘭區: "#067086",
 };
 
 type OverviewStore = {
@@ -167,7 +173,7 @@ function KpiCard({
   );
 }
 
-function StoreShareTooltip({
+function StoreStatusTooltip({
   active,
   payload,
 }: {
@@ -178,7 +184,7 @@ function StoreShareTooltip({
   const p = payload[0].payload as {
     storeName: string;
     revenue: number;
-    sharePct: number;
+    revenueWan: number;
     revenueAchievementRate: number | null;
     targetMetDays: number;
     statusLabel: string;
@@ -189,7 +195,9 @@ function StoreShareTooltip({
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg max-w-[240px]">
       <p className="font-semibold text-slate-800">{p.storeName}</p>
-      <p className="mt-1 text-slate-600">營收 {formatMoney(p.revenue)} 元（占比 {p.sharePct.toFixed(1)}%）</p>
+      <p className="mt-1 text-slate-600">
+        營收 {formatMoney(p.revenue)} 元（{p.revenueWan} 萬）
+      </p>
       <p className="text-slate-600">
         達成率 {formatPctOne(p.revenueAchievementRate)}
         {p.revenueTarget != null ? ` · 月目標 ${formatMoney(p.revenueTarget)}` : ""}
@@ -258,17 +266,15 @@ export default function OperationsOverviewPage() {
   const priorityAlerts = overview?.priorityAlerts ?? [];
   const dualShare = overview?.dualRegionRevenueShare ?? [];
 
-  const storeShareChart = useMemo(() => {
+  const storeStatusChart = useMemo(() => {
     if (!overview) return [];
-    const total = overview.summary.totalRevenue;
-    if (total <= 0) return [];
     return [...overview.stores]
-      .filter((s) => s.revenue > 0)
+      .filter((s) => s.revenue > 0 || s.revenueAchievementRate != null)
       .sort((a, b) => b.revenue - a.revenue)
       .map((s) => ({
         storeName: s.storeName,
         revenue: s.revenue,
-        sharePct: (s.revenue / total) * 100,
+        revenueWan: Math.round((s.revenue / 10000) * 10) / 10,
         revenueAchievementRate: s.revenueAchievementRate,
         revenueTarget: s.revenueTarget,
         targetMetDays: s.targetMetDays,
@@ -281,15 +287,16 @@ export default function OperationsOverviewPage() {
 
   const pieData = overview ?
     [
-      { name: "達標", value: overview.summary.green, color: STATUS_COLOR.green },
-      { name: "警示", value: overview.summary.yellow, color: STATUS_COLOR.yellow },
-      { name: "未達標", value: overview.summary.red, color: STATUS_COLOR.red },
+      { name: "達標", value: overview.summary.green, color: ACHIEVEMENT_COLOR.green },
+      { name: "警示", value: overview.summary.yellow, color: ACHIEVEMENT_COLOR.yellow },
+      { name: "未達標", value: overview.summary.red, color: ACHIEVEMENT_COLOR.red },
     ].filter((x) => x.value > 0)
   : [];
 
   const regionChart = overview?.regionStats ?? [];
   const customerMetrics = overview?.customerMetrics;
-  const storeChartHeight = Math.max(320, storeShareChart.length * 28);
+  const storeChartHeight = Math.max(320, storeStatusChart.length * 28);
+  const regionLabel = region || "全區";
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -360,25 +367,25 @@ export default function OperationsOverviewPage() {
           <KpiCard
             title="全公司營收達成值"
             value={formatMoney(kpi.totalRevenue)}
-            sub={`${kpi.periodStartDate ?? ""} ~ ${kpi.periodEndDate ?? ""} · 宜蘭+桃園`}
+            sub={`${kpi.periodStartDate ?? overview?.startDate ?? ""} ~ ${kpi.periodEndDate ?? overview?.endDate ?? ""} · 桃園+宜蘭`}
             icon={<Target className="h-5 w-5" />}
             accent="#0284c7"
           />
           <KpiCard
             title="營運部工效比"
             value={kpi.efficiencyRatio != null ? Math.round(kpi.efficiencyRatio).toLocaleString("zh-TW") : "—"}
-            sub="元 / hr"
+            sub={`${kpi.periodStartDate ?? ""} ~ ${kpi.periodEndDate ?? ""} · 桃園+宜蘭 · 元/hr`}
             icon={<Clock className="h-5 w-5" />}
             accent="#1e40af"
           />
           <KpiCard
-            title="YoY 營收成長率"
+            title="區間營收成長率"
             value={
               kpi.yoyGrowthRate != null ?
                 `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
               : "—"
             }
-            sub="較去年同期"
+            sub={`較去年同期同區間 · 桃園+宜蘭`}
             icon={<Activity className="h-5 w-5" />}
             accent="#16a34a"
           />
@@ -391,7 +398,7 @@ export default function OperationsOverviewPage() {
             <KpiCard
               title="區間營業額"
               value={formatMoney(overview.summary.totalRevenue)}
-              sub="元"
+              sub={`${overview.startDate} ~ ${overview.endDate} · ${regionLabel}`}
               icon={<Store className="h-5 w-5" />}
               accent="#1e40af"
             />
@@ -479,18 +486,22 @@ export default function OperationsOverviewPage() {
                     orientation="right"
                     domain={[0, "auto"]}
                     tick={{ fontSize: 11 }}
+                    label={{ value: "%", angle: 90, position: "insideRight", fontSize: 10 }}
                   />
                   <Tooltip
-                    formatter={(v: number, name: string) =>
-                      name === "revenueWan" ? [`${v} 萬`, "月度業績"] : [`${v}%`, "達標率"]
-                    }
+                    formatter={(v: number, _name: string, item) => {
+                      const key = String(item?.dataKey ?? "");
+                      if (key === "revenueWan") return [`${v}`, "月度業績/單位千萬"];
+                      if (key === "achievementRate") return [`${v}%`, "達標率/單位%"];
+                      return [v, _name];
+                    }}
                   />
                   <Legend />
                   <Line
                     yAxisId="wan"
                     type="monotone"
                     dataKey="revenueWan"
-                    name="月度業績"
+                    name="月度業績/單位千萬"
                     stroke="#2563eb"
                     strokeWidth={2}
                     dot={{ r: 4 }}
@@ -500,7 +511,7 @@ export default function OperationsOverviewPage() {
                     yAxisId="pct"
                     type="monotone"
                     dataKey="achievementRate"
-                    name="達標率"
+                    name="達標率/單位%"
                     stroke="#16a34a"
                     strokeWidth={2}
                     dot={{ r: 4 }}
@@ -511,9 +522,77 @@ export default function OperationsOverviewPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* 第四層：區域營收達成率、桃園/宜蘭營收占比 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">區域營收達成率</h2>
+              <p className="text-xs text-slate-500 mb-2">
+                {overview.startDate} ~ {overview.endDate} · {regionLabel}
+              </p>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={regionChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="region" tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => [`${v}%`, "營收達成率"]} />
+                  <Bar dataKey="achievementRate" fill="#1e40af" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-1">桃園／宜蘭實際營收占比</h2>
+              <p className="text-xs text-slate-500 mb-3">
+                {overview.startDate} ~ {overview.endDate} · 桃園＋宜蘭實際營收結構
+              </p>
+              {dualShare.length ?
+                <>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart margin={{ top: 12, right: 12, bottom: 8, left: 12 }}>
+                      <Pie
+                        data={dualShare.map((r) => ({ name: r.region, value: r.revenue }))}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="52%"
+                        innerRadius={52}
+                        outerRadius={72}
+                      >
+                        {dualShare.map((r) => (
+                          <Cell key={r.region} fill={REGION_PIE_COLOR[r.region] ?? "#94a3b8"} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(v: number, _n, props) => [
+                          `${formatMoney(Number(v))} 元`,
+                          props.payload?.name ?? "",
+                        ]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex justify-center gap-6 text-sm mt-2 flex-wrap">
+                    {dualShare.map((r) => (
+                      <span key={r.region} className="text-slate-700">
+                        <span
+                          className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle"
+                          style={{ backgroundColor: REGION_PIE_COLOR[r.region] }}
+                        />
+                        {r.region} {formatMoney(r.revenue)} 元（{r.sharePct}%）
+                      </span>
+                    ))}
+                  </div>
+                </>
+              : <p className="text-sm text-slate-500 py-8 text-center">區間無營收資料</p>}
+            </div>
+          </div>
+
+          {/* 第五層：門市營收達成分佈、門市狀況一覽 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-3">門市營收達成分佈</h2>
+              <p className="text-xs text-slate-500 mb-2">
+                達標 ≥100% 淡綠 · 警示 80–99% 淡黃 · 未達標 &lt;80% 粉紅
+              </p>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie
@@ -533,36 +612,98 @@ export default function OperationsOverviewPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex justify-center gap-4 text-xs">
-                <span className="text-green-600">達標 {overview.summary.green}</span>
-                <span className="text-amber-600">警示 {overview.summary.yellow}</span>
-                <span className="text-red-600">未達標 {overview.summary.red}</span>
+                <span className="text-green-700">達標 {overview.summary.green}</span>
+                <span className="text-amber-700">警示 {overview.summary.yellow}</span>
+                <span className="text-rose-700">未達標 {overview.summary.red}</span>
               </div>
             </div>
 
-            <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">區域營收達成率</h2>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={regionChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="region" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => [`${v}%`, "達標率"]} />
-                  <Bar dataKey="achievementRate" fill="#1e40af" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-1">門市狀態一覽</h2>
+              <p className="text-xs text-slate-500 mb-3">
+                柱狀：區間營收（萬元）· 折線：營收達成率 · 柱色與達成分佈一致
+              </p>
+              {storeStatusChart.length ?
+                <div style={{ height: storeChartHeight }} className="w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={storeStatusChart}
+                      margin={{ top: 8, right: 48, left: 4, bottom: 64 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis
+                        dataKey="storeName"
+                        tick={{ fontSize: 10 }}
+                        interval={0}
+                        angle={-45}
+                        textAnchor="end"
+                        height={72}
+                      />
+                      <YAxis
+                        yAxisId="rev"
+                        tick={{ fontSize: 10 }}
+                        label={{ value: "萬元", angle: -90, position: "insideLeft", fontSize: 10 }}
+                      />
+                      <YAxis
+                        yAxisId="pct"
+                        orientation="right"
+                        domain={[0, "auto"]}
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => `${v}%`}
+                      />
+                      <Tooltip content={<StoreStatusTooltip />} />
+                      <Legend />
+                      <Bar
+                        yAxisId="rev"
+                        dataKey="revenueWan"
+                        name="營收（萬元）"
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={36}
+                      >
+                        {storeStatusChart.map((entry, index) => (
+                          <Cell key={`bar-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                      <Line
+                        yAxisId="pct"
+                        type="monotone"
+                        dataKey="revenueAchievementRate"
+                        name="營收達成率"
+                        stroke="#334155"
+                        strokeWidth={2}
+                        dot={(props) => {
+                          const rate = storeStatusChart[props.index]?.revenueAchievementRate;
+                          return (
+                            <circle
+                              cx={props.cx}
+                              cy={props.cy}
+                              r={4}
+                              fill={achievementBarFill(rate)}
+                              stroke="#475569"
+                              strokeWidth={1}
+                            />
+                          );
+                        }}
+                        connectNulls
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              : <p className="text-sm text-slate-500 py-12 text-center">區間無營收資料</p>}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 第六層：Top5、Bottom5、督導預警 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-2">達標 Top 5（營收達成率）</h2>
               <ul className="space-y-2 text-sm">
                 {top5.map((s, i) => (
-                  <li key={s.storeId} className="flex justify-between">
+                  <li key={s.storeId} className="flex justify-between gap-2">
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-green-700">
+                    <span className="font-medium text-green-700 shrink-0">
                       {formatPctOne(s.revenueAchievementRate)}
                     </span>
                   </li>
@@ -573,21 +714,18 @@ export default function OperationsOverviewPage() {
               <h2 className="text-sm font-semibold text-slate-700 mb-2">待改善 Bottom 5</h2>
               <ul className="space-y-2 text-sm">
                 {bottom5.map((s, i) => (
-                  <li key={s.storeId} className="flex justify-between">
+                  <li key={s.storeId} className="flex justify-between gap-2">
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-red-600">
+                    <span className="font-medium text-red-600 shrink-0">
                       {formatPctOne(s.revenueAchievementRate)}
                     </span>
                   </li>
                 ))}
               </ul>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 md:col-span-2 lg:col-span-1">
               <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2 mb-3">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 督導高優先預警
@@ -596,7 +734,7 @@ export default function OperationsOverviewPage() {
                 依營收達成率、工效比偏低、總工時偏高綜合排序（相較同區間門市中位數）
               </p>
               {priorityAlerts.length ?
-                <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
                   {priorityAlerts.map((a, i) => (
                     <div
                       key={a.storeId}
@@ -643,87 +781,6 @@ export default function OperationsOverviewPage() {
                 </div>
               : <p className="text-sm text-slate-600">目前無需優先關注的門市</p>}
             </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-1">桃園／宜蘭實際營收占比</h2>
-              <p className="text-xs text-slate-500 mb-3">區間內兩區實際營收結構（宜蘭＋桃園）</p>
-              {dualShare.length ?
-                <>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart margin={{ top: 12, right: 12, bottom: 8, left: 12 }}>
-                      <Pie
-                        data={dualShare.map((r) => ({ name: r.region, value: r.revenue }))}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="52%"
-                        innerRadius={52}
-                        outerRadius={72}
-                      >
-                        {dualShare.map((r) => (
-                          <Cell key={r.region} fill={REGION_PIE_COLOR[r.region] ?? "#94a3b8"} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v: number, _n, props) => [
-                          `${formatMoney(Number(v))} 元`,
-                          props.payload?.name ?? "",
-                        ]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex justify-center gap-6 text-sm mt-2">
-                    {dualShare.map((r) => (
-                      <span key={r.region} className="text-slate-700">
-                        <span
-                          className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle"
-                          style={{ backgroundColor: REGION_PIE_COLOR[r.region] }}
-                        />
-                        {r.region} {formatMoney(r.revenue)} 元（{r.sharePct}%）
-                      </span>
-                    ))}
-                  </div>
-                </>
-              : <p className="text-sm text-slate-500 py-8 text-center">區間無營收資料</p>}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-700 mb-1">門市狀態一覽</h2>
-            <p className="text-xs text-slate-500 mb-3">
-              各門市實際營收占區間總額比例（直立長條）· 顏色依營收達成率：&lt;80% 粉紅、80–99% 淡黃、≥100% 淡藍
-            </p>
-            {storeShareChart.length ?
-              <div style={{ height: storeChartHeight }} className="w-full min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={storeShareChart}
-                    margin={{ top: 8, right: 12, left: 4, bottom: 64 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis
-                      dataKey="storeName"
-                      tick={{ fontSize: 10 }}
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      height={72}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(v) => `${Number(v).toFixed(0)}%`}
-                      domain={[0, "dataMax"]}
-                    />
-                    <Tooltip content={<StoreShareTooltip />} />
-                    <Bar dataKey="sharePct" name="營收占比" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      {storeShareChart.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            : <p className="text-sm text-slate-500 py-12 text-center">區間無營收資料</p>}
           </div>
         </>
       : loading ?
