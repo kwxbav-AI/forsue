@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
-import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
+import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import {
   Bar,
   BarChart,
@@ -293,9 +293,18 @@ export default function OperationsOverviewPage() {
     ].filter((x) => x.value > 0)
   : [];
 
-  const regionChart = overview?.regionStats ?? [];
+  const regionChart = useMemo(
+    () =>
+      (overview?.regionStats ?? []).filter((r) =>
+        (DUAL_OPS_REGIONS as readonly string[]).includes(r.region)
+      ),
+    [overview?.regionStats]
+  );
   const customerMetrics = overview?.customerMetrics;
-  const storeChartHeight = Math.max(320, storeStatusChart.length * 28);
+  const storeChartHeight = Math.min(
+    Math.max(200, storeStatusChart.length * 14 + 48),
+    280
+  );
   const regionLabel = region || "全區";
 
   return (
@@ -586,9 +595,9 @@ export default function OperationsOverviewPage() {
             </div>
           </div>
 
-          {/* 第五層：門市營收達成分佈、門市狀況一覽 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* 第五層：門市營收達成分佈 1/3、門市狀況一覽 2/3 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-3">門市營收達成分佈</h2>
               <p className="text-xs text-slate-500 mb-2">
                 達標 ≥100% 淡綠 · 警示 80–99% 淡黃 · 未達標 &lt;80% 粉紅
@@ -618,7 +627,7 @@ export default function OperationsOverviewPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-1">門市狀態一覽</h2>
               <p className="text-xs text-slate-500 mb-3">
                 柱狀：區間營收（萬元）· 折線：營收達成率 · 柱色與達成分佈一致
@@ -669,21 +678,10 @@ export default function OperationsOverviewPage() {
                         type="monotone"
                         dataKey="revenueAchievementRate"
                         name="營收達成率"
-                        stroke="#334155"
+                        stroke="#64748b"
                         strokeWidth={2}
-                        dot={(props) => {
-                          const rate = storeStatusChart[props.index]?.revenueAchievementRate;
-                          return (
-                            <circle
-                              cx={props.cx}
-                              cy={props.cy}
-                              r={4}
-                              fill={achievementBarFill(rate)}
-                              stroke="#475569"
-                              strokeWidth={1}
-                            />
-                          );
-                        }}
+                        dot={{ r: 3, fill: "#94a3b8", stroke: "#64748b" }}
+                        activeDot={{ r: 4, fill: "#94a3b8", stroke: "#475569" }}
                         connectNulls
                       />
                     </ComposedChart>
@@ -693,9 +691,9 @@ export default function OperationsOverviewPage() {
             </div>
           </div>
 
-          {/* 第六層：Top5、Bottom5、督導預警 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* 第六層：Top5、Bottom5（各約 55% 原寬）、督導預警加寬 */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,5.5fr)_minmax(0,5.5fr)_minmax(0,18fr)] gap-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-w-0">
               <h2 className="text-sm font-semibold text-slate-700 mb-2">達標 Top 5（營收達成率）</h2>
               <ul className="space-y-2 text-sm">
                 {top5.map((s, i) => (
@@ -710,7 +708,7 @@ export default function OperationsOverviewPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-w-0">
               <h2 className="text-sm font-semibold text-slate-700 mb-2">待改善 Bottom 5</h2>
               <ul className="space-y-2 text-sm">
                 {bottom5.map((s, i) => (
@@ -725,7 +723,7 @@ export default function OperationsOverviewPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 md:col-span-2 lg:col-span-1">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 min-w-0">
               <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2 mb-3">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 督導高優先預警
