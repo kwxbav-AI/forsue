@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   formatDateOnly,
   formatDateOnlyTaipei,
-  toDateRangeTaipei,
+  toDateRange,
 } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ export async function GET(request: Request) {
   let start: Date;
   let end: Date;
   try {
-    ({ start, end } = toDateRangeTaipei(startDate, endDate));
+    // 營收匯入以 toStartOfDay（UTC 日曆日）寫入 @db.Date，須用 UTC 區間；勿用台北區間（會誤含前一日）
+    ({ start, end } = toDateRange(startDate, endDate));
   } catch {
     return NextResponse.json({ error: "日期格式錯誤" }, { status: 400 });
   }
