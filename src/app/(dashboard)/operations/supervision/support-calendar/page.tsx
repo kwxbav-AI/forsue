@@ -333,7 +333,7 @@ export default function SupervisorSupportCalendarPage() {
           {selectedStores.length === 0 ? (
             <p className="text-sm text-slate-500 py-6 text-center">此日無缺口或支援紀錄</p>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {selectedStores.map((s) => {
                 const isOpen = openStoreIds.has(s.storeId);
                 const isForecast = s.dataSource === "forecast";
@@ -350,7 +350,10 @@ export default function SupervisorSupportCalendarPage() {
                 const gapText = gap == null ? "—" : gap.toFixed(1);
 
                 return (
-                  <div key={s.storeId} className="rounded-lg border border-slate-200 overflow-hidden">
+                  <div
+                    key={s.storeId}
+                    className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200"
+                  >
                     <button
                       type="button"
                       onClick={() =>
