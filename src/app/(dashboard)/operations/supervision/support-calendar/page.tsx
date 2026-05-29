@@ -256,7 +256,7 @@ export default function SupervisorSupportCalendarPage() {
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          月曆顏色依所選層級：綠=補齊、黃=部分、紅=缺口
+          月曆顏色依所選層級：綠=補齊、黃=部分、紅=缺口 · 今日之後依排班表預測
         </p>
       </div>
 
@@ -336,9 +336,13 @@ export default function SupervisorSupportCalendarPage() {
             <div className="space-y-3">
               {selectedStores.map((s) => {
                 const isOpen = openStoreIds.has(s.storeId);
+                const isForecast = s.dataSource === "forecast";
                 const status = layer === "actual" ? s.statusActual : s.statusPlanned;
                 const target = s.targetHours != null ? s.targetHours.toFixed(1) : "—";
-                const actual = s.actualHoursConfirmed.toFixed(1);
+                const laborLabel = isForecast ? "排班" : "實際";
+                const laborHours = isForecast
+                  ? (s.scheduledHours ?? s.actualHoursConfirmed).toFixed(1)
+                  : s.actualHoursConfirmed.toFixed(1);
                 const supportEffective =
                   layer === "actual" ? s.supportInConfirmedHours : s.supportInConfirmedHours + s.supportInPlannedHours;
                 const gap =
@@ -364,9 +368,15 @@ export default function SupervisorSupportCalendarPage() {
                           <p className="font-semibold text-slate-900 truncate">
                             {s.storeName}
                             {s.region ? <span className="ml-2 text-xs text-slate-500">{s.region}</span> : null}
+                            {isForecast ? (
+                              <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-800">
+                                預測
+                              </span>
+                            ) : null}
                           </p>
                           <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
-                            缺口 {gapText}h（目標 {target}h · 實際 {actual}h · 支援 {supportEffective.toFixed(1)}h）
+                            缺口 {gapText}h（目標 {target}h · {laborLabel} {laborHours}h · 支援{" "}
+                            {supportEffective.toFixed(1)}h）
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -384,16 +394,22 @@ export default function SupervisorSupportCalendarPage() {
                       }`}
                     >
                       <div>
-                        <h3 className="text-xs font-semibold text-slate-700 mb-2">原班出勤</h3>
+                        <h3 className="text-xs font-semibold text-slate-700 mb-2">
+                          {isForecast ? "排班人員" : "原班出勤"}
+                        </h3>
                         {s.originalStaff.length === 0 ? (
-                          <p className="text-xs text-slate-500">無出勤紀錄</p>
+                          <p className="text-xs text-slate-500">
+                            {isForecast ? "尚無排班資料（請至資料上傳中心上傳班表）" : "無出勤紀錄"}
+                          </p>
                         ) : (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="border-b text-left text-slate-500 text-xs">
                                   <th className="py-2 pr-3">人員</th>
-                                  <th className="py-2 pr-3 text-right">出勤時數</th>
+                                  <th className="py-2 pr-3 text-right">
+                                    {isForecast ? "排班時數" : "出勤時數"}
+                                  </th>
                                   <th className="py-2">時間</th>
                                 </tr>
                               </thead>

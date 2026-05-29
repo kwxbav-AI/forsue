@@ -224,6 +224,15 @@
         { "kind": "API", "pathPattern": "/api/uploads/inventory-reference", "method": null }
       ]
     },
+    {
+      "key": "uploads-shift-roster",
+      "label": "上傳：門市排班表（卡片）",
+      "description": "上傳矩陣式排班 Excel（寫入 StoreShiftPlan）",
+      "group": "資料上傳中心",
+      "sortOrder": 265,
+      "parentKey": "uploads",
+      "patterns": [{ "kind": "API", "pathPattern": "/api/uploads/shift-roster", "method": null }]
+    },
 
     {
       "key": "reports",

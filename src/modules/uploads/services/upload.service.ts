@@ -7,6 +7,8 @@ import { parseDispatchSheet, type DispatchRow } from "../parsers/dispatch.parser
 import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/employee-master.parser";
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
+import { parseShiftRosterSheet } from "../parsers/shift-roster.parser";
+import { storeNameMatchesCatalogKey } from "@/lib/operations-dashboard";
 import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei, toStartOfDay } from "@/lib/date";
 import Decimal from "decimal.js";
 import type { UploadResult } from "../types";
@@ -764,6 +766,163 @@ export async function uploadDailyRevenue(
 
   return {
     success: errors.length === 0,
+    batchId: batch.id,
+    importedCount: imported,
+    failedCount: errors.length,
+    errors,
+  };
+}
+
+async function resolveStoreIdByCatalogKey(catalogKey: string): Promise<string | null> {
+  const stores = await prisma.store.findMany({
+    where: { isActive: true, hideInReports: false },
+    select: { id: true, name: true },
+  });
+  for (const s of stores) {
+    if (storeNameMatchesCatalogKey(s.name, catalogKey)) return s.id;
+  }
+  return null;
+}
+
+export type UploadShiftRosterOptions = {
+  /** true：刪除檔案內各日期該店全部排班；false：只 upsert 檔案內員工列 */
+  replaceEntireDates?: boolean;
+};
+
+export async function uploadShiftRoster(
+  buffer: Buffer,
+  originalName: string,
+  uploadedBy?: string,
+  options?: UploadShiftRosterOptions
+): Promise<UploadResult> {
+  const replaceEntireDates = options?.replaceEntireDates ?? false;
+  const parsed = parseShiftRosterSheet(buffer, originalName);
+
+  if (!parsed.storeCatalogKey) {
+    return {
+      success: false,
+      importedCount: 0,
+      failedCount: parsed.errors.length || 1,
+      errors:
+        parsed.errors.length > 0
+          ? parsed.errors
+          : [{ row: 0, message: "無法從檔名辨識門市" }],
+    };
+  }
+
+  const storeId = await resolveStoreIdByCatalogKey(parsed.storeCatalogKey);
+  if (!storeId) {
+    return {
+      success: false,
+      importedCount: 0,
+      failedCount: 1,
+      errors: [
+        {
+          row: 0,
+          message: `找不到對應門市（catalog：${parsed.storeCatalogKey}）`,
+        },
+      ],
+    };
+  }
+
+  if (parsed.errors.length > 0 && parsed.data.length === 0) {
+    return {
+      success: false,
+      importedCount: 0,
+      failedCount: parsed.errors.length,
+      errors: parsed.errors,
+    };
+  }
+
+  const batch = await prisma.uploadBatch.create({
+    data: {
+      fileType: "SHIFT_ROSTER",
+      originalName,
+      storedName: `shift_roster_${Date.now()}_${originalName}`,
+      uploadedBy,
+      recordCount: 0,
+      status: "SUCCESS",
+    },
+  });
+
+  const uniqueDates = uniqueCalendarDates(parsed.data.map((r) => r.workDate));
+  const errors: ParseError[] = [...parsed.errors];
+  let imported = 0;
+
+  if (replaceEntireDates && uniqueDates.length > 0) {
+    await prisma.storeShiftPlan.deleteMany({
+      where: {
+        storeId,
+        workDate: { in: uniqueDates },
+      },
+    });
+  }
+
+  const employeeCodes = [...new Set(parsed.data.map((r) => r.employeeCode.trim()))];
+  const employees =
+    employeeCodes.length > 0
+      ? await prisma.employee.findMany({
+          where: { employeeCode: { in: employeeCodes } },
+          select: { id: true, employeeCode: true },
+        })
+      : [];
+  const employeeIdByCode = new Map(employees.map((e) => [e.employeeCode, e.id] as const));
+
+  for (const row of parsed.data) {
+    const workDate = toWorkDateUTC(row.workDate);
+    const employeeCode = row.employeeCode.trim();
+
+    try {
+      await prisma.storeShiftPlan.upsert({
+        where: {
+          storeId_workDate_employeeCode: {
+            storeId,
+            workDate,
+            employeeCode,
+          },
+        },
+        create: {
+          storeId,
+          workDate,
+          employeeCode,
+          employeeName: row.employeeName,
+          employeeId: employeeIdByCode.get(employeeCode) ?? null,
+          shiftKind: row.shiftKind,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          scheduledHours: row.scheduledHours,
+          rawCell: row.rawCell,
+          uploadBatchId: batch.id,
+        },
+        update: {
+          employeeName: row.employeeName,
+          employeeId: employeeIdByCode.get(employeeCode) ?? null,
+          shiftKind: row.shiftKind,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          scheduledHours: row.scheduledHours,
+          rawCell: row.rawCell,
+          uploadBatchId: batch.id,
+        },
+      });
+      imported += 1;
+    } catch (e) {
+      errors.push({
+        row: 0,
+        message: `寫入失敗 ${formatDateOnly(workDate)} ${employeeCode}：${
+          e instanceof Error ? e.message : "未知錯誤"
+        }`,
+      });
+    }
+  }
+
+  await prisma.uploadBatch.update({
+    where: { id: batch.id },
+    data: { recordCount: imported },
+  });
+
+  return {
+    success: errors.length === 0 || imported > 0,
     batchId: batch.id,
     importedCount: imported,
     failedCount: errors.length,

@@ -18,6 +18,12 @@ const FILE_TYPES: {
     api: "/api/uploads/customer-traffic",
     hint: "欄位：日期、部門（門市）、來客數、銷售總額、平均客單（民國年如 114.02.03）",
   },
+  {
+    key: "SHIFT_ROSTER",
+    label: "門市排班表",
+    api: "/api/uploads/shift-roster",
+    hint: "矩陣式班表（工作表「班表」）；檔名需含門市簡稱（如昆明、大竹）",
+  },
 ];
 
 type BatchInfo = {
@@ -141,7 +147,7 @@ export default function UploadsPage() {
             ) : (
               <p className="mt-2 text-sm text-slate-400">尚無上傳紀錄</p>
             )}
-            {key === "ATTENDANCE" && (
+            {(key === "ATTENDANCE" || key === "SHIFT_ROSTER") && (
               <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-600">
                 <input
                   type="checkbox"
@@ -151,7 +157,7 @@ export default function UploadsPage() {
                   onChange={(e) => setReplaceEntireDates(e.target.checked)}
                 />
                 <span>
-                  取代當日全部出勤
+                  {key === "ATTENDANCE" ? "取代當日全部出勤" : "取代當日全部排班"}
                   <span className="mt-0.5 block text-xs text-slate-400">
                     未勾選時只更新檔案內的員工；整批重匯當日請勾選
                   </span>
@@ -169,7 +175,10 @@ export default function UploadsPage() {
                   const f = e.target.files?.[0];
                   if (f) {
                     handleUpload(key, api, f, {
-                      replaceEntireDates: key === "ATTENDANCE" ? replaceEntireDates : undefined,
+                      replaceEntireDates:
+                        key === "ATTENDANCE" || key === "SHIFT_ROSTER"
+                          ? replaceEntireDates
+                          : undefined,
                     });
                   }
                   e.target.value = "";

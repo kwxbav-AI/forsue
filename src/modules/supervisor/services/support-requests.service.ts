@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { addCalendarDaysUTC, formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
+import { addCalendarDaysUTC, formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
 import {
   countWorkingDaysInRangeUTC,
   monthStartEndYmd,
@@ -314,16 +314,69 @@ export async function buildSupportRequestsMonth(input: {
     });
   }
 
+  const todayYmd = formatDateOnlyTaipei();
+
+  const shiftPlanRows = await prisma.storeShiftPlan.findMany({
+    where: {
+      workDate: { gte: parseDateOnlyUTC(startYmd), lte: parseDateOnlyUTC(endYmd) },
+      shiftKind: "WORK",
+      ...(storeIds.length > 0 ? { storeId: { in: storeIds } } : { storeId: { in: [] as string[] } }),
+    },
+    select: {
+      workDate: true,
+      storeId: true,
+      employeeId: true,
+      employeeCode: true,
+      employeeName: true,
+      scheduledHours: true,
+      startTime: true,
+      endTime: true,
+    },
+    orderBy: [{ workDate: "asc" }, { employeeCode: "asc" }],
+  });
+
+  type ShiftAggRow = {
+    employeeId: string;
+    employeeCode: string;
+    employeeName: string;
+    workHours: number;
+    startTime: string | null;
+    endTime: string | null;
+    shiftType: string | null;
+  };
+  const shiftByStoreDay = new Map<string, Map<string, ShiftAggRow>>();
+  for (const sp of shiftPlanRows) {
+    const date = formatDateOnly(sp.workDate);
+    const key = `${date}|${sp.storeId}`;
+    let byEmp = shiftByStoreDay.get(key);
+    if (!byEmp) {
+      byEmp = new Map();
+      shiftByStoreDay.set(key, byEmp);
+    }
+    const empKey = sp.employeeId ?? sp.employeeCode;
+    const hours = Math.round(Number(sp.scheduledHours) * 100) / 100;
+    const prev = byEmp.get(empKey);
+    byEmp.set(empKey, {
+      employeeId: sp.employeeId ?? sp.employeeCode,
+      employeeCode: sp.employeeCode,
+      employeeName: sp.employeeName ?? sp.employeeCode,
+      workHours: Math.round(((prev?.workHours ?? 0) + hours) * 100) / 100,
+      startTime: sp.startTime ?? prev?.startTime ?? null,
+      endTime: sp.endTime ?? prev?.endTime ?? null,
+      shiftType: prev?.shiftType ?? "排班",
+    });
+  }
+
   const storeDayRowsByDate = new Map<string, SupportRequestStoreDay[]>();
 
   for (let day = startYmd; day <= endYmd; day = addCalendarDaysUTC(day, 1)) {
     const d = parseDateOnlyUTC(day);
-    const dailyMetrics = await computeDailyMetricsByStoreResilient(d, { reportVisibleOnly: true });
+    const isFuture = day > todayYmd;
+
+    const dailyMetrics =
+      isFuture ? null : await computeDailyMetricsByStoreResilient(d, { reportVisibleOnly: true });
 
     for (const storeId of storeIds) {
-      const m = dailyMetrics.get(storeId) ?? { revenue: 0, laborHours: 0 };
-      const actualHoursConfirmed = Math.round(clampNonNegative(m.laborHours) * 100) / 100;
-
       const isSunday = d.getUTCDay() === 0;
       const isHoliday = holidaySet.has(day);
       const rawTarget = dailyTargetByStoreId.get(storeId) ?? null;
@@ -332,6 +385,67 @@ export async function buildSupportRequestsMonth(input: {
       const disp = dispatchByStoreDay.get(`${day}|${storeId}`) ?? null;
       const supportInConfirmedHours = disp ? Math.round(disp.confirmedHours * 100) / 100 : 0;
       const supportInPlannedHours = disp ? Math.round(disp.plannedHours * 100) / 100 : 0;
+
+      if (isFuture) {
+        const shiftMap = shiftByStoreDay.get(`${day}|${storeId}`);
+        const scheduledTotal = shiftMap
+          ? Math.round(
+              [...shiftMap.values()].reduce((sum, r) => sum + r.workHours, 0) * 100
+            ) / 100
+          : 0;
+
+        const gapConfirmed = computeGap(targetHours, scheduledTotal);
+        const gapPlanned = computeGap(
+          targetHours,
+          scheduledTotal + supportInPlannedHours
+        );
+
+        const statusActual = statusByGapAndSupport(gapConfirmed, supportInConfirmedHours);
+        const statusPlanned = statusByGapAndSupport(
+          gapPlanned,
+          supportInConfirmedHours + supportInPlannedHours
+        );
+
+        const include =
+          (gapPlanned != null && gapPlanned > 0) ||
+          (gapConfirmed != null && gapConfirmed > 0) ||
+          supportInConfirmedHours > 0 ||
+          supportInPlannedHours > 0 ||
+          scheduledTotal > 0;
+        if (!include) continue;
+
+        const originalStaff = [...(shiftMap?.values() ?? [])].sort((a, b) =>
+          a.employeeCode.localeCompare(b.employeeCode)
+        );
+
+        const row: SupportRequestStoreDay = {
+          date: day,
+          storeId,
+          storeName: storeNameById.get(storeId) ?? storeId,
+          region: storeRegionById.get(storeId) ?? null,
+          dataSource: "forecast",
+          scheduledHours: scheduledTotal,
+          targetHours,
+          actualHoursConfirmed: scheduledTotal,
+          supportInConfirmedHours,
+          supportInPlannedHours,
+          gapConfirmed,
+          gapPlanned,
+          statusActual,
+          statusPlanned,
+          originalStaff,
+          supportStaffConfirmed: disp ? disp.confirmedRows : [],
+          supportStaffPlanned: disp ? disp.plannedRows : [],
+        };
+
+        const list = storeDayRowsByDate.get(day) ?? [];
+        list.push(row);
+        storeDayRowsByDate.set(day, list);
+        continue;
+      }
+
+      const m = dailyMetrics!.get(storeId) ?? { revenue: 0, laborHours: 0 };
+      const actualHoursConfirmed = Math.round(clampNonNegative(m.laborHours) * 100) / 100;
 
       const gapConfirmed = computeGap(targetHours, actualHoursConfirmed);
       const gapPlanned = computeGap(targetHours, actualHoursConfirmed + supportInPlannedHours);
@@ -354,6 +468,8 @@ export async function buildSupportRequestsMonth(input: {
         storeId,
         storeName: storeNameById.get(storeId) ?? storeId,
         region: storeRegionById.get(storeId) ?? null,
+        dataSource: "actual",
+        scheduledHours: null,
         targetHours,
         actualHoursConfirmed,
         supportInConfirmedHours,

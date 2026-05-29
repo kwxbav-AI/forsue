@@ -2,6 +2,8 @@ export type SupportSeverity = "none" | "partial" | "covered" | "empty";
 
 export type SupportLayer = "actual" | "planned";
 
+export type SupportDataSource = "actual" | "forecast";
+
 export type SupportCalendarDay = {
   date: string; // YYYY-MM-DD
   day: number;
@@ -48,6 +50,11 @@ export type SupportRequestStoreDay = {
   storeId: string;
   storeName: string;
   region: string | null;
+
+  /** 過去／今日＝出勤實績；未來＝排班預測 */
+  dataSource: SupportDataSource;
+  /** 未來日：排班預定總工時；過去日通常為 null */
+  scheduledHours: number | null;
 
   targetHours: number | null;
   actualHoursConfirmed: number;
