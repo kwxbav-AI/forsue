@@ -27,7 +27,8 @@ export type ShiftRosterParseResult = {
 };
 
 const DATE_YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const EMP_ROW_RE = /^T(\d+)[-－](.+)$/;
+/** 員工列：T2505450-姓名 或 Y2211263-姓名（班表匯出常見格式） */
+const EMP_ROW_RE = /^([A-Z]\d+)[-－](.+)$/i;
 const SHIFT_TIME_RE = /^[A-Z]{1,4}-(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/i;
 
 function cellStr(v: unknown): string {
@@ -50,7 +51,7 @@ function parseEmployeeCell(v: unknown): {
   const s = cellStr(v);
   const m = EMP_ROW_RE.exec(s);
   if (!m) return null;
-  const employeeCode = `T${m[1].trim()}`;
+  const employeeCode = m[1].trim().toUpperCase();
   const rest = m[2].trim();
   const parts = rest.split(/\s+/).filter(Boolean);
   const employeeName = parts[0] ?? rest;
@@ -83,7 +84,7 @@ function parseShiftCell(raw: string): {
     };
   }
 
-  if (/休息日|例假日|國定假日|休假|請假/.test(s)) {
+  if (/休息日|例假日|國定假日|休假|請假|空班日/.test(s)) {
     const kind = s.includes("國定") ? "HOLIDAY" : s.includes("假") ? "LEAVE" : "OFF";
     return {
       shiftKind: kind as ShiftRosterRow["shiftKind"],
@@ -134,6 +135,23 @@ export function resolveStoreCatalogKeyFromFilename(filename: string): string | n
   return null;
 }
 
+function rowHasContent(row: unknown[]): boolean {
+  return row.some((c) => cellStr(c) !== "");
+}
+
+/** 截斷 xls 常見的 65536 列空白，並在「班別」彙總區塊前停止 */
+function trimSheetRows(rows: unknown[][]): unknown[][] {
+  let lastIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] ?? [];
+    if (!rowHasContent(row)) continue;
+    const label = cellStr(row[1]);
+    if (label === "班別" && cellStr(row[0]) === "") break;
+    lastIdx = i;
+  }
+  return lastIdx >= 0 ? rows.slice(0, lastIdx + 1) : rows.slice(0, 0);
+}
+
 function readSheetRows(buffer: Buffer, sheetName?: string): unknown[][] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const name =
@@ -144,11 +162,12 @@ function readSheetRows(buffer: Buffer, sheetName?: string): unknown[][] {
         : workbook.SheetNames[0];
   if (!name) throw new Error("Excel 檔案沒有工作表");
   const sheet = workbook.Sheets[name];
-  return XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     raw: false,
     defval: "",
   }) as unknown[][];
+  return trimSheetRows(raw);
 }
 
 function isWeekdayHeaderRow(row: unknown[]): boolean {
@@ -210,6 +229,9 @@ export function parseShiftRosterSheet(
         const empRowNum = j + 1;
 
         if (isWeekdayHeaderRow(empRow) && cellStr(empRow[0]) === "") {
+          break;
+        }
+        if (cellStr(empRow[1]) === "班別") {
           break;
         }
 
