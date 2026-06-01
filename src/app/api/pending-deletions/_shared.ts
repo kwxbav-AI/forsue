@@ -6,6 +6,7 @@ const SEGMENT_TO_TARGET: Record<string, DeletionRequestTargetType> = {
   stores: "STORE",
   "store-hour-deductions": "STORE_HOUR_DEDUCTION",
   dispatches: "DISPATCH_RECORD",
+  "revenue-records": "REVENUE_RECORD",
 };
 
 export function targetTypeFromSegment(segment: string): DeletionRequestTargetType | null {

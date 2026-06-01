@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
+import { PendingDeletionPanel } from "@/components/pending-deletion-panel";
 
 type RevenueRow = {
   id: string;
@@ -27,25 +28,14 @@ export default function RevenueReportPage() {
   const [department, setDepartment] = useState("");
   const [rows, setRows] = useState<RevenueRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
+  const [pendingRefresh, setPendingRefresh] = useState(0);
 
   const [stores, setStores] = useState<Store[]>([]);
 
-  useEffect(() => {
-    fetch("/api/stores")
-      .then((r) => r.json())
-      .then((d: Store[]) => setStores(d))
-      .catch(() => setStores([]));
-  }, []);
-
-  const departmentOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const s of stores) {
-      if (s.department) set.add(s.department);
-    }
-    return Array.from(set).sort();
-  }, [stores]);
-
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set("startDate", startDate);
@@ -60,17 +50,89 @@ export default function RevenueReportPage() {
       setRows([]);
     }
     setLoading(false);
-  }
+  }, [startDate, endDate, department]);
+
+  useEffect(() => {
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((d: Store[]) => setStores(d))
+      .catch(() => setStores([]));
+  }, []);
 
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh]);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setPerm({
+          canReadPending: Boolean(d?.user?.canReadPendingRevenueRecords),
+          canApprove: Boolean(d?.user?.canApproveDeleteRevenueRecords),
+        });
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const onPending = () => {
+      refresh();
+      setPendingRefresh((k) => k + 1);
+    };
+    window.addEventListener("pending-deletions-changed", onPending);
+    return () => window.removeEventListener("pending-deletions-changed", onPending);
+  }, [refresh]);
+
+  const departmentOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of stores) {
+      if (s.department) set.add(s.department);
+    }
+    return Array.from(set).sort();
+  }, [stores]);
 
   const totalRevenue = useMemo(
     () => rows.reduce((sum, r) => sum + (r.revenueAmount || 0), 0),
     [rows]
   );
+
+  async function deleteRow(row: RevenueRow) {
+    if (deletingIds.has(row.id)) {
+      setMessage({ type: "err", text: "刪除申請送出中，請稍候…" });
+      return;
+    }
+    const label = `${row.storeName}｜${row.revenueDate}｜${row.revenueAmount.toLocaleString("zh-TW")} 元`;
+    if (!confirm(`確定刪除此筆營收？\n${label}`)) return;
+
+    setDeletingIds((s) => new Set(s).add(row.id));
+    try {
+      const res = await fetch(`/api/reports/revenue/${row.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 202) {
+        setMessage({
+          type: "ok",
+          text: data.message || "已送出刪除申請，待核准後生效",
+        });
+        setPendingRefresh((k) => k + 1);
+        await refresh();
+        return;
+      }
+      if (!res.ok) {
+        setMessage({ type: "err", text: data.error || "刪除失敗" });
+        return;
+      }
+      setMessage({ type: "ok", text: "已刪除，該日績效已重算" });
+      setPendingRefresh((k) => k + 1);
+      await refresh();
+    } finally {
+      setDeletingIds((s) => {
+        const next = new Set(s);
+        next.delete(row.id);
+        return next;
+      });
+    }
+  }
 
   return (
     <div>
@@ -83,6 +145,18 @@ export default function RevenueReportPage() {
           回首頁
         </Link>
       </div>
+
+      <PendingDeletionPanel
+        segment="revenue-records"
+        canRead={perm.canReadPending}
+        canApprove={perm.canApprove}
+        title="待審刪除申請（營收）"
+        refreshKey={pendingRefresh}
+      />
+
+      <p className="mb-4 text-sm text-slate-500">
+        刪除營收後會自動重算該日每日績效。若無「刪除核定」權限，刪除將送出待審申請。
+      </p>
 
       <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -120,14 +194,25 @@ export default function RevenueReportPage() {
             </select>
           </label>
         </div>
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <button
-            type="button"
-            onClick={refresh}
-            className="rounded bg-sky-600 px-4 py-1.5 text-sm text-white hover:bg-sky-700"
-          >
-            查詢
-          </button>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => refresh()}
+              className="rounded bg-sky-600 px-4 py-1.5 text-sm text-white hover:bg-sky-700"
+            >
+              查詢
+            </button>
+            {message && (
+              <span
+                className={
+                  message.type === "ok" ? "text-sm text-green-600" : "text-sm text-red-600"
+                }
+              >
+                {message.text}
+              </span>
+            )}
+          </div>
           <p className="text-slate-600">
             筆數：<span className="font-medium text-slate-800">{rows.length}</span>
           </p>
@@ -151,6 +236,9 @@ export default function RevenueReportPage() {
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-slate-700">日期</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">營收金額</th>
+                <th className="w-[72px] min-w-[72px] px-4 py-2 text-center font-medium text-slate-700">
+                  操作
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -166,6 +254,16 @@ export default function RevenueReportPage() {
                   <td className="px-4 py-2 text-right">
                     {r.revenueAmount.toLocaleString("zh-TW")}
                   </td>
+                  <td className="px-4 py-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(r)}
+                      disabled={deletingIds.has(r.id)}
+                      className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deletingIds.has(r.id) ? "處理中…" : "刪除"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -177,6 +275,7 @@ export default function RevenueReportPage() {
                 <td className="px-4 py-2 text-right font-medium text-slate-700">
                   {totalRevenue.toLocaleString("zh-TW")}
                 </td>
+                <td />
               </tr>
             </tfoot>
           </table>
@@ -185,4 +284,3 @@ export default function RevenueReportPage() {
     </div>
   );
 }
-

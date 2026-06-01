@@ -19,11 +19,13 @@ export async function GET(req: NextRequest) {
     canApproveDeleteStores,
     canApproveDeleteStoreHourDeductions,
     canApproveDeleteDispatches,
+    canApproveDeleteRevenueRecords,
     canReadPendingContentEntries,
     canReadPendingWorkhourAdjustments,
     canReadPendingStores,
     canReadPendingStoreHourDeductions,
     canReadPendingDispatches,
+    canReadPendingRevenueRecords,
   ] = await Promise.all([
     canAccessApiDb(role, "/api/stores/_/change-logs", "GET"),
     hasModuleEffectivePermission(role, "delete-approve-content-entries", "write"),
@@ -31,11 +33,13 @@ export async function GET(req: NextRequest) {
     hasModuleEffectivePermission(role, "delete-approve-stores", "write"),
     hasModuleEffectivePermission(role, "delete-approve-store-hour-deductions", "write"),
     hasModuleEffectivePermission(role, "delete-approve-dispatches", "write"),
+    hasModuleEffectivePermission(role, "delete-approve-revenue-records", "write"),
     hasModuleEffectivePermission(role, "delete-approve-content-entries", "read"),
     hasModuleEffectivePermission(role, "delete-approve-workhour-adjustments", "read"),
     hasModuleEffectivePermission(role, "delete-approve-stores", "read"),
     hasModuleEffectivePermission(role, "delete-approve-store-hour-deductions", "read"),
     hasModuleEffectivePermission(role, "delete-approve-dispatches", "read"),
+    hasModuleEffectivePermission(role, "delete-approve-revenue-records", "read"),
   ]);
 
   return NextResponse.json({
@@ -53,11 +57,13 @@ export async function GET(req: NextRequest) {
       canApproveDeleteStores,
       canApproveDeleteStoreHourDeductions,
       canApproveDeleteDispatches,
+      canApproveDeleteRevenueRecords,
       canReadPendingContentEntries,
       canReadPendingWorkhourAdjustments,
       canReadPendingStores,
       canReadPendingStoreHourDeductions,
       canReadPendingDispatches,
+      canReadPendingRevenueRecords,
     },
   });
 }

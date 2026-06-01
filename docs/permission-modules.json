@@ -270,6 +270,17 @@
       ]
     },
     {
+      "key": "delete-approve-revenue-records",
+      "label": "刪除核定：營收",
+      "description": "待審刪除列表與核准／駁回（具 write 可直接刪除或核准申請）",
+      "group": "資料區",
+      "sortOrder": 331,
+      "parentKey": "reports-revenue",
+      "patterns": [
+        { "kind": "API", "pathPattern": "/api/pending-deletions/revenue-records", "method": null }
+      ]
+    },
+    {
       "key": "reports-charts",
       "label": "圖表",
       "description": "區間加總、排序與工效比長條圖",

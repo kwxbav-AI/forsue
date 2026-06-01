@@ -451,6 +451,7 @@ enum DeletionRequestTargetType {
   STORE
   STORE_HOUR_DEDUCTION
   DISPATCH_RECORD
+  REVENUE_RECORD
 }
 
 enum DeletionRequestStatus {

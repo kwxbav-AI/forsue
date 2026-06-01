@@ -171,6 +171,7 @@ async function main() {
       "delete-approve-stores",
       "delete-approve-store-hour-deductions",
       "delete-approve-dispatches",
+      "delete-approve-revenue-records",
     ]);
 
     // ADMIN: all write

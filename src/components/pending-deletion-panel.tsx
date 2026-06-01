@@ -16,7 +16,8 @@ type Segment =
   | "workhour-adjustments"
   | "stores"
   | "store-hour-deductions"
-  | "dispatches";
+  | "dispatches"
+  | "revenue-records";
 
 type Props = {
   segment: Segment;

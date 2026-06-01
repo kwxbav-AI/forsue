@@ -9,6 +9,7 @@ export const DELETE_APPROVE_MODULE_KEY: Record<DeletionRequestTargetType, string
   STORE: "delete-approve-stores",
   STORE_HOUR_DEDUCTION: "delete-approve-store-hour-deductions",
   DISPATCH_RECORD: "delete-approve-dispatches",
+  REVENUE_RECORD: "delete-approve-revenue-records",
 };
 
 export async function performDeletionForTarget(
@@ -38,6 +39,11 @@ export async function performDeletionForTarget(
     case "DISPATCH_RECORD": {
       const deleted = await prisma.dispatchRecord.delete({ where: { id: targetId } });
       await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
+      return;
+    }
+    case "REVENUE_RECORD": {
+      const deleted = await prisma.revenueRecord.delete({ where: { id: targetId } });
+      await performanceEngineService.recalculateDailyPerformance(deleted.revenueDate);
       return;
     }
   }

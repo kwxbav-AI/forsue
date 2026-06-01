@@ -127,6 +127,26 @@ export async function GET(
         `${fmtDateOnly(r.workDate)}｜${r.employee.employeeCode} ${r.employee.name}｜${fromLabel} → ${toLabel}｜${h} 小時`
       );
     }
+  } else if (targetType === "REVENUE_RECORD") {
+    const records = await prisma.revenueRecord.findMany({
+      where: { id: { in: targetIds } },
+      select: {
+        id: true,
+        revenueDate: true,
+        revenueAmount: true,
+        checkoutNo: true,
+        store: { select: { name: true, code: true, department: true } },
+      },
+    });
+    for (const r of records) {
+      const code = r.store.code ? `（${r.store.code}）` : "";
+      const dept = r.store.department ? `｜${r.store.department}` : "";
+      const checkout = r.checkoutNo ? `｜單號 ${r.checkoutNo}` : "";
+      summariesByTargetId.set(
+        r.id,
+        `${fmtDateOnly(r.revenueDate)}｜${r.store.name}${code}${dept}｜營收 ${Number(r.revenueAmount).toLocaleString("zh-TW")}${checkout}`
+      );
+    }
   }
 
   return NextResponse.json({

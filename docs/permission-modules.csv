@@ -44,6 +44,7 @@ reports-attendance,出勤報表,門市出勤報表查詢,報表,320,,API,/api/re
 reports-attendance,出勤報表,門市出勤報表查詢,報表,320,,API,/api/stores,
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,PAGE,/reports/revenue,
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,API,/api/reports/revenue,
+delete-approve-revenue-records,刪除核定：營收,待審刪除與核准／駁回,資料區,331,reports-revenue,API,/api/pending-deletions/revenue-records,
 reports-revenue,營收報表,門市營收報表查詢,報表,330,,API,/api/stores,
 reports-charts,圖表,區間加總、排序與工效比長條圖,報表,340,,PAGE,/reports/charts,
 reports-charts,圖表,區間加總、排序與工效比長條圖,報表,340,,API,/api/reports/charts,GET
