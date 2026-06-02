@@ -172,11 +172,27 @@ function parseShiftCell(raw: string): {
 /** 從檔名解析 catalog 門市簡稱（如 昆明、大竹） */
 export function resolveStoreCatalogKeyFromFilename(filename: string): string | null {
   const base = filename.replace(/\.(xls|xlsx)$/i, "");
+
+  // 班表匯出檔名常見差異：空白、底線、破折號、括號註記等。
+  // 例如：「中正-南」「中正 南」「中正南(6月)」都應辨識為「中正南」。
+  const normalizeLoose = (s: string): string =>
+    normalizeStoreKey(s)
+      .replace(/[\s_]+/g, "")
+      .replace(/[－–—-]+/g, "")
+      .replace(/[（）()【】\[\]{}]/g, "")
+      .trim();
+
+  const baseLoose = normalizeLoose(base);
   let best: string | null = null;
+  let bestLen = -1;
+
   for (const { storeNames } of OPS_REGION_CATALOG) {
     for (const name of storeNames) {
-      if (base.includes(name) && (!best || name.length > best.length)) {
+      const nameLoose = normalizeLoose(name);
+      if (!nameLoose) continue;
+      if (baseLoose.includes(nameLoose) && nameLoose.length > bestLen) {
         best = name;
+        bestLen = nameLoose.length;
       }
     }
   }
