@@ -13,9 +13,25 @@ export type CustomerTrafficImportResult = {
   message: string;
 };
 
+function parseExcelSerialDateCell(raw: unknown): Date | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  // Excel 1900 date system serials are typically in this range for recent years
+  if (!Number.isFinite(n) || n < 20000 || n > 90000) return null;
+  // Excel serial 1 = 1900-01-01; we store as UTC date-only to avoid TZ shifts
+  const base = Date.UTC(1899, 11, 31, 0, 0, 0, 0);
+  const ms = base + Math.round(n) * 86400000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  return parseDateOnlyUTC(ymd);
+}
+
 function parseRocDateCell(raw: unknown): Date | null {
   if (raw == null || raw === "") return null;
   if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw;
+  const excel = parseExcelSerialDateCell(raw);
+  if (excel) return excel;
   const s = String(raw).trim();
   const rocMatch = s.match(/^(\d{2,3})[./-](\d{1,2})[./-](\d{1,2})$/);
   if (rocMatch) {
@@ -48,9 +64,11 @@ function findHeaderRow(rows: unknown[][]): number {
   for (let r = 0; r < Math.min(15, rows.length); r++) {
     const cells = (rows[r] ?? []).map((c) => String(c ?? "").trim());
     if (
-      cells.some((c) => c === "日期") &&
-      cells.some((c) => c === "部門" || c === "門市") &&
-      cells.some((c) => /來客/.test(c))
+      (
+        cells.some((c) => c === "日期" || c === "交班日期") &&
+        cells.some((c) => c === "部門" || c === "門市") &&
+        (cells.some((c) => /來客/.test(c)) || cells.some((c) => /結帳.*(單數|張數)|單數|張數/.test(c)))
+      )
     ) {
       return r;
     }
@@ -87,14 +105,14 @@ export async function importCustomerTrafficFromExcel(
 
   const headerRow = findHeaderRow(rows);
   const header = (rows[headerRow] ?? []).map((c) => String(c ?? "").trim());
-  const dateCol = colIndex(header, ["日期"]);
+  const dateCol = colIndex(header, ["日期", "交班日期"]);
   const deptCol = colIndex(header, ["部門", "門市"]);
-  const countCol = colIndex(header, ["來客數", "來客"]);
-  const salesCol = colIndex(header, ["銷售總額", "銷售額", "營業額"]);
+  const countCol = colIndex(header, ["來客數", "來客", "結帳單張數", "結帳單數", "結帳單"]);
+  const salesCol = colIndex(header, ["銷售總額", "銷售額", "營業額", "營收金額", "營收"]);
   const avgCol = colIndex(header, ["平均客單", "當日平均客單", "客單價"]);
 
   if (dateCol < 0 || deptCol < 0 || countCol < 0) {
-    throw new Error("找不到必要欄位：日期、部門、來客數");
+    throw new Error("找不到必要欄位：日期/交班日期、部門/門市、來客數/結帳單張數");
   }
 
   const retailStores = await prisma.retailStore.findMany({
@@ -104,13 +122,24 @@ export async function importCustomerTrafficFromExcel(
 
   let upserted = 0;
   let skipped = 0;
+  let skippedTaipei = 0;
   const unmatched = new Set<string>();
   const warnings: string[] = [];
+
+  // 先彙總（避免同日同店多機號多列造成覆蓋）
+  type Agg = { storeId: string; date: Date; customerCount: number; salesAmount: number };
+  const aggByStoreDate = new Map<string, Agg>();
 
   for (let r = headerRow + 1; r < rows.length; r++) {
     const row = rows[r] ?? [];
     const deptLabel = String(row[deptCol] ?? "").trim();
     if (!deptLabel || /合計|小計|總計/.test(deptLabel)) continue;
+
+    // 台北區資料不分析：整段略過
+    if (deptLabel.includes("台北區") || deptLabel.startsWith("台北")) {
+      skippedTaipei += 1;
+      continue;
+    }
 
     const workDate = parseRocDateCell(row[dateCol]);
     if (!workDate) {
@@ -125,11 +154,6 @@ export async function importCustomerTrafficFromExcel(
     }
 
     const salesAmount = salesCol >= 0 ? parseMoneyCell(row[salesCol]) : null;
-    let avgOrderValue = avgCol >= 0 ? parseMoneyCell(row[avgCol]) : null;
-    if (avgOrderValue == null && salesAmount != null && customerCount > 0) {
-      avgOrderValue = Math.round((salesAmount / customerCount) * 100) / 100;
-    }
-
     const storeKey = normalizeStoreKey(deptLabel.replace(/店$/, ""));
     const retail = resolveRetailStore(storeKey, deptLabel, retailStores);
     if (!retail) {
@@ -138,29 +162,48 @@ export async function importCustomerTrafficFromExcel(
       continue;
     }
 
-    await prisma.dailyStorePerformance.upsert({
-      where: {
-        storeId_date: { storeId: retail.id, date: workDate },
-      },
-      create: {
+    const key = `${retail.id}|${workDate.toISOString().slice(0, 10)}`;
+    const prev = aggByStoreDate.get(key);
+    if (prev) {
+      prev.customerCount += customerCount;
+      if (salesAmount != null) prev.salesAmount += salesAmount;
+    } else {
+      aggByStoreDate.set(key, {
         storeId: retail.id,
         date: workDate,
         customerCount,
         salesAmount: salesAmount ?? 0,
+      });
+    }
+  }
+
+  for (const a of aggByStoreDate.values()) {
+    const avgOrderValue =
+      a.customerCount > 0 ? Math.round((a.salesAmount / a.customerCount) * 100) / 100 : null;
+    await prisma.dailyStorePerformance.upsert({
+      where: { storeId_date: { storeId: a.storeId, date: a.date } },
+      create: {
+        storeId: a.storeId,
+        date: a.date,
+        customerCount: a.customerCount,
+        salesAmount: a.salesAmount,
         avgOrderValue,
       },
       update: {
-        customerCount,
-        ...(salesAmount != null ? { salesAmount } : {}),
-        ...(avgOrderValue != null ? { avgOrderValue } : {}),
+        customerCount: a.customerCount,
+        salesAmount: a.salesAmount,
+        avgOrderValue,
       },
     });
-    upserted++;
+    upserted += 1;
   }
 
   const unmatchedDepartments = [...unmatched].sort();
   if (unmatchedDepartments.length > 0) {
     warnings.push(`未對應門市 ${unmatchedDepartments.length} 種：${unmatchedDepartments.slice(0, 8).join("、")}${unmatchedDepartments.length > 8 ? "…" : ""}`);
+  }
+  if (skippedTaipei > 0) {
+    warnings.push(`已略過台北區資料 ${skippedTaipei} 筆`);
   }
 
   return {
