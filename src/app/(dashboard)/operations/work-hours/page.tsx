@@ -41,6 +41,7 @@ type WorkHoursData = {
       employeeId: string;
       employeeName: string;
       employeeCode: string;
+      storeId: string;
       storeName: string;
       types: string[];
       detail: string;
