@@ -476,6 +476,57 @@ export async function buildOperationsWorkHours(input: {
     isDualRegionStore(r.storeId)
   );
   const storeIdsWithAnomaly = new Set(anomalyList.map((r) => r.storeId));
+
+  type EmployeeSummaryRow = {
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    storeId: string;
+    storeName: string;
+    totalHours: number;
+    regularHours: number;
+    overtimeHours: number;
+  };
+
+  const totalHoursByEmployee = new Map<string, number>();
+  const employeeMeta = new Map<
+    string,
+    Omit<EmployeeSummaryRow, "totalHours" | "regularHours" | "overtimeHours">
+  >();
+  for (const a of attendances) {
+    if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
+    const sid = homeStoreId(a, fallbackHome);
+    if (!sid || !storeNameById.has(sid)) continue;
+    if (input.storeId && sid !== input.storeId) continue;
+    const wh = Number(a.workHours);
+    if (wh <= 0 || !employeeIdsInScope.has(a.employeeId)) continue;
+    if (!employeeMeta.has(a.employeeId)) {
+      employeeMeta.set(a.employeeId, {
+        employeeId: a.employeeId,
+        employeeName: a.employee.name,
+        employeeCode: a.employee.employeeCode,
+        storeId: sid,
+        storeName: storeNameById.get(sid) ?? sid,
+      });
+    }
+    totalHoursByEmployee.set(
+      a.employeeId,
+      (totalHoursByEmployee.get(a.employeeId) ?? 0) + wh
+    );
+  }
+
+  const employeeSummary: EmployeeSummaryRow[] = [...employeeMeta.values()]
+    .map((base) => {
+      const totalRaw = totalHoursByEmployee.get(base.employeeId) ?? 0;
+      const ot = overtimeByEmployee.get(base.employeeId) ?? 0;
+      return {
+        ...base,
+        totalHours: Math.round(totalRaw * 10) / 10,
+        overtimeHours: Math.round(ot * 10) / 10,
+        regularHours: Math.round(Math.max(0, totalRaw - ot) * 10) / 10,
+      };
+    })
+    .sort((a, b) => b.totalHours - a.totalHours);
   const anomalyCounts = {
     excessiveOvertime: anomalyList.filter((r) => r.types.includes("加班過多")).length,
     absence: anomalyList.filter((r) => r.types.includes("缺勤異常")).length,
@@ -496,28 +547,6 @@ export async function buildOperationsWorkHours(input: {
       hasAnomaly: storeIdsWithAnomaly.has(s.storeId),
     }))
     .sort((a, b) => b.totalHours - a.totalHours);
-
-  const rankingBase = storeSummary.filter((s) => s.headcount > 0);
-  const companyAvgPerCapita =
-    employeeCount > 0 ? totalHoursAll / employeeCount : null;
-
-  const storeRanking = rankingBase
-    .map((s) => {
-      const perCapita = s.headcount > 0 ? s.totalHours / s.headcount : 0;
-      const deviation =
-        companyAvgPerCapita != null && companyAvgPerCapita > 0 ?
-          ((perCapita - companyAvgPerCapita) / companyAvgPerCapita) * 100
-        : null;
-      return {
-        ...s,
-        perCapita: Math.round(perCapita * 10) / 10,
-        deviationPct: deviation != null ? Math.round(deviation * 10) / 10 : null,
-      };
-    })
-    .sort((a, b) => b.perCapita - a.perCapita);
-
-  const top = storeRanking[0];
-  const bottom = storeRanking[storeRanking.length - 1];
 
   type AdjustmentRow = {
     id: string;
@@ -657,21 +686,11 @@ export async function buildOperationsWorkHours(input: {
       anomalyPersonCount: anomalyList.length,
       storeSummary,
     },
+    employeeSummary,
     anomalies: {
       counts: anomalyCounts,
       list: anomalyList,
       monthlyOvertime,
-    },
-    perCapita: {
-      companyAvgPerCapita:
-        companyAvgPerCapita != null ? Math.round(companyAvgPerCapita * 10) / 10 : null,
-      topStore: top ?
-        { storeName: top.storeName, perCapita: top.perCapita }
-      : null,
-      bottomStore: bottom ?
-        { storeName: bottom.storeName, perCapita: bottom.perCapita }
-      : null,
-      ranking: storeRanking,
     },
     adjustments: {
       recordCount: adjustmentRows.length,

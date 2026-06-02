@@ -54,18 +54,16 @@ type WorkHoursData = {
       alertRatioPct: number;
     }[];
   };
-  perCapita: {
-    companyAvgPerCapita: number | null;
-    topStore: { storeName: string; perCapita: number } | null;
-    bottomStore: { storeName: string; perCapita: number } | null;
-    ranking: {
-      storeName: string;
-      headcount: number;
-      totalHours: number;
-      perCapita: number;
-      deviationPct: number | null;
-    }[];
-  };
+  employeeSummary: {
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    storeId: string;
+    storeName: string;
+    totalHours: number;
+    regularHours: number;
+    overtimeHours: number;
+  }[];
   adjustments: {
     recordCount: number;
     addHours: number;
@@ -86,7 +84,6 @@ type WorkHoursData = {
 const TABS = [
   { id: "overview", label: "工時概況", icon: BarChart3 },
   { id: "issues", label: "異常與調整", icon: AlertTriangle },
-  { id: "perCapita", label: "人均產值", icon: TrendingUp },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -100,6 +97,19 @@ const ANOMALY_FILTERS = [
 ] as const;
 
 type AnomalyFilterId = (typeof ANOMALY_FILTERS)[number]["id"];
+
+type DetailModalKind =
+  | "regular"
+  | "overtime"
+  | "employees"
+  | "anomalies"
+  | "storeAnomaly";
+
+type DetailModalState = {
+  kind: DetailModalKind;
+  storeId?: string;
+  storeName?: string;
+} | null;
 
 function currentYearMonth() {
   const now = new Date();
@@ -116,6 +126,7 @@ export default function OperationsWorkHoursPage() {
   const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilterId>("all");
   const [data, setData] = useState<WorkHoursData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detailModal, setDetailModal] = useState<DetailModalState>(null);
 
   useEffect(() => {
     void (async () => {
@@ -149,8 +160,8 @@ export default function OperationsWorkHoursPage() {
 
   const o = data?.overview;
   const a = data?.anomalies;
-  const p = data?.perCapita;
   const adj = data?.adjustments;
+  const employees = data?.employeeSummary ?? [];
 
   return (
     <div className="p-6 space-y-5 max-w-7xl">
@@ -158,7 +169,7 @@ export default function OperationsWorkHoursPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">人員工時管理</h1>
           <p className="text-sm text-slate-500 mt-1">
-            工時概況 · 異常與調整 · 人均產值
+            工時概況 · 異常與調整
             {data ? ` · ${data.startDate} ~ ${data.endDate}` : ""}
           </p>
         </div>
@@ -240,24 +251,28 @@ export default function OperationsWorkHoursPage() {
               value={`${o?.totalRegularHours ?? 0}h`}
               icon={<Clock className="h-5 w-5 text-blue-600" />}
               bg="bg-blue-50"
+              onClick={() => setDetailModal({ kind: "regular" })}
             />
             <SummaryCard
               title="總加班工時"
               value={`${o?.totalOvertimeHours ?? 0}h`}
               icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
               bg="bg-violet-50"
+              onClick={() => setDetailModal({ kind: "overtime" })}
             />
             <SummaryCard
               title="記錄人員數"
               value={String(o?.employeeCount ?? 0)}
               icon={<Users className="h-5 w-5 text-amber-600" />}
               bg="bg-amber-50"
+              onClick={() => setDetailModal({ kind: "employees" })}
             />
             <SummaryCard
               title="工時異常人數"
               value={String(o?.anomalyPersonCount ?? 0)}
               icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
               bg="bg-red-50"
+              onClick={() => setDetailModal({ kind: "anomalies" })}
             />
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -281,10 +296,21 @@ export default function OperationsWorkHoursPage() {
                           <span className="inline-flex items-center gap-1">
                             {s.storeName}
                             {s.hasAnomaly ?
-                              <AlertTriangle
-                                className="h-4 w-4 shrink-0 text-amber-500"
-                                aria-label="本月有工時異常人員"
-                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDetailModal({
+                                    kind: "storeAnomaly",
+                                    storeId: s.storeId,
+                                    storeName: s.storeName,
+                                  })
+                                }
+                                className="inline-flex rounded p-0.5 text-amber-500 hover:bg-amber-100 hover:text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                title="查看工時異常明細"
+                                aria-label={`${s.storeName} 工時異常明細`}
+                              >
+                                <AlertTriangle className="h-4 w-4 shrink-0" />
+                              </button>
                             : null}
                           </span>
                         </td>
@@ -311,76 +337,13 @@ export default function OperationsWorkHoursPage() {
         />
       : null}
 
-      {data && tab === "perCapita" ?
-        <>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-5">
-              <p className="text-sm text-blue-800">全店平均工時</p>
-              <p className="mt-2 text-3xl font-bold text-blue-900">
-                {p?.companyAvgPerCapita != null ? `${p.companyAvgPerCapita}h` : "—"}
-              </p>
-              <p className="text-xs text-blue-700 mt-1">每人每月</p>
-            </div>
-            <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-5">
-              <p className="text-sm text-emerald-800">最高門市</p>
-              <p className="mt-2 text-xl font-bold text-emerald-900">
-                {p?.topStore?.storeName ?? "—"}
-              </p>
-              <p className="text-xs text-emerald-700">
-                {p?.topStore ? `${p.topStore.perCapita}h / 人` : "0h / 人"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-100 p-5">
-              <p className="text-sm text-amber-800">最低門市</p>
-              <p className="mt-2 text-xl font-bold text-amber-900">
-                {p?.bottomStore?.storeName ?? "—"}
-              </p>
-              <p className="text-xs text-amber-700">
-                {p?.bottomStore ? `${p.bottomStore.perCapita}h / 人` : "0h / 人"}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-            本頁為「人均工時」（正班+加班 ÷ 人員數）。真實人均產值（營收÷工時）請參考業績分析。
-          </p>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-800 mb-3">門市人均工時排名</h2>
-            {p?.ranking.length ?
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-slate-500">
-                      <th className="py-2 pr-3">排名</th>
-                      <th className="py-2 pr-3">門市</th>
-                      <th className="py-2 pr-3 text-right">人員數</th>
-                      <th className="py-2 pr-3 text-right">總工時</th>
-                      <th className="py-2 pr-3 text-right">人均工時</th>
-                      <th className="py-2 text-right">與均值偏差</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {p.ranking.map((r, i) => (
-                      <tr key={r.storeName} className="border-b border-slate-100">
-                        <td className="py-2 pr-3 text-slate-400">{i + 1}</td>
-                        <td className="py-2 pr-3 font-medium">{r.storeName}</td>
-                        <td className="py-2 pr-3 text-right">{r.headcount}</td>
-                        <td className="py-2 pr-3 text-right">{r.totalHours}h</td>
-                        <td className="py-2 pr-3 text-right font-semibold text-blue-800">
-                          {r.perCapita}h
-                        </td>
-                        <td className="py-2 text-right">
-                          {r.deviationPct != null ?
-                            `${r.deviationPct > 0 ? "+" : ""}${r.deviationPct}%`
-                          : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            : <EmptyState text="尚無排名資料" />}
-          </div>
-        </>
+      {detailModal && data ?
+        <WorkHoursDetailModal
+          state={detailModal}
+          employees={employees}
+          anomalies={a?.list ?? []}
+          onClose={() => setDetailModal(null)}
+        />
       : null}
 
     </div>
@@ -592,19 +555,196 @@ function SummaryCard({
   value,
   icon,
   bg,
+  onClick,
 }: {
   title: string;
   value: string;
   icon: React.ReactNode;
   bg: string;
+  onClick?: () => void;
 }) {
+  const className = `rounded-xl border border-slate-100 p-4 ${bg} ${
+    onClick ?
+      "cursor-pointer text-left w-full transition-shadow hover:shadow-md hover:ring-2 hover:ring-slate-300/80 focus:outline-none focus:ring-2 focus:ring-slate-400"
+    : ""
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className} title="點擊查看明細">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-slate-600">
+            {icon}
+            <span className="text-sm font-medium">{title}</span>
+          </div>
+          <span className="text-xs text-slate-400">明細</span>
+        </div>
+        <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+      </button>
+    );
+  }
+
   return (
-    <div className={`rounded-xl border border-slate-100 p-4 ${bg}`}>
+    <div className={className}>
       <div className="flex items-center gap-2 text-slate-600">
         {icon}
         <span className="text-sm font-medium">{title}</span>
       </div>
       <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function WorkHoursDetailModal({
+  state,
+  employees,
+  anomalies,
+  onClose,
+}: {
+  state: NonNullable<DetailModalState>;
+  employees: WorkHoursData["employeeSummary"];
+  anomalies: WorkHoursData["anomalies"]["list"];
+  onClose: () => void;
+}) {
+  const storeAnomalyRows =
+    state.kind === "storeAnomaly" && state.storeId ?
+      anomalies.filter((r) => r.storeId === state.storeId)
+    : [];
+
+  let title = "";
+  if (state.kind === "regular") title = "正班工時明細";
+  else if (state.kind === "overtime") title = "加班工時明細";
+  else if (state.kind === "employees") title = "記錄人員明細";
+  else if (state.kind === "anomalies") title = "工時異常人員明細";
+  else if (state.kind === "storeAnomaly") {
+    title = `${state.storeName ?? "門市"} · 工時異常明細`;
+  }
+
+  const regularRows = [...employees]
+    .filter((e) => e.regularHours > 0)
+    .sort((a, b) => b.regularHours - a.regularHours);
+  const overtimeRows = [...employees]
+    .filter((e) => e.overtimeHours > 0)
+    .sort((a, b) => b.overtimeHours - a.overtimeHours);
+  const anomalyRows =
+    state.kind === "storeAnomaly" ? storeAnomalyRows : anomalies;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="work-hours-detail-title"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl max-h-[85vh] flex flex-col rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <h2 id="work-hours-detail-title" className="font-semibold text-slate-900">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            關閉
+          </button>
+        </div>
+        <div className="overflow-auto p-4">
+          {state.kind === "regular" ?
+            regularRows.length ?
+              <EmployeeHoursTable rows={regularRows} hoursKey="regularHours" hoursLabel="正班工時" />
+            : <EmptyState text="尚無正班工時記錄" />
+          : state.kind === "overtime" ?
+            overtimeRows.length ?
+              <EmployeeHoursTable rows={overtimeRows} hoursKey="overtimeHours" hoursLabel="加班工時" />
+            : <EmptyState text="尚無加班工時記錄" />
+          : state.kind === "employees" ?
+            employees.length ?
+              <EmployeeHoursTable rows={employees} hoursKey="totalHours" hoursLabel="總工時" showBreakdown />
+            : <EmptyState text="尚無人員記錄" />
+          : anomalyRows.length ?
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-slate-500">
+                    <th className="py-2 pr-3">門市</th>
+                    <th className="py-2 pr-3">員工</th>
+                    <th className="py-2 pr-3">異常類型</th>
+                    <th className="py-2">說明</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anomalyRows.map((r) => (
+                    <tr key={r.employeeId} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 font-medium text-slate-800">{r.storeName}</td>
+                      <td className="py-2 pr-3">
+                        {r.employeeName}
+                        <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
+                      </td>
+                      <td className="py-2 pr-3">{r.types.join("、")}</td>
+                      <td className="py-2 text-slate-600">{r.detail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          : <EmptyState text="無異常記錄" />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeHoursTable({
+  rows,
+  hoursKey,
+  hoursLabel,
+  showBreakdown,
+}: {
+  rows: WorkHoursData["employeeSummary"];
+  hoursKey: "regularHours" | "overtimeHours" | "totalHours";
+  hoursLabel: string;
+  showBreakdown?: boolean;
+}) {
+  return (
+    <div className="overflow-x-auto max-h-[60vh]">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-white">
+          <tr className="border-b text-left text-slate-500">
+            <th className="py-2 pr-3">門市</th>
+            <th className="py-2 pr-3">員工</th>
+            {showBreakdown ?
+              <>
+                <th className="py-2 pr-3 text-right">正班</th>
+                <th className="py-2 pr-3 text-right">加班</th>
+              </>
+            : null}
+            <th className="py-2 text-right">{hoursLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.employeeId} className="border-b border-slate-100">
+              <td className="py-2 pr-3 font-medium text-slate-800">{r.storeName}</td>
+              <td className="py-2 pr-3">
+                {r.employeeName}
+                <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
+              </td>
+              {showBreakdown ?
+                <>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.regularHours}h</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.overtimeHours}h</td>
+                </>
+              : null}
+              <td className="py-2 text-right tabular-nums font-medium">{r[hoursKey]}h</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
