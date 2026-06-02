@@ -5,6 +5,7 @@ import {
   formatDateOnly,
   formatDateOnlyTaipei,
   parseDateOnlyUTC,
+  toStartOfDay,
 } from "@/lib/date";
 import {
   buildNewHireWorkedDayNoIndex,
@@ -18,7 +19,21 @@ import {
   getReserveStaffSettingForEmployeeDate,
   getReserveStaffSettingsByEmployeeDate,
 } from "@/lib/reserve-staff-periods";
+import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
+import { computeDailyMetricsByStore } from "@/modules/performance/services/daily-store-metrics.service";
 import Decimal from "decimal.js";
+
+function listDaysBetweenYmd(startYmd: string, endYmd: string): string[] {
+  const out: string[] = [];
+  let d = startYmd;
+  while (d <= endYmd) {
+    out.push(d);
+    const dt = parseDateOnlyUTC(d);
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    d = formatDateOnly(dt);
+  }
+  return out;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -295,7 +310,19 @@ export async function GET(request: Request) {
           AND: [
             dispatchWorkDateWhere,
             { confirmStatus: "已確認" },
-            ...(employeeIds.length > 0 ? [{ employeeId: { in: employeeIds } }] : []),
+            ...(empWhere ? [{ employee: empWhere }] : []),
+            ...(storeIdsForFilter && storeIdsForFilter.length > 0
+              ? [
+                  {
+                    OR: [
+                      { fromStoreId: { in: storeIdsForFilter } },
+                      { toStoreId: { in: storeIdsForFilter } },
+                    ],
+                  },
+                ]
+              : employeeIds.length > 0
+                ? [{ employeeId: { in: employeeIds } }]
+                : []),
           ],
         },
         include: { employee: true },
@@ -562,6 +589,107 @@ export async function GET(request: Request) {
       return sid !== null && storeIdsForFilter.includes(sid);
     };
 
+    const isTrialEmployeeCode = (code: string) => {
+      const prefix = (code || "").trim().toLowerCase();
+      return prefix.startsWith("a") || prefix.startsWith("b");
+    };
+
+    // 試作人員：當日有掛在篩選門市的工時異動或調入調度，但出勤 originalStoreId 不在篩選內而未載入時，
+    // 仍須載入當日出勤以套用試作列（與有出勤列時一致）。
+    const trialEmpIdsNeedingAttendance = new Set<string>();
+    for (const a of adjustments) {
+      if (!isTrialEmployeeCode(a.employee.employeeCode)) continue;
+      if (!storeMatchesFilter(getAdjustmentStoreId(a))) continue;
+      const k = `${a.employeeId}|${formatDateOnly(a.workDate)}`;
+      if (!attByEmpDate.has(k)) trialEmpIdsNeedingAttendance.add(a.employeeId);
+    }
+    for (const d of dispatches) {
+      const code = d.employee?.employeeCode ?? "";
+      if (!isTrialEmployeeCode(code)) continue;
+      if (!storeMatchesFilter(d.toStoreId)) continue;
+      const k = `${d.employeeId}|${formatDateOnly(d.workDate)}`;
+      if (!attByEmpDate.has(k)) trialEmpIdsNeedingAttendance.add(d.employeeId);
+    }
+    if (trialEmpIdsNeedingAttendance.size > 0) {
+      const extraAttendances = await prisma.attendanceRecord.findMany({
+        where: {
+          AND: [
+            attendanceWorkDateWhere,
+            { employeeId: { in: Array.from(trialEmpIdsNeedingAttendance) } },
+          ],
+        },
+        include: { employee: { include: { defaultStore: true } } },
+      });
+      for (const r of extraAttendances) {
+        const dateStr = formatDateOnly(r.workDate);
+        const k = `${r.employeeId}|${dateStr}`;
+        const hasTrialContext =
+          adjustments.some(
+            (a) =>
+              a.employeeId === r.employeeId &&
+              formatDateOnly(a.workDate) === dateStr &&
+              storeMatchesFilter(getAdjustmentStoreId(a))
+          ) ||
+          dispatches.some(
+            (d) =>
+              d.employeeId === r.employeeId &&
+              formatDateOnly(d.workDate) === dateStr &&
+              storeMatchesFilter(d.toStoreId)
+          );
+        if (!hasTrialContext) continue;
+        const prev = attByEmpDate.get(k);
+        if (prev) {
+          attByEmpDate.set(k, {
+            ...prev,
+            workHours: prev.workHours + Number(r.workHours),
+          });
+        } else {
+          attByEmpDate.set(k, {
+            employeeId: r.employeeId,
+            workDate: r.workDate,
+            originalStoreId: r.originalStoreId ?? null,
+            department: r.department ?? null,
+            workHours: Number(r.workHours),
+            locationMatchStatus:
+              (r as { locationMatchStatus?: string | null }).locationMatchStatus ?? null,
+            clockInStoreText:
+              (r as { clockInStoreText?: string | null }).clockInStoreText ?? null,
+            clockOutStoreText:
+              (r as { clockOutStoreText?: string | null }).clockOutStoreText ?? null,
+            shiftType: (r as { shiftType?: string | null }).shiftType ?? null,
+            employee: r.employee,
+            id: r.id,
+          });
+        }
+      }
+    }
+
+    // 試作人員僅有調入、當日無出勤上傳：以調度時數建立虛擬出勤，才能走完整列（試作／小計）
+    for (const d of dispatches) {
+      const code = d.employee?.employeeCode ?? "";
+      if (!isTrialEmployeeCode(code)) continue;
+      if (!storeMatchesFilter(d.toStoreId)) continue;
+      const dateStr = formatDateOnly(d.workDate);
+      const k = `${d.employeeId}|${dateStr}`;
+      if (attByEmpDate.has(k)) continue;
+      const h =
+        d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
+      if (!Number.isFinite(h) || h <= 0) continue;
+      attByEmpDate.set(k, {
+        employeeId: d.employeeId,
+        workDate: d.workDate,
+        originalStoreId: d.fromStoreId ?? null,
+        department: null,
+        workHours: 0,
+        locationMatchStatus: "UNKNOWN",
+        clockInStoreText: null,
+        clockOutStoreText: null,
+        shiftType: null,
+        employee: d.employee as (typeof records)[number]["employee"],
+        id: `disp-att-${d.id}`,
+      });
+    }
+
     const sortedKeys = new Set<string>();
     for (const r of records) {
       sortedKeys.add(`${r.employeeId}|${formatDateOnly(r.workDate)}`);
@@ -576,6 +704,33 @@ export async function GET(request: Request) {
         sortedKeys.add(`${d.employeeId}|${formatDateOnly(d.workDate)}`);
     }
     const sortedKeyList = Array.from(sortedKeys).sort();
+
+    const allocationByDate = new Map<string, Awaited<ReturnType<typeof computeStoreHoursByEmployee>>>();
+    const uniqueDatesInReport = Array.from(
+      new Set(sortedKeyList.map((k) => k.split("|")[1]))
+    );
+    await Promise.all(
+      uniqueDatesInReport.map(async (dateStr) => {
+        allocationByDate.set(
+          dateStr,
+          await computeStoreHoursByEmployee(toStartOfDay(dateStr))
+        );
+      })
+    );
+
+    const resolveFilteredStoreNet = (
+      employeeId: string,
+      dateStr: string,
+      storeId: string | null
+    ): number | null => {
+      if (!storeIdsForFilter || !storeId || !storeIdsForFilter.includes(storeId)) {
+        return null;
+      }
+      const byEmp = allocationByDate.get(dateStr);
+      const storeHours = byEmp?.get(employeeId);
+      if (!storeHours || storeHours[storeId] == null) return null;
+      return Math.round(Number(storeHours[storeId]) * 100) / 100;
+    };
 
     for (const key of sortedKeyList) {
       const [empId, dateStr] = key.split("|");
@@ -598,8 +753,24 @@ export async function GET(request: Request) {
       };
 
       const attStoreOk = !storeIdsForFilter || (storeIdForAtt && storeIdsForFilter.includes(storeIdForAtt));
+      const hasFilteredAdj = adjList.some((a) =>
+        applyToThisStore(getAdjustmentStoreId(a, storeIdForAtt))
+      );
+      const hasFilteredDispIn = dispList.some((d) => applyToThisStore(d.toStoreId));
+      const isTrial = isTrialEmployeeCode(empCode);
+      const reportWithAttendance =
+        !!att && (attStoreOk || (isTrial && (hasFilteredAdj || hasFilteredDispIn)));
+      const reportStoreId =
+        attStoreOk && storeIdForAtt
+          ? storeIdForAtt
+          : adjList
+              .map((a) => getAdjustmentStoreId(a, storeIdForAtt))
+              .find((sid) => applyToThisStore(sid)) ??
+            dispList.map((d) => d.toStoreId).find((sid) => applyToThisStore(sid)) ??
+            storeIdForAtt;
+      const deptForReport = getDept(reportStoreId, emp);
 
-      if (att && attStoreOk) {
+      if (reportWithAttendance) {
         const baseHours = Number(att.workHours);
         let net = baseHours;
 
@@ -609,7 +780,7 @@ export async function GET(request: Request) {
           employeeId: emp.id,
           employeeCode: empCode,
           name: empName,
-          department: deptForAtt,
+          department: deptForReport,
           position,
           workDate: dateStr,
           workHours: baseHours,
@@ -618,30 +789,6 @@ export async function GET(request: Request) {
           clockInStoreText: att.clockInStoreText ?? null,
           clockOutStoreText: att.clockOutStoreText ?? null,
         });
-
-        // 試作規則：員工編號開頭為 A/B（不分大小寫）時，小計固定為 -3
-        // 做法：保留原工時一行，新增一行調整 = -(原工時 + 3)，使 net 變成 -3
-        const codePrefix = (empCode || "").trim().toLowerCase();
-        const isTrial = codePrefix.startsWith("a") || codePrefix.startsWith("b");
-        if (isTrial) {
-          const delta = new Decimal(baseHours).plus(3).mul(-1).toNumber(); // 例如 4.62 -> -7.62
-          net += delta;
-          rows.push({
-            type: "adjustment",
-            id: `trial-${att.id}`,
-            employeeId: emp.id,
-            employeeCode: empCode,
-            name: empName,
-            department: deptForAtt,
-            position,
-            workDate: dateStr,
-            workHours: Math.round(delta * 100) / 100,
-            adjustmentReason: "試作",
-            locationMatchStatus: null,
-            clockInStoreText: null,
-            clockOutStoreText: null,
-          });
-        }
 
         const hasBackofficeConfirmed = dispList.some((d) => {
           const reason = extractDispatchReason(d.remark ?? null);
@@ -690,7 +837,7 @@ export async function GET(request: Request) {
                   employeeId: emp.id,
                   employeeCode: empCode,
                   name: empName,
-                  department: deptForAtt,
+                  department: deptForReport,
                   position,
                   workDate: dateStr,
                   workHours: Math.round(delta * 100) / 100,
@@ -725,7 +872,7 @@ export async function GET(request: Request) {
                 employeeId: emp.id,
                 employeeCode: empCode,
                 name: empName,
-                department: deptForAtt,
+                department: deptForReport,
                 position,
                 workDate: dateStr,
                 workHours: Math.round(delta * 100) / 100,
@@ -736,6 +883,122 @@ export async function GET(request: Request) {
               });
             }
           }
+          }
+        }
+
+        for (const d of dispList) {
+          const fromId = d.fromStoreId ?? storeIdForAtt ?? null;
+          const toId = d.toStoreId;
+          const h = d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
+          const reason = extractDispatchReason(d.remark ?? null);
+          const isBackoffice = reason === "後勤支援門市" && d.confirmStatus === "已確認";
+          const fromInFilter =
+            !storeIdsForFilter || (fromId != null && storeIdsForFilter.includes(fromId));
+          const toInFilter =
+            !storeIdsForFilter || storeIdsForFilter.includes(toId);
+
+          if (isBackoffice && d.actualHours == null && (fromInFilter || toInFilter)) {
+            rows.push({
+              type: "dispatch_out",
+              id: `backoffice-missing-${d.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: deptForReport,
+              position,
+              workDate: dateStr,
+              workHours: 0,
+              adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+            continue;
+          }
+
+          const hIn = isBackoffice ? new Decimal(h).mul(0.7).toNumber() : h;
+          const roundedHIn = Math.round(hIn * 100) / 100;
+
+          if (fromInFilter && fromId) {
+            net -= h;
+            rows.push({
+              type: "dispatch_out",
+              id: d.id,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: getDept(fromId, emp),
+              position,
+              workDate: dateStr,
+              workHours: -h,
+              adjustmentReason: isBackoffice ? `後勤支援門市（調出 ${h}h）` : (d.remark?.trim() || "支援"),
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+          }
+          if (toInFilter) {
+            net += roundedHIn;
+            rows.push({
+              type: "dispatch_in",
+              id: `in-${d.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: getDept(toId, emp),
+              position,
+              workDate: dateStr,
+              workHours: roundedHIn,
+              adjustmentReason: isBackoffice
+                ? `後勤支援門市（70%：${roundedHIn}h）`
+                : (d.remark?.trim() || "人力支援"),
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+          }
+        }
+
+        // 試作：調度後再扣（與績效引擎一致）
+        if (isTrial) {
+          const beforeTrial = net;
+          const target = -3;
+          if (beforeTrial > 0) {
+            const delta = new Decimal(target).minus(beforeTrial).toNumber();
+            net = target;
+            rows.push({
+              type: "adjustment",
+              id: `trial-${att.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: deptForReport,
+              position,
+              workDate: dateStr,
+              workHours: Math.round(delta * 100) / 100,
+              adjustmentReason: "試作",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+          } else if (beforeTrial <= 0 && beforeTrial !== target) {
+            const delta = new Decimal(target).minus(beforeTrial).toNumber();
+            net = target;
+            rows.push({
+              type: "adjustment",
+              id: `trial-${att.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: deptForReport,
+              position,
+              workDate: dateStr,
+              workHours: Math.round(delta * 100) / 100,
+              adjustmentReason: "試作",
+              locationMatchStatus: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
           }
         }
 
@@ -762,50 +1025,9 @@ export async function GET(request: Request) {
           });
         }
 
-        for (const d of dispList) {
-          const fromId = d.fromStoreId ?? storeIdForAtt ?? null;
-          if (!fromId) continue;
-          if (storeIdsForFilter && storeIdsForFilter.length > 0 && !storeIdsForFilter.includes(fromId)) continue;
-          const h = d.actualHours != null ? Number(d.actualHours) : Number(d.dispatchHours);
-          const reason = extractDispatchReason(d.remark ?? null);
-          const isBackoffice = reason === "後勤支援門市" && d.confirmStatus === "已確認";
-          if (isBackoffice && d.actualHours == null) {
-            // 已確認後勤支援若未填調度工時，避免報表顯示錯誤數字，改以明確訊息呈現
-            rows.push({
-              type: "dispatch_out",
-              id: `backoffice-missing-${d.id}`,
-              employeeId: emp.id,
-              employeeCode: empCode,
-              name: empName,
-              department: deptForAtt,
-              position,
-              workDate: dateStr,
-              workHours: 0,
-              adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
-              locationMatchStatus: null,
-              clockInStoreText: null,
-              clockOutStoreText: null,
-            });
-            continue;
-          }
-          net -= h;
-          const toStore = storeById.get(d.toStoreId);
-          const toName = toStore?.name ?? toStore?.department ?? d.toStoreId;
-          rows.push({
-            type: "dispatch_out",
-            id: d.id,
-            employeeId: emp.id,
-            employeeCode: empCode,
-            name: empName,
-            department: deptForAtt,
-            position,
-            workDate: dateStr,
-            workHours: -h,
-            adjustmentReason: isBackoffice ? `後勤支援門市（調出 ${h}h）` : (d.remark?.trim() || "支援"),
-            locationMatchStatus: null,
-            clockInStoreText: null,
-            clockOutStoreText: null,
-          });
+        const engineNet = resolveFilteredStoreNet(emp.id, dateStr, reportStoreId);
+        if (engineNet != null) {
+          net = engineNet;
         }
 
         rows.push({
@@ -814,7 +1036,7 @@ export async function GET(request: Request) {
           employeeId: emp.id,
           employeeCode: empCode,
           name: empName,
-          department: deptForAtt,
+          department: deptForReport,
           position,
           workDate: dateStr,
           workHours: Math.round(net * 100) / 100,
@@ -902,6 +1124,17 @@ export async function GET(request: Request) {
         }
 
         if (emitted) {
+          const dispatchToFiltered = dispList.find(
+            (d) => !storeIdsForFilter || storeIdsForFilter.includes(d.toStoreId)
+          )?.toStoreId;
+          const adjStoreForEngine =
+            adjList
+              .map((a) => getAdjustmentStoreId(a, storeIdForAtt))
+              .find((sid) => applyToThisStore(sid)) ??
+            reportStoreId ??
+            dispatchToFiltered ??
+            null;
+          const engineNet = resolveFilteredStoreNet(emp.id, dateStr, adjStoreForEngine);
           rows.push({
             type: "subtotal",
             id: `sub-adj-${emp.id}-${dateStr}`,
@@ -911,7 +1144,7 @@ export async function GET(request: Request) {
             department: deptForAdj,
             position,
             workDate: dateStr,
-            workHours: Math.round(net * 100) / 100,
+            workHours: engineNet != null ? engineNet : Math.round(net * 100) / 100,
             adjustmentReason: null,
             locationMatchStatus: null,
             clockInStoreText: null,
@@ -966,7 +1199,35 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json(rows);
+    let engineTotalHours = 0;
+    const dayStrs = listDaysBetweenYmd(startDate, endDate);
+    for (const ymd of dayStrs) {
+      const metrics = await computeDailyMetricsByStore(toStartOfDay(ymd), {
+        reportVisibleOnly: true,
+      });
+      if (storeIdsForFilter && storeIdsForFilter.length > 0) {
+        for (const sid of storeIdsForFilter) {
+          engineTotalHours += metrics.get(sid)?.laborHours ?? 0;
+        }
+      } else {
+        for (const m of metrics.values()) {
+          engineTotalHours += m.laborHours;
+        }
+      }
+    }
+    engineTotalHours = Math.round(engineTotalHours * 100) / 100;
+
+    const rowCount = rows.filter(
+      (r) => r.type === "attendance" || r.type === "dispatch_in"
+    ).length;
+
+    return NextResponse.json({
+      rows,
+      summary: {
+        totalHours: engineTotalHours,
+        rowCount,
+      },
+    });
   } catch (error) {
     console.error("GET /api/reports/attendance failed", error);
     return NextResponse.json({ error: "查詢失敗" }, { status: 500 });

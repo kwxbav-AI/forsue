@@ -8,6 +8,8 @@ const FILE_TYPES: {
   label: string;
   api: string;
   hint?: string;
+  multiple?: boolean;
+  maxFiles?: number;
 }[] = [
   { key: "ATTENDANCE", label: "人員出勤表", api: "/api/uploads/attendance" },
   { key: "EMPLOYEE_MASTER", label: "人員名冊", api: "/api/uploads/employee-master" },
@@ -21,8 +23,10 @@ const FILE_TYPES: {
   {
     key: "SHIFT_ROSTER",
     label: "門市排班表",
-    api: "/api/uploads/shift-roster",
-    hint: "矩陣式班表（工作表「班表」）；檔名需含門市簡稱（如昆明、大竹）",
+    api: "/api/uploads/shift-roster/batch",
+    hint: "矩陣式班表（工作表「班表」）；檔名需含門市簡稱（如昆明、大竹）；可一次選最多 20 個檔案",
+    multiple: true,
+    maxFiles: 20,
   },
 ];
 
@@ -36,7 +40,7 @@ export default function UploadsPage() {
   const [batches, setBatches] = useState<Record<string, BatchInfo>>({});
   const [loading, setLoading] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ key: string; message: string; row?: number }[]>([]);
-  const [success, setSuccess] = useState<{ key: string; count: number } | null>(null);
+  const [success, setSuccess] = useState<{ key: string; count: number; fileCount?: number } | null>(null);
   const [replaceEntireDates, setReplaceEntireDates] = useState(false);
 
   const fetchBatches = useCallback(async () => {
@@ -51,14 +55,32 @@ export default function UploadsPage() {
   async function handleUpload(
     key: string,
     api: string,
-    file: File,
-    options?: { replaceEntireDates?: boolean }
+    files: File[],
+    options?: { replaceEntireDates?: boolean; maxFiles?: number }
   ) {
+    const maxFiles = options?.maxFiles ?? 1;
+    if (files.length === 0) return;
+    if (files.length > maxFiles) {
+      setErrors([
+        {
+          key,
+          message: `一次最多上傳 ${maxFiles} 個檔案（已選 ${files.length} 個）`,
+        },
+      ]);
+      return;
+    }
+
     setLoading(key);
     setErrors([]);
     setSuccess(null);
     const form = new FormData();
-    form.append("file", file);
+    if (maxFiles > 1) {
+      for (const file of files) {
+        form.append("files", file);
+      }
+    } else {
+      form.append("file", files[0]!);
+    }
     if (options?.replaceEntireDates) {
       form.append("replaceEntireDates", "true");
     }
@@ -75,8 +97,28 @@ export default function UploadsPage() {
         );
         return;
       }
-      setSuccess({ key, count: data.importedCount ?? data.upserted ?? 0 });
-      if (data.errors?.length) {
+      setSuccess({
+        key,
+        count: data.importedCount ?? data.upserted ?? 0,
+        fileCount:
+          Array.isArray(data.results) && data.results.length > 0
+            ? data.results.length
+            : files.length > 1
+              ? files.length
+              : undefined,
+      });
+
+      const batchErrors = (data.results as { filename: string; errors?: { row?: number; message: string }[] }[] | undefined)
+        ?.flatMap((r) =>
+          (r.errors ?? []).map((e) => ({
+            key,
+            message: `${r.filename}：${e.message}`,
+            row: e.row,
+          }))
+        );
+      if (batchErrors?.length) {
+        setErrors(batchErrors);
+      } else if (data.errors?.length) {
         setErrors(
           data.errors.map((e: { row?: number; message: string }) => ({
             key,
@@ -107,7 +149,8 @@ export default function UploadsPage() {
 
       {success && (
         <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-          {FILE_TYPES.find((f) => f.key === success.key)?.label} 上傳成功，匯入 {success.count} 筆。
+          {FILE_TYPES.find((f) => f.key === success.key)?.label} 上傳成功，匯入 {success.count} 筆
+          {success.fileCount != null ? `（${success.fileCount} 個檔案）` : ""}。
           {success.key === "CUSTOMER_TRAFFIC" ?
             <span className="block mt-1 text-xs text-green-700">
               資料將顯示於營運總覽的來客數與平均客單價卡片。
@@ -129,7 +172,7 @@ export default function UploadsPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FILE_TYPES.map(({ key, label, api, hint }) => (
+        {FILE_TYPES.map(({ key, label, api, hint, multiple, maxFiles }) => (
           <div
             key={key}
             className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
@@ -169,16 +212,18 @@ export default function UploadsPage() {
               <input
                 type="file"
                 accept=".xlsx,.xls"
+                multiple={multiple}
                 className="block w-full text-sm text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-sky-50 file:px-3 file:py-1.5 file:text-sky-700"
                 disabled={loading !== null}
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    handleUpload(key, api, f, {
+                  const list = e.target.files ? [...e.target.files] : [];
+                  if (list.length > 0) {
+                    handleUpload(key, api, list, {
                       replaceEntireDates:
                         key === "ATTENDANCE" || key === "SHIFT_ROSTER"
                           ? replaceEntireDates
                           : undefined,
+                      maxFiles: maxFiles ?? 1,
                     });
                   }
                   e.target.value = "";

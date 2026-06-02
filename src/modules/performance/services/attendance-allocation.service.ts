@@ -17,10 +17,16 @@ import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
 /** 單一員工單日、依門市拆分後的工時 { storeId: hours } */
 export type StoreHoursMap = Record<string, number>;
 
+function isTrialEmployeeCode(employeeCode: string): boolean {
+  const prefix = (employeeCode || "").trim().toLowerCase();
+  return prefix.startsWith("a") || prefix.startsWith("b");
+}
+
 /**
- * Step A: 出勤工時（原店）
+ * Step A: 出勤工時（原店，試作前保留實際時數）
  * Step B: 調度拆分（原店減、支援店加）
- * Step C: 人工調整
+ * Step C: 試作規則（有計入工時的門市改為 -3）
+ * Step D: 人工調整
  * 回傳：每位員工在各門市的最終工時
  */
 export async function computeStoreHoursByEmployee(
@@ -60,8 +66,12 @@ export async function computeStoreHoursByEmployee(
 
   // 錯誤訊息希望顯示「員工姓名」而不是 id
   const employeeNameById = new Map<string, string>();
+  const employeeCodeById = new Map<string, string>();
   for (const a of attendances) {
     if (a.employeeId && a.employee?.name) employeeNameById.set(a.employeeId, a.employee.name);
+    if (a.employeeId && a.employee?.employeeCode) {
+      employeeCodeById.set(a.employeeId, a.employee.employeeCode);
+    }
   }
   const missingNameIds = Array.from(
     new Set(
@@ -73,10 +83,11 @@ export async function computeStoreHoursByEmployee(
   if (missingNameIds.length > 0) {
     const emps = await prisma.employee.findMany({
       where: { id: { in: missingNameIds } },
-      select: { id: true, name: true },
+      select: { id: true, name: true, employeeCode: true },
     });
     for (const e of emps) {
       if (e.name) employeeNameById.set(e.id, e.name);
+      if (e.employeeCode) employeeCodeById.set(e.id, e.employeeCode);
     }
   }
   const formatEmployee = (employeeId: string) => employeeNameById.get(employeeId) ?? employeeId;
@@ -269,14 +280,7 @@ export async function computeStoreHoursByEmployee(
   for (const att of aggregatedAttendanceByEmployeeId.values()) {
     const origStoreId = att.originalStoreId ?? att.employee.defaultStoreId ?? "unknown";
     let hoursValue = Number(att.workHours);
-
-    // 試作規則：員工編號開頭為 A/B（不分大小寫）時，當日工時固定為 -3
-    // 目的：在績效/報表中反映「試作扣抵」結果
-    const codePrefix = (att.employee.employeeCode || "").trim().toLowerCase();
-    const isTrial = codePrefix.startsWith("a") || codePrefix.startsWith("b");
-    if (isTrial) {
-      hoursValue = -3;
-    }
+    const isTrial = isTrialEmployeeCode(att.employee.employeeCode || "");
 
     // 後勤支援門市：不在出勤工時階段折算，改在調度拆分時處理（原店扣全額、支援店加 70%）
 
@@ -342,10 +346,18 @@ export async function computeStoreHoursByEmployee(
   }
 
   for (const disp of dispatches) {
-    const storeHours = employeeStores.get(disp.employeeId);
-    if (!storeHours) continue;
+    const fromStoreId =
+      disp.fromStoreId ||
+      aggregatedAttendanceByEmployeeId.get(disp.employeeId)?.originalStoreId ||
+      null;
+    let storeHours = employeeStores.get(disp.employeeId);
+    if (!storeHours) {
+      const seedStoreId = fromStoreId ?? "unknown";
+      employeeStores.set(disp.employeeId, { [seedStoreId]: 0 });
+      storeHours = employeeStores.get(disp.employeeId)!;
+    }
 
-    const fromStoreId = disp.fromStoreId || Object.keys(storeHours)[0];
+    const fromStoreIdResolved = fromStoreId || Object.keys(storeHours)[0];
     const toStoreId = disp.toStoreId;
     // 績效計算：有填實際時數則用實際時數，否則用預申請時數
     const dispatchH =
@@ -359,7 +371,7 @@ export async function computeStoreHoursByEmployee(
       );
     }
 
-    const fromCurrent = storeHours[fromStoreId] ?? 0;
+    const fromCurrent = storeHours[fromStoreIdResolved] ?? 0;
     if (fromCurrent < dispatchH) {
       const dateStr = formatDateOnly(d);
       throw new Error(
@@ -367,10 +379,21 @@ export async function computeStoreHoursByEmployee(
       );
     }
 
-    storeHours[fromStoreId] = fromCurrent - dispatchH;
-    if (storeHours[fromStoreId] < 0) storeHours[fromStoreId] = 0;
+    storeHours[fromStoreIdResolved] = fromCurrent - dispatchH;
+    if (storeHours[fromStoreIdResolved] < 0) storeHours[fromStoreIdResolved] = 0;
     const toAdd = isBackoffice ? new Decimal(dispatchH).mul(0.7).toNumber() : dispatchH;
     storeHours[toStoreId] = (storeHours[toStoreId] ?? 0) + toAdd;
+  }
+
+  // 試作：調度完成後，將「當日有計入工時」的門市改為 -3（避免先變 -3 導致調度無法拆分）
+  for (const [employeeId, storeHours] of employeeStores.entries()) {
+    if (!isTrialEmployeeCode(employeeCodeById.get(employeeId) ?? "")) continue;
+    for (const storeId of Object.keys(storeHours)) {
+      if (storeId === "unknown") continue;
+      if (Number(storeHours[storeId]) > 0) {
+        storeHours[storeId] = -3;
+      }
+    }
   }
 
   for (const adj of adjustments) {

@@ -288,28 +288,8 @@ export async function GET(request: NextRequest) {
     });
 
     let hoursValue = baseHours;
-
-    // 試作：固定 -3（以 adjustment delta 呈現）
     const codePrefix = employeeCode.toLowerCase();
     const isTrial = codePrefix.startsWith("a") || codePrefix.startsWith("b");
-    if (isTrial) {
-      const target = -3;
-      const delta = new Decimal(target).minus(hoursValue).toNumber();
-      if (delta !== 0) {
-        events.push({
-          type: "adjustment",
-          id: `trial-${att.employeeId}-${ymd}`,
-          employeeId: att.employeeId,
-          employeeCode,
-          name: employeeName,
-          workDate: ymd,
-          storeId: origStoreId,
-          workHours: round2(delta),
-          adjustmentReason: "試作",
-        });
-      }
-      hoursValue = target;
-    }
 
     // 儲備人力折算
     const reserveSetting = reserveSettingsByEmployee.get(att.employeeId) ?? {
@@ -389,13 +369,20 @@ export async function GET(request: NextRequest) {
 
   // 調度拆分（原店扣、支援店加）
   for (const disp of dispatches) {
-    const storeHours = employeeStores.get(disp.employeeId);
-    if (!storeHours) continue;
+    const fromStoreIdSeed =
+      disp.fromStoreId ||
+      aggregatedAttendanceByEmployeeId.get(disp.employeeId)?.originalStoreId ||
+      null;
+    let storeHours = employeeStores.get(disp.employeeId);
+    if (!storeHours) {
+      employeeStores.set(disp.employeeId, { [fromStoreIdSeed ?? "unknown"]: 0 });
+      storeHours = employeeStores.get(disp.employeeId)!;
+    }
     const emp = employeeById.get(disp.employeeId);
     const employeeCode = (emp?.employeeCode ?? "").trim();
     const employeeName = (emp?.name ?? "").trim();
 
-    const fromStoreId = disp.fromStoreId || Object.keys(storeHours)[0];
+    const fromStoreId = fromStoreIdSeed || Object.keys(storeHours)[0];
     const toStoreId = disp.toStoreId;
     const dispatchH = disp.actualHours != null ? Number(disp.actualHours) : Number(disp.dispatchHours);
     const reason = extractDispatchReason(disp.remark ?? null);
@@ -442,6 +429,37 @@ export async function GET(request: NextRequest) {
       adjustmentReason:
         isBackoffice ? `後勤支援門市（70%：${round2(toAdd)}h）` : `支援 ${toStoreName}`,
     });
+  }
+
+  // 試作：調度後將有計入工時的門市改為 -3，並補上試作異動列
+  for (const [employeeId, storeHours] of employeeStores.entries()) {
+    const emp = employeeById.get(employeeId);
+    const employeeCode = (emp?.employeeCode ?? "").trim();
+    const code = employeeCode.toLowerCase();
+    const isTrial = code.startsWith("a") || code.startsWith("b");
+    if (!isTrial) continue;
+    const employeeName = (emp?.name ?? "").trim();
+    for (const [storeId, h] of Object.entries(storeHours)) {
+      if (storeId === "unknown") continue;
+      const current = Number(h);
+      if (current <= 0) continue;
+      const target = -3;
+      const delta = new Decimal(target).minus(current).toNumber();
+      if (delta !== 0) {
+        events.push({
+          type: "adjustment",
+          id: `trial-${employeeId}-${ymd}-${storeId}`,
+          employeeId,
+          employeeCode,
+          name: employeeName,
+          workDate: ymd,
+          storeId,
+          workHours: round2(delta),
+          adjustmentReason: "試作",
+        });
+      }
+      storeHours[storeId] = target;
+    }
   }
 
   // 人工異動（storeId 為空則 fallback 到該員工當天主要門市）

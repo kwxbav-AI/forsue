@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import Decimal from "decimal.js";
-import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
+import { isValid, parse, parseISO } from "date-fns";
+import { parseDateOnlyUTC, formatDateOnlyTaipei } from "@/lib/date";
 import {
   OPS_REGION_CATALOG,
   normalizeStoreKey,
@@ -29,18 +30,71 @@ export type ShiftRosterParseResult = {
 const DATE_YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 /** 員工列：T2505450-姓名 或 Y2211263-姓名（班表匯出常見格式） */
 const EMP_ROW_RE = /^([A-Z]\d+)[-－](.+)$/i;
-const SHIFT_TIME_RE = /^[A-Z]{1,4}-(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/i;
+/** 例：A-09:00-18:00、班A09:00-18:00 */
+const SHIFT_TIME_RE = /^[A-Z]{0,4}-?(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/i;
+/** 例：09:00-18:00（無班別代碼前綴） */
+const SHIFT_PLAIN_TIME_RE = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/;
 
 function cellStr(v: unknown): string {
   if (v == null) return "";
-  if (v instanceof Date) return formatDateOnly(v);
   return String(v).trim();
 }
 
+const DATE_FORMATS = ["yyyy/M/d", "yyyy/MM/dd", "yyyy-M-d", "yyyy-MM-dd"];
+
+/** 表頭日期格 → YYYY-MM-DD（台北日曆日，與上傳 toWorkDateUTC 一致） */
 function parseYmdCell(v: unknown): string | null {
-  const s = cellStr(v);
-  if (!DATE_YMD_RE.test(s)) return null;
-  return s;
+  if (v == null) return null;
+  if (v instanceof Date) {
+    return isValid(v) ? formatDateOnlyTaipei(v) : null;
+  }
+
+  let s = String(v).trim().replace(/\s+/g, " ");
+  if (!s) return null;
+
+  const weekdayStrip = s.match(/^(.+?)\s*\([^)]*\)\s*$/);
+  if (weekdayStrip) s = weekdayStrip[1].trim();
+
+  if (DATE_YMD_RE.test(s)) return s;
+
+  const num = Number(s);
+  if (!Number.isNaN(num) && num > 0 && num < 300000) {
+    const d = new Date(1900, 0, 1);
+    d.setDate(d.getDate() + (num - 1));
+    if (isValid(d)) return formatDateOnlyTaipei(d);
+  }
+
+  const rocMatch = s.match(/^(\d{2,3})[./-](\d{1,2})[./-](\d{1,2})$/);
+  if (rocMatch) {
+    const rocYear = parseInt(rocMatch[1], 10);
+    const year = rocYear < 200 ? 1911 + rocYear : rocYear;
+    const month = parseInt(rocMatch[2], 10);
+    const day = parseInt(rocMatch[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  if (/^\d{8}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+
+  const normalized = s.replace(/\//g, "-");
+  let d = parseISO(normalized);
+  if (isValid(d)) return formatDateOnlyTaipei(d);
+  d = parseISO(s);
+  if (isValid(d)) return formatDateOnlyTaipei(d);
+
+  for (const fmt of DATE_FORMATS) {
+    try {
+      const parsed = parse(s, fmt, new Date());
+      if (isValid(parsed)) return formatDateOnlyTaipei(parsed);
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 function parseEmployeeCell(v: unknown): {
@@ -94,7 +148,7 @@ function parseShiftCell(raw: string): {
     };
   }
 
-  const m = SHIFT_TIME_RE.exec(s);
+  const m = SHIFT_TIME_RE.exec(s) ?? SHIFT_PLAIN_TIME_RE.exec(s);
   if (m) {
     const startTime = `${m[1].padStart(2, "0")}:${m[2]}`;
     const endTime = `${m[3].padStart(2, "0")}:${m[4]}`;
@@ -118,11 +172,15 @@ function parseShiftCell(raw: string): {
 /** 從檔名解析 catalog 門市簡稱（如 昆明、大竹） */
 export function resolveStoreCatalogKeyFromFilename(filename: string): string | null {
   const base = filename.replace(/\.(xls|xlsx)$/i, "");
+  let best: string | null = null;
   for (const { storeNames } of OPS_REGION_CATALOG) {
     for (const name of storeNames) {
-      if (base.includes(name)) return name;
+      if (base.includes(name) && (!best || name.length > best.length)) {
+        best = name;
+      }
     }
   }
+  if (best) return best;
   const m = base.match(/上([^上]+)店/);
   if (m) {
     const key = normalizeStoreKey(m[1]);

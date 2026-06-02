@@ -38,6 +38,8 @@ export default function AttendanceReportPage() {
   const [name, setName] = useState("");
 
   const [rows, setRows] = useState<AttendanceReportRow[]>([]);
+  const [summaryTotalHours, setSummaryTotalHours] = useState<number | null>(null);
+  const [summaryRowCount, setSummaryRowCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [stores, setStores] = useState<Store[]>([]);
@@ -68,12 +70,46 @@ export default function AttendanceReportPage() {
     if (employeeCode.trim()) params.set("employeeCode", employeeCode.trim());
     if (name.trim()) params.set("name", name.trim());
 
-    const res = await fetch(`/api/reports/attendance?${params.toString()}`);
+    const fetchOpts: RequestInit = { cache: "no-store" };
+    const res = await fetch(`/api/reports/attendance?${params.toString()}`, fetchOpts);
     if (res.ok) {
-      const data = (await res.json()) as AttendanceReportRow[];
-      setRows(data);
+      const data = (await res.json()) as
+        | AttendanceReportRow[]
+        | { rows: AttendanceReportRow[]; summary?: { totalHours: number; rowCount: number } };
+      const nextRows = Array.isArray(data) ? data : (data.rows ?? []);
+      setRows(nextRows);
+
+      let engineTotal: number | null =
+        !Array.isArray(data) && data.summary?.totalHours != null
+          ? Number(data.summary.totalHours)
+          : null;
+
+      if (department.trim()) {
+        const totalParams = new URLSearchParams({
+          startDate,
+          endDate,
+          department,
+        });
+        const totalRes = await fetch(
+          `/api/reports/attendance/store-total?${totalParams}`,
+          fetchOpts
+        );
+        if (totalRes.ok) {
+          const totalJson = (await totalRes.json()) as { totalHours?: number };
+          if (totalJson.totalHours != null && Number.isFinite(totalJson.totalHours)) {
+            engineTotal = Number(totalJson.totalHours);
+          }
+        }
+      }
+
+      setSummaryTotalHours(engineTotal);
+      setSummaryRowCount(
+        Array.isArray(data) ? null : (data.summary?.rowCount ?? null)
+      );
     } else {
       setRows([]);
+      setSummaryTotalHours(null);
+      setSummaryRowCount(null);
     }
     setLoading(false);
   }
@@ -83,7 +119,7 @@ export default function AttendanceReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalHours = useMemo(() => {
+  const totalHoursFromRows = useMemo(() => {
     return rows.reduce((sum, r) => {
       if (r.type === "subtotal") return sum + (Number.isFinite(r.workHours) ? r.workHours : 0);
       if (r.type === "dispatch_in") {
@@ -102,9 +138,15 @@ export default function AttendanceReportPage() {
     }, 0);
   }, [rows]);
 
-  const rowCount = useMemo(() => {
+  const totalHours =
+    department.trim() && summaryTotalHours != null
+      ? summaryTotalHours
+      : summaryTotalHours ?? totalHoursFromRows;
+
+  const rowCountFromRows = useMemo(() => {
     return rows.filter((r) => r.type === "attendance" || r.type === "dispatch_in").length;
   }, [rows]);
+  const rowCount = summaryRowCount ?? rowCountFromRows;
 
   return (
     <div>
@@ -210,6 +252,9 @@ export default function AttendanceReportPage() {
           <p className="text-slate-600">
             筆數：<span className="font-medium text-slate-800">{rowCount}</span>，總工時：
             <span className="font-medium text-slate-800">{totalHours.toLocaleString("zh-TW")}</span>
+            {department.trim() && summaryTotalHours != null ?
+              <span className="ml-1 text-xs text-slate-400">（與每日工效比同公式）</span>
+            : null}
           </p>
         </div>
       </div>

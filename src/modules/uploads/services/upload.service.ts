@@ -8,10 +8,14 @@ import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/emp
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
 import { parseShiftRosterSheet } from "../parsers/shift-roster.parser";
-import { storeNameMatchesCatalogKey } from "@/lib/operations-dashboard";
+import { normalizeStoreKey, storeNameMatchesCatalogKey } from "@/lib/operations-dashboard";
 import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei, toStartOfDay } from "@/lib/date";
 import Decimal from "decimal.js";
-import type { UploadResult } from "../types";
+import type {
+  ShiftRosterBatchFileResult,
+  ShiftRosterBatchUploadResult,
+  UploadResult,
+} from "../types";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
 /** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
@@ -778,10 +782,17 @@ async function resolveStoreIdByCatalogKey(catalogKey: string): Promise<string | 
     where: { isActive: true, hideInReports: false },
     select: { id: true, name: true },
   });
+  let bestId: string | null = null;
+  let bestScore = -1;
   for (const s of stores) {
-    if (storeNameMatchesCatalogKey(s.name, catalogKey)) return s.id;
+    if (!storeNameMatchesCatalogKey(s.name, catalogKey)) continue;
+    const score = normalizeStoreKey(s.name).length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = s.id;
+    }
   }
-  return null;
+  return bestId;
 }
 
 export type UploadShiftRosterOptions = {
@@ -927,6 +938,68 @@ export async function uploadShiftRoster(
     importedCount: imported,
     failedCount: errors.length,
     errors,
+  };
+}
+
+const SHIFT_ROSTER_BATCH_MAX_FILES = 20;
+
+export async function uploadShiftRosterBatch(
+  files: { buffer: Buffer; originalName: string }[],
+  uploadedBy?: string,
+  options?: UploadShiftRosterOptions
+): Promise<ShiftRosterBatchUploadResult> {
+  if (files.length === 0) {
+    return {
+      success: false,
+      importedCount: 0,
+      failedCount: 1,
+      results: [
+        {
+          filename: "",
+          success: false,
+          importedCount: 0,
+          failedCount: 1,
+          errors: [{ row: 0, message: "請選擇至少一個檔案" }],
+        },
+      ],
+    };
+  }
+  if (files.length > SHIFT_ROSTER_BATCH_MAX_FILES) {
+    return {
+      success: false,
+      importedCount: 0,
+      failedCount: files.length,
+      results: files.map((f) => ({
+        filename: f.originalName,
+        success: false,
+        importedCount: 0,
+        failedCount: 1,
+        errors: [
+          {
+            row: 0,
+            message: `一次最多上傳 ${SHIFT_ROSTER_BATCH_MAX_FILES} 個檔案`,
+          },
+        ],
+      })),
+    };
+  }
+
+  const results: ShiftRosterBatchFileResult[] = [];
+  let importedCount = 0;
+  let failedCount = 0;
+
+  for (const file of files) {
+    const result = await uploadShiftRoster(file.buffer, file.originalName, uploadedBy, options);
+    results.push({ filename: file.originalName, ...result });
+    importedCount += result.importedCount;
+    failedCount += result.failedCount;
+  }
+
+  return {
+    success: results.some((r) => r.success),
+    importedCount,
+    failedCount,
+    results,
   };
 }
 

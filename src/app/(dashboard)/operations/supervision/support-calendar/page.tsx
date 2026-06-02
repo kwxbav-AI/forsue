@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
-import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 import type {
   SupportLayer,
   SupportRequestsMonthResponse,
@@ -78,7 +77,7 @@ export default function SupervisorSupportCalendarPage() {
   const [year, setYear] = useState(init.year);
   const [month, setMonth] = useState(init.month);
   const [storeId, setStoreId] = useState("");
-  const [region, setRegion] = useState<string>((DUAL_OPS_REGIONS[0] ?? "") as string);
+  const [region, setRegion] = useState<string>("");
   const [layer, setLayer] = useState<SupportLayer>("actual");
 
   const [data, setData] = useState<SupportRequestsMonthResponse | null>(null);
@@ -256,7 +255,7 @@ export default function SupervisorSupportCalendarPage() {
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          月曆顏色依所選層級：綠=補齊、黃=部分、紅=缺口 · 今日之後依排班表預測
+          月曆顏色依所選層級：綠=補齊、黃=部分、紅=缺口 · 今日起依排班表預測（無出勤時亦顯示已上傳班表）
         </p>
       </div>
 

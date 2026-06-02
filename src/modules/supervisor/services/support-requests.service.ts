@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { addCalendarDaysUTC, formatDateOnly, formatDateOnlyTaipei, parseDateOnlyUTC } from "@/lib/date";
+import {
+  addCalendarDaysUTC,
+  formatDateOnly,
+  formatDateOnlyTaipei,
+  parseDateOnlyUTC,
+} from "@/lib/date";
 import {
   countWorkingDaysInRangeUTC,
   monthStartEndYmd,
@@ -314,12 +319,13 @@ export async function buildSupportRequestsMonth(input: {
     });
   }
 
+  /** 含「今日」：當日亦以排班表顯示預測人力（與 UI「今日之後」文案一致） */
   const todayYmd = formatDateOnlyTaipei();
 
   const shiftPlanRows = await prisma.storeShiftPlan.findMany({
     where: {
       workDate: { gte: parseDateOnlyUTC(startYmd), lte: parseDateOnlyUTC(endYmd) },
-      shiftKind: "WORK",
+      scheduledHours: { gt: 0 },
       ...(storeIds.length > 0 ? { storeId: { in: storeIds } } : { storeId: { in: [] as string[] } }),
     },
     select: {
@@ -345,8 +351,17 @@ export async function buildSupportRequestsMonth(input: {
     shiftType: string | null;
   };
   const shiftByStoreDay = new Map<string, Map<string, ShiftAggRow>>();
+
+  const sumShiftHours = (shiftMap: Map<string, ShiftAggRow> | undefined): number => {
+    if (!shiftMap) return 0;
+    return Math.round([...shiftMap.values()].reduce((sum, r) => sum + r.workHours, 0) * 100) / 100;
+  };
+
+  const listShiftStaff = (shiftMap: Map<string, ShiftAggRow> | undefined): ShiftAggRow[] =>
+    [...(shiftMap?.values() ?? [])].sort((a, b) => a.employeeCode.localeCompare(b.employeeCode));
+
   for (const sp of shiftPlanRows) {
-    const date = formatDateOnly(sp.workDate);
+    const date = formatDateOnlyTaipei(sp.workDate);
     const key = `${date}|${sp.storeId}`;
     let byEmp = shiftByStoreDay.get(key);
     if (!byEmp) {
@@ -371,7 +386,7 @@ export async function buildSupportRequestsMonth(input: {
 
   for (let day = startYmd; day <= endYmd; day = addCalendarDaysUTC(day, 1)) {
     const d = parseDateOnlyUTC(day);
-    const isFuture = day > todayYmd;
+    const isFuture = day >= todayYmd;
 
     const dailyMetrics =
       isFuture ? null : await computeDailyMetricsByStoreResilient(d, { reportVisibleOnly: true });
@@ -386,13 +401,12 @@ export async function buildSupportRequestsMonth(input: {
       const supportInConfirmedHours = disp ? Math.round(disp.confirmedHours * 100) / 100 : 0;
       const supportInPlannedHours = disp ? Math.round(disp.plannedHours * 100) / 100 : 0;
 
+      const shiftMap = shiftByStoreDay.get(`${day}|${storeId}`);
+      const scheduledTotal = sumShiftHours(shiftMap);
+      const shiftStaff = listShiftStaff(shiftMap);
+      const hasShift = shiftStaff.length > 0;
+
       if (isFuture) {
-        const shiftMap = shiftByStoreDay.get(`${day}|${storeId}`);
-        const scheduledTotal = shiftMap
-          ? Math.round(
-              [...shiftMap.values()].reduce((sum, r) => sum + r.workHours, 0) * 100
-            ) / 100
-          : 0;
 
         const gapConfirmed = computeGap(targetHours, scheduledTotal);
         const gapPlanned = computeGap(
@@ -414,9 +428,7 @@ export async function buildSupportRequestsMonth(input: {
           scheduledTotal > 0;
         if (!include) continue;
 
-        const originalStaff = [...(shiftMap?.values() ?? [])].sort((a, b) =>
-          a.employeeCode.localeCompare(b.employeeCode)
-        );
+        const originalStaff = hasShift ? shiftStaff : [];
 
         const row: SupportRequestStoreDay = {
           date: day,
@@ -456,20 +468,25 @@ export async function buildSupportRequestsMonth(input: {
       const include =
         (gapConfirmed != null && gapConfirmed > 0) ||
         supportInConfirmedHours > 0 ||
-        supportInPlannedHours > 0;
+        supportInPlannedHours > 0 ||
+        scheduledTotal > 0;
       if (!include) continue;
 
-      const originalStaff = [
+      const attendanceStaff = [
         ...(attendanceByStoreDay.get(`${day}|${storeId}`)?.values() ?? []),
-      ].sort((a, b) => a.employeeCode.localeCompare(b.employeeCode));
+      ];
+      const originalStaff = hasShift
+        ? shiftStaff
+        : attendanceStaff;
+      const useShiftDisplay = hasShift;
 
       const row: SupportRequestStoreDay = {
         date: day,
         storeId,
         storeName: storeNameById.get(storeId) ?? storeId,
         region: storeRegionById.get(storeId) ?? null,
-        dataSource: "actual",
-        scheduledHours: null,
+        dataSource: useShiftDisplay ? "forecast" : "actual",
+        scheduledHours: useShiftDisplay ? scheduledTotal : null,
         targetHours,
         actualHoursConfirmed,
         supportInConfirmedHours,
