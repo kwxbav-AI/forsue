@@ -37,11 +37,17 @@ function worstSeverity(list: SupportSeverity[]): SupportSeverity {
   return best;
 }
 
+/**
+ * 人力狀態（對應月曆標色）：
+ * - covered（綠）完整人力：人力充足、無缺口，且非依支援補齊
+ * - partial（黃）已補齊：原有缺口，經人力支援後補齊
+ * - none（紅）仍缺人：人力不足，尚須申請支援
+ */
 function statusByGapAndSupport(gap: number | null, supportHours: number): Exclude<SupportSeverity, "empty"> {
   if (gap == null) return "covered";
-  if (gap <= 0) return "covered";
-  if (supportHours <= 0) return "none";
-  return "partial";
+  if (gap > 0) return "none";
+  if (supportHours > 0) return "partial";
+  return "covered";
 }
 
 function computeGap(targetHours: number | null, effectiveHours: number): number | null {
@@ -552,17 +558,22 @@ export async function buildSupportRequestsMonth(input: {
 
   let requestCount = 0;
   let coveredCountActual = 0;
+  let supplementedCountActual = 0;
   let shortageCountActual = 0;
   for (const d of dates) {
     for (const s of d.stores) {
       requestCount += 1;
       if (s.statusActual === "covered") coveredCountActual += 1;
-      if (s.statusActual !== "covered") shortageCountActual += 1;
+      else if (s.statusActual === "partial") supplementedCountActual += 1;
+      else if (s.statusActual === "none") shortageCountActual += 1;
     }
   }
 
+  const staffedCountActual = coveredCountActual + supplementedCountActual;
   const coveredRateActual =
-    requestCount > 0 ? Math.round((coveredCountActual / requestCount) * 1000) / 10 : null;
+    requestCount > 0 ?
+      Math.round((staffedCountActual / requestCount) * 1000) / 10
+    : null;
 
   const storeFilterName = input.storeId ? storeNameById.get(input.storeId) ?? null : null;
 
@@ -579,6 +590,7 @@ export async function buildSupportRequestsMonth(input: {
       storeFilter: { storeId: input.storeId ?? null, storeName: storeFilterName },
       requestCount,
       coveredCountActual,
+      supplementedCountActual,
       coveredRateActual,
       shortageCountActual,
       crossStoreSupportHoursConfirmed: Math.round(crossStoreConfirmed * 100) / 100,

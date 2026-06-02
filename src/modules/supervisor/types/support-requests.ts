@@ -1,4 +1,17 @@
+/** none=仍缺人 · partial=已補齊(支援後) · covered=完整人力 */
 export type SupportSeverity = "none" | "partial" | "covered" | "empty";
+
+export const SUPPORT_SEVERITY_LABELS: Record<Exclude<SupportSeverity, "empty">, string> = {
+  covered: "完整人力",
+  partial: "已補齊",
+  none: "仍缺人",
+};
+
+export const SUPPORT_SEVERITY_HINTS: Record<Exclude<SupportSeverity, "empty">, string> = {
+  covered: "該店人員充足，無人力缺口",
+  partial: "原有缺人，申請人力支援後已補齊",
+  none: "人力不足，尚須申請人力支援",
+};
 
 export type SupportLayer = "actual" | "planned";
 
@@ -82,8 +95,12 @@ export type SupportRequestsMonthSummary = {
   month: string; // YYYY-MM
   storeFilter: { storeId: string | null; storeName: string | null };
   requestCount: number;
+  /** 完整人力（綠） */
   coveredCountActual: number;
+  /** 已補齊（黃，支援後） */
+  supplementedCountActual: number;
   coveredRateActual: number | null;
+  /** 仍缺人（紅） */
   shortageCountActual: number;
   crossStoreSupportHoursConfirmed: number;
   crossStoreSupportHoursPlanned: number;

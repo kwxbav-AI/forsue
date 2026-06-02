@@ -8,6 +8,10 @@ import type {
   SupportRequestsMonthResponse,
   SupportSeverity,
 } from "@/modules/supervisor/types/support-requests";
+import {
+  SUPPORT_SEVERITY_HINTS,
+  SUPPORT_SEVERITY_LABELS,
+} from "@/modules/supervisor/types/support-requests";
 
 function currentYearMonth() {
   const now = new Date();
@@ -33,10 +37,13 @@ function cellBgBySeverity(s: SupportSeverity): string {
 }
 
 function severityLabel(s: SupportSeverity): string {
-  if (s === "covered") return "已補齊";
-  if (s === "partial") return "部分補齊";
-  if (s === "none") return "仍缺人";
-  return "無";
+  if (s === "empty") return "無";
+  return SUPPORT_SEVERITY_LABELS[s];
+}
+
+function severityHint(s: SupportSeverity): string | undefined {
+  if (s === "empty") return undefined;
+  return SUPPORT_SEVERITY_HINTS[s];
 }
 
 function SummaryCard({
@@ -211,21 +218,28 @@ export default function SupervisorSupportCalendarPage() {
       </div>
 
       {data ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <SummaryCard
             title="本月支援申請件數"
             value={String(data.summary.requestCount)}
             tone="neutral"
           />
           <SummaryCard
-            title="已補齊（實際）"
-            value={`${data.summary.coveredCountActual} / ${data.summary.requestCount}`}
-            sub={data.summary.coveredRateActual != null ? `補齊率 ${data.summary.coveredRateActual}%` : "—"}
+            title="完整人力"
+            value={String(data.summary.coveredCountActual)}
+            sub="人員充足、無須支援"
             tone="success"
           />
           <SummaryCard
-            title="仍缺人（實際）"
+            title="已補齊"
+            value={String(data.summary.supplementedCountActual)}
+            sub="支援後補齊人力"
+            tone="warning"
+          />
+          <SummaryCard
+            title="仍缺人"
             value={String(data.summary.shortageCountActual)}
+            sub="尚須申請人力支援"
             tone="danger"
           />
           <SummaryCard
@@ -255,14 +269,27 @@ export default function SupervisorSupportCalendarPage() {
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          月曆顏色依所選層級：綠=補齊、黃=部分、紅=缺口 · 今日起依排班表預測（無出勤時亦顯示已上傳班表）
+          月曆：綠=完整人力、黃=已補齊（支援後）、紅=仍缺人 · 今日起依排班表預測
         </p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-sm font-semibold text-slate-800">月曆熱力圖</h2>
-          <p className="text-xs text-slate-500">點擊日期展開下方明細，再點一次可收起</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">月曆熱力圖</h2>
+            <p className="text-xs text-slate-500 mt-0.5">點擊日期展開下方明細，再點一次可收起</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            {(["covered", "partial", "none"] as const).map((s) => (
+              <span
+                key={s}
+                className={`rounded px-2 py-0.5 ${badgeClassBySeverity(s)}`}
+                title={severityHint(s)}
+              >
+                {SUPPORT_SEVERITY_LABELS[s]}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-7 gap-2 text-xs text-slate-500 mb-2">
@@ -290,7 +317,11 @@ export default function SupervisorSupportCalendarPage() {
                   d.inMonth ? cellBgBySeverity(sev) : "bg-slate-50 border-slate-200 text-slate-400",
                   selected ? "ring-2 ring-blue-600" : "",
                 ].join(" ")}
-                title={d.inMonth ? `${d.date} · ${d.storeCount} 間` : d.date}
+                title={
+                  d.inMonth ?
+                    `${d.date} · ${d.storeCount} 間 · ${severityLabel(sev)}${severityHint(sev) ? `（${severityHint(sev)}）` : ""}`
+                  : d.date
+                }
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={`text-sm font-semibold ${d.inMonth ? "text-slate-800" : "text-slate-400"}`}>
@@ -382,7 +413,10 @@ export default function SupervisorSupportCalendarPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`rounded px-2 py-1 text-xs font-medium ${badgeClassBySeverity(status)}`}>
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-medium ${badgeClassBySeverity(status)}`}
+                            title={severityHint(status)}
+                          >
                             {severityLabel(status)}
                           </span>
                           <span className="text-slate-500 text-xs">{isOpen ? "▲" : "▼"}</span>
