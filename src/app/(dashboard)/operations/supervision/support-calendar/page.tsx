@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import type {
+  SupportCalendarDay,
+  SupportCalendarDayStatusCounts,
   SupportLayer,
   SupportRequestsMonthResponse,
   SupportSeverity,
@@ -46,6 +48,21 @@ function severityHint(s: SupportSeverity): string | undefined {
   return SUPPORT_SEVERITY_HINTS[s];
 }
 
+function calendarCountsByLayer(
+  d: SupportCalendarDay,
+  layer: SupportLayer
+): SupportCalendarDayStatusCounts {
+  return layer === "actual" ? d.countsActual : d.countsPlanned;
+}
+
+function formatCalendarStatusSummary(counts: SupportCalendarDayStatusCounts): string {
+  const parts: string[] = [];
+  if (counts.covered > 0) parts.push(`${counts.covered}間完整人力`);
+  if (counts.none > 0) parts.push(`${counts.none}間仍缺人`);
+  if (counts.partial > 0) parts.push(`${counts.partial}間已補齊`);
+  return parts.join("、");
+}
+
 function SummaryCard({
   title,
   value,
@@ -85,7 +102,7 @@ export default function SupervisorSupportCalendarPage() {
   const [month, setMonth] = useState(init.month);
   const [storeId, setStoreId] = useState("");
   const [region, setRegion] = useState<string>("");
-  const [layer, setLayer] = useState<SupportLayer>("actual");
+  const [layer, setLayer] = useState<SupportLayer>("planned");
 
   const [data, setData] = useState<SupportRequestsMonthResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,7 +120,7 @@ export default function SupervisorSupportCalendarPage() {
       if (res.ok) {
         const json = (await res.json()) as SupportRequestsMonthResponse;
         setData(json);
-        setLayer(json.meta?.layerDefault ?? "actual");
+        setLayer(json.meta?.layerDefault ?? "planned");
         // 初始化展開狀態：當日全部展開、第二層預設展開（這裡用 store 展開代表）
         const ids = new Set<string>();
         for (const d of json.dates) {
@@ -303,7 +320,10 @@ export default function SupervisorSupportCalendarPage() {
         <div className="grid grid-cols-7 gap-2">
           {(data?.calendarDays ?? []).map((d) => {
             const sev = layer === "actual" ? d.severityActual : d.severityPlanned;
+            const counts = calendarCountsByLayer(d, layer);
+            const statusSummary = formatCalendarStatusSummary(counts);
             const selected = selectedDate === d.date;
+            const hasStoreData = d.inMonth && d.storeCount > 0;
             return (
               <button
                 key={d.date}
@@ -313,30 +333,53 @@ export default function SupervisorSupportCalendarPage() {
                   setSelectedDate((cur) => (cur === d.date ? null : d.date));
                 }}
                 className={[
-                  "min-h-[54px] rounded-lg border px-2 py-1.5 text-left transition-colors",
-                  d.inMonth ? cellBgBySeverity(sev) : "bg-slate-50 border-slate-200 text-slate-400",
+                  "min-h-[72px] rounded-lg border px-2 py-1.5 text-left transition-colors",
+                  d.inMonth ?
+                    hasStoreData ?
+                      cellBgBySeverity(sev)
+                    : d.holidayName ?
+                      "bg-violet-50 border-violet-200"
+                    : "bg-white border-slate-200"
+                  : "bg-slate-50 border-slate-200 text-slate-400",
                   selected ? "ring-2 ring-blue-600" : "",
                 ].join(" ")}
                 title={
                   d.inMonth ?
-                    `${d.date} · ${d.storeCount} 間 · ${severityLabel(sev)}${severityHint(sev) ? `（${severityHint(sev)}）` : ""}`
+                    [
+                      d.date,
+                      d.holidayName ? `假日：${d.holidayName}` : null,
+                      hasStoreData ? statusSummary || `${d.storeCount} 間` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
                   : d.date
                 }
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-start justify-between gap-1">
                   <span className={`text-sm font-semibold ${d.inMonth ? "text-slate-800" : "text-slate-400"}`}>
                     {d.day}
                   </span>
-                  {d.inMonth && d.storeCount > 0 ? (
-                    <span className="rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] text-slate-600">
-                      {d.storeCount} 間
+                  {d.inMonth && d.holidayName ? (
+                    <span
+                      className="max-w-[58%] truncate rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium text-violet-800"
+                      title={d.holidayName}
+                    >
+                      {d.holidayName}
                     </span>
                   ) : null}
                 </div>
-                {d.inMonth && d.storeCount > 0 ? (
-                  <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] ${badgeClassBySeverity(sev)}`}>
-                    {severityLabel(sev)}
-                  </span>
+                {hasStoreData ? (
+                  <div className="mt-1 space-y-0.5 text-[10px] leading-snug">
+                    {counts.covered > 0 ? (
+                      <p className="text-emerald-800">{counts.covered}間完整人力</p>
+                    ) : null}
+                    {counts.none > 0 ? (
+                      <p className="text-rose-800">{counts.none}間仍缺人</p>
+                    ) : null}
+                    {counts.partial > 0 ? (
+                      <p className="text-amber-800">{counts.partial}間已補齊</p>
+                    ) : null}
+                  </div>
                 ) : null}
               </button>
             );

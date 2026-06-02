@@ -17,6 +17,12 @@ export type SupportLayer = "actual" | "planned";
 
 export type SupportDataSource = "actual" | "forecast";
 
+export type SupportCalendarDayStatusCounts = {
+  covered: number;
+  none: number;
+  partial: number;
+};
+
 export type SupportCalendarDay = {
   date: string; // YYYY-MM-DD
   day: number;
@@ -26,6 +32,12 @@ export type SupportCalendarDay = {
   /** 月曆顯示用（依層級切換） */
   severityActual: SupportSeverity;
   severityPlanned: SupportSeverity;
+  /** 當日各狀態門市數（實際層） */
+  countsActual: SupportCalendarDayStatusCounts;
+  /** 當日各狀態門市數（計畫層） */
+  countsPlanned: SupportCalendarDayStatusCounts;
+  /** 國定／公司假日名稱 */
+  holidayName: string | null;
 };
 
 export type SupportRequestStaffRow = {

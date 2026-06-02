@@ -15,6 +15,7 @@ import { computeDailyMetricsByStoreResilient } from "@/modules/performance/servi
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
 import type {
   SupportCalendarDay,
+  SupportCalendarDayStatusCounts,
   SupportRequestsMonthResponse,
   SupportRequestStoreDay,
   SupportSeverity,
@@ -43,10 +44,17 @@ function worstSeverity(list: SupportSeverity[]): SupportSeverity {
  * - partial（黃）已補齊：原有缺口，經人力支援後補齊
  * - none（紅）仍缺人：人力不足，尚須申請支援
  */
-function statusByGapAndSupport(gap: number | null, supportHours: number): Exclude<SupportSeverity, "empty"> {
-  if (gap == null) return "covered";
-  if (gap > 0) return "none";
-  if (supportHours > 0) return "partial";
+function statusByGapAndSupport(
+  targetHours: number | null,
+  rosterHours: number,
+  supportHours: number
+): Exclude<SupportSeverity, "empty"> {
+  if (targetHours == null) return "covered";
+  const gapAfterRoster = targetHours - rosterHours;
+  const gapAfterSupport = targetHours - rosterHours - supportHours;
+  if (!Number.isFinite(gapAfterSupport)) return "covered";
+  if (gapAfterSupport > 0) return "none";
+  if (gapAfterRoster > 0 && supportHours > 0) return "partial";
   return "covered";
 }
 
@@ -79,15 +87,56 @@ function resolveDailyLaborTargetHours(input: {
   return null;
 }
 
-async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<string>> {
+async function loadHolidayMap(startYmd: string, endYmd: string): Promise<Map<string, string>> {
   const holidays = await prisma.holiday.findMany({
     where: {
       isActive: true,
       date: { gte: parseDateOnlyUTC(startYmd), lte: parseDateOnlyUTC(endYmd) },
     },
-    select: { date: true },
+    select: { date: true, name: true },
   });
-  return new Set(holidays.map((h) => formatDateOnly(h.date)));
+  return new Map(holidays.map((h) => [formatDateOnly(h.date), h.name] as const));
+}
+
+async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<string>> {
+  const map = await loadHolidayMap(startYmd, endYmd);
+  return new Set(map.keys());
+}
+
+function emptyStatusCounts(): SupportCalendarDayStatusCounts {
+  return { covered: 0, none: 0, partial: 0 };
+}
+
+function countStoresByStatus(
+  stores: SupportRequestStoreDay[],
+  layer: "actual" | "planned"
+): SupportCalendarDayStatusCounts {
+  const out = emptyStatusCounts();
+  for (const s of stores) {
+    const st = layer === "actual" ? s.statusActual : s.statusPlanned;
+    if (st === "covered") out.covered += 1;
+    else if (st === "none") out.none += 1;
+    else if (st === "partial") out.partial += 1;
+  }
+  return out;
+}
+
+function emptyCalendarDay(
+  date: string,
+  day: number,
+  inMonth: boolean
+): SupportCalendarDay {
+  return {
+    date,
+    day,
+    inMonth,
+    storeCount: 0,
+    severityActual: "empty",
+    severityPlanned: "empty",
+    countsActual: emptyStatusCounts(),
+    countsPlanned: emptyStatusCounts(),
+    holidayName: null,
+  };
 }
 
 function buildCalendarGridDays(monthStartYmd: string, monthEndYmd: string): SupportCalendarDay[] {
@@ -100,40 +149,19 @@ function buildCalendarGridDays(monthStartYmd: string, monthEndYmd: string): Supp
   const out: SupportCalendarDay[] = [];
   for (let i = padBefore; i > 0; i -= 1) {
     const d = new Date(start.getTime() - i * 86400000);
-    out.push({
-      date: formatDateOnly(d),
-      day: d.getUTCDate(),
-      inMonth: false,
-      storeCount: 0,
-      severityActual: "empty",
-      severityPlanned: "empty",
-    });
+    out.push(emptyCalendarDay(formatDateOnly(d), d.getUTCDate(), false));
   }
 
   for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
     const d = new Date(t);
-    out.push({
-      date: formatDateOnly(d),
-      day: d.getUTCDate(),
-      inMonth: true,
-      storeCount: 0,
-      severityActual: "empty",
-      severityPlanned: "empty",
-    });
+    out.push(emptyCalendarDay(formatDateOnly(d), d.getUTCDate(), true));
   }
 
   const remainder = out.length % 7;
   const padAfter = remainder === 0 ? 0 : 7 - remainder;
   for (let i = 1; i <= padAfter; i += 1) {
     const d = new Date(end.getTime() + i * 86400000);
-    out.push({
-      date: formatDateOnly(d),
-      day: d.getUTCDate(),
-      inMonth: false,
-      storeCount: 0,
-      severityActual: "empty",
-      severityPlanned: "empty",
-    });
+    out.push(emptyCalendarDay(formatDateOnly(d), d.getUTCDate(), false));
   }
 
   return out;
@@ -443,12 +471,17 @@ export async function buildSupportRequestsMonth(input: {
         const gapConfirmed = computeGap(targetHours, scheduledTotal);
         const gapPlanned = computeGap(
           targetHours,
-          scheduledTotal + supportInPlannedHours
+          scheduledTotal + supportInConfirmedHours + supportInPlannedHours
         );
 
-        const statusActual = statusByGapAndSupport(gapConfirmed, supportInConfirmedHours);
+        const statusActual = statusByGapAndSupport(
+          targetHours,
+          scheduledTotal,
+          supportInConfirmedHours
+        );
         const statusPlanned = statusByGapAndSupport(
-          gapPlanned,
+          targetHours,
+          scheduledTotal,
           supportInConfirmedHours + supportInPlannedHours
         );
 
@@ -492,10 +525,21 @@ export async function buildSupportRequestsMonth(input: {
       const actualHoursConfirmed = Math.round(clampNonNegative(m.laborHours) * 100) / 100;
 
       const gapConfirmed = computeGap(targetHours, actualHoursConfirmed);
-      const gapPlanned = computeGap(targetHours, actualHoursConfirmed + supportInPlannedHours);
+      const gapPlanned = computeGap(
+        targetHours,
+        actualHoursConfirmed + supportInConfirmedHours + supportInPlannedHours
+      );
 
-      const statusActual = statusByGapAndSupport(gapConfirmed, supportInConfirmedHours);
-      const statusPlanned = statusByGapAndSupport(gapPlanned, supportInConfirmedHours + supportInPlannedHours);
+      const statusActual = statusByGapAndSupport(
+        targetHours,
+        actualHoursConfirmed,
+        supportInConfirmedHours
+      );
+      const statusPlanned = statusByGapAndSupport(
+        targetHours,
+        actualHoursConfirmed,
+        supportInConfirmedHours + supportInPlannedHours
+      );
 
       const include =
         (gapConfirmed != null && gapConfirmed > 0) ||
@@ -546,12 +590,19 @@ export async function buildSupportRequestsMonth(input: {
     }));
 
   const calendarDays = buildCalendarGridDays(startYmd, endYmd);
+  const gridStartYmd = calendarDays[0]?.date ?? startYmd;
+  const gridEndYmd = calendarDays[calendarDays.length - 1]?.date ?? endYmd;
+  const holidayMap = await loadHolidayMap(gridStartYmd, gridEndYmd);
+
   const byDate = new Map(dates.map((d) => [d.date, d.stores] as const));
   for (const day of calendarDays) {
+    day.holidayName = holidayMap.get(day.date) ?? null;
     if (!day.inMonth) continue;
     const list = byDate.get(day.date) ?? [];
     if (list.length === 0) continue;
     day.storeCount = list.length;
+    day.countsActual = countStoresByStatus(list, "actual");
+    day.countsPlanned = countStoresByStatus(list, "planned");
     day.severityActual = worstSeverity(list.map((s) => s.statusActual));
     day.severityPlanned = worstSeverity(list.map((s) => s.statusPlanned));
   }
@@ -582,7 +633,7 @@ export async function buildSupportRequestsMonth(input: {
     startDate: startYmd,
     endDate: endYmd,
     meta: {
-      layerDefault: "actual",
+      layerDefault: "planned",
       stores: storesWithRegion,
     },
     summary: {

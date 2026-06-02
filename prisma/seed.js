@@ -81,12 +81,10 @@ async function main() {
     });
   }
 
-  // 2026年5月：門市達標／營收預估與試算一致——5/1、5/2 為假日時，5/1–5/10 區間之日曆工作天為 5/4–5/9 共 6 天（5/3、5/10 為週日不計）
-  for (const { day, name } of [
-    { day: 1, name: "勞動節" },
-    { day: 2, name: "假日" },
-  ]) {
-    const date = new Date(Date.UTC(2026, 4, day, 0, 0, 0, 0));
+  const { HOLIDAYS_2026 } = require("./holidays-2026.data.js");
+  for (const { date: dateStr, name } of HOLIDAYS_2026) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
     await prisma.holiday.upsert({
       where: { date },
       update: { name, isActive: true },
