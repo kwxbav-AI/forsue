@@ -1,11 +1,29 @@
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { computeRplhTarget } from "@/lib/operations";
+import {
+  monthStartEndYmd,
+  splitWeekdaySaturdayWorkingDaysInRangeUTC,
+} from "@/lib/month-working-calendar";
+import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
 import { normalizeStoreKey } from "@/lib/operations-dashboard";
 import { ensureRetailStoresFromPerformance } from "@/modules/operations/services/retail-store-sync.service";
 import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 
 const MONTH_HEADER_RE = /^(\d{4})-(\d{2})$/;
+
+/** H 欄（0-based 7）週一～五每日工時；I 欄（0-based 8）週六工時 */
+const WEEKDAY_LABOR_COL = 7;
+const SATURDAY_LABOR_COL = 8;
+const TARGET_RPLH_COL = 3;
+const NOTE_COL = 4;
+const REGION_COL = 0;
+const STORE_COL = 1;
+
+type StoreLaborProfile = {
+  weekdayDailyHours: number;
+  saturdayDailyHours: number;
+};
 
 export type StoreTargetImportResult = {
   year: number;
@@ -26,19 +44,211 @@ type ParsedStoreRow = {
   note?: string;
 };
 
+type ParsedHeadcountRow = {
+  region: string;
+  storeLabel: string;
+  storeKey: string;
+  weekdayDailyHours: number;
+  saturdayDailyHours: number;
+  targetRplh: number;
+  note?: string;
+};
+
 function parseNumericCell(raw: unknown): number | null {
   if (raw == null || raw === "") return null;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   const s = String(raw).replace(/,/g, "").trim();
   if (!s) return null;
   const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 function isSkippableRow(storeLabel: unknown): boolean {
   const s = String(storeLabel ?? "").trim();
   if (!s) return true;
   return /合計|小計|總計|備註說明/.test(s);
+}
+
+async function loadHolidayYmdSet(year: number): Promise<Set<string>> {
+  const holidays = await prisma.holiday.findMany({
+    where: {
+      isActive: true,
+      date: {
+        gte: parseDateOnlyUTC(`${year}-01-01`),
+        lte: parseDateOnlyUTC(`${year}-12-31`),
+      },
+    },
+    select: { date: true },
+  });
+  return new Set(holidays.map((h) => formatDateOnly(h.date)));
+}
+
+function normalizeHeaderLabel(raw: unknown): string {
+  return String(raw ?? "")
+    .replace(/\r\n/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function resolveLaborColumns(header: string[]): {
+  weekdayCol: number;
+  saturdayCol: number;
+} {
+  let weekdayCol = -1;
+  let saturdayCol = -1;
+  header.forEach((raw, col) => {
+    const h = normalizeHeaderLabel(raw);
+    if (!h) return;
+    if (h.includes("週六") && (h.includes("工時") || h.includes("預估"))) {
+      saturdayCol = col;
+      return;
+    }
+    if (
+      (h.includes("週一") || h.includes("週五") || h.includes("平日")) &&
+      (h.includes("工時") || h.includes("預估"))
+    ) {
+      weekdayCol = col;
+    }
+  });
+  if (weekdayCol < 0) {
+    weekdayCol = header.findIndex((raw) => {
+      const h = normalizeHeaderLabel(raw);
+      return h.includes("預估工時") && !h.includes("週六");
+    });
+  }
+  return {
+    weekdayCol: weekdayCol >= 0 ? weekdayCol : WEEKDAY_LABOR_COL,
+    saturdayCol: saturdayCol >= 0 ? saturdayCol : SATURDAY_LABOR_COL,
+  };
+}
+
+function findHeadcountHeaderRow(rows: unknown[][]): {
+  headerRow: number;
+  weekdayCol: number;
+  saturdayCol: number;
+  rplhCol: number;
+  noteCol: number;
+} {
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const header = (rows[i] ?? []).map((c) => String(c ?? "").trim());
+    const { weekdayCol, saturdayCol } = resolveLaborColumns(header);
+    const hasLaborHeader = header.some((raw) => {
+      const h = normalizeHeaderLabel(raw);
+      return h.includes("預估工時") || h.includes("週六");
+    });
+    if (hasLaborHeader) {
+      const rplhCol = header.findIndex(
+        (h) => h.includes("目標人效") || h === "目標人效（可調整）"
+      );
+      const noteCol = header.findIndex((h) => h.includes("人效設定") || h === "人效設定說明");
+      return {
+        headerRow: i,
+        weekdayCol,
+        saturdayCol,
+        rplhCol: rplhCol >= 0 ? rplhCol : TARGET_RPLH_COL,
+        noteCol: noteCol >= 0 ? noteCol : NOTE_COL,
+      };
+    }
+  }
+  return {
+    headerRow: 0,
+    weekdayCol: WEEKDAY_LABOR_COL,
+    saturdayCol: SATURDAY_LABOR_COL,
+    rplhCol: TARGET_RPLH_COL,
+    noteCol: NOTE_COL,
+  };
+}
+
+/**
+ * 解析「依人力計算」格式：H 週一～五每日工時、I 週六工時。
+ * 月目標工時 = H×平日工作天 + I×週六工作天；月業績 = 目標人效×月目標工時。
+ */
+function parseHeadcountLaborTargetSheet(buffer: Buffer): {
+  stores: ParsedHeadcountRow[];
+  warnings: string[];
+} {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+  }) as unknown[][];
+
+  if (rows.length < 2) {
+    return { stores: [], warnings: ["工作表無資料列"] };
+  }
+
+  const { headerRow, weekdayCol, saturdayCol, rplhCol, noteCol } =
+    findHeadcountHeaderRow(rows);
+  const warnings: string[] = [];
+  const stores: ParsedHeadcountRow[] = [];
+
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const row = rows[i] ?? [];
+    const region = String(row[REGION_COL] ?? "").trim();
+    const storeLabel = String(row[STORE_COL] ?? "").trim();
+    if (isSkippableRow(storeLabel)) continue;
+
+    const weekdayDailyHours = parseNumericCell(row[weekdayCol]) ?? 0;
+    const saturdayDailyHours = parseNumericCell(row[saturdayCol]) ?? 0;
+    if (weekdayDailyHours <= 0 && saturdayDailyHours <= 0) {
+      warnings.push(`${storeLabel}：週一至五／週六工時皆為 0，略過`);
+      continue;
+    }
+
+    const targetRplh = parseNumericCell(row[rplhCol]);
+    if (targetRplh == null || targetRplh <= 0) {
+      warnings.push(`${storeLabel}：缺少目標人效，略過`);
+      continue;
+    }
+
+    stores.push({
+      region,
+      storeLabel,
+      storeKey: normalizeStoreKey(storeLabel),
+      weekdayDailyHours,
+      saturdayDailyHours,
+      targetRplh,
+      note: String(row[noteCol] ?? "").trim() || undefined,
+    });
+  }
+
+  if (stores.length === 0) {
+    warnings.push(
+      "未解析到任何門市列，請確認 H 欄（週一～五）、I 欄（週六）與 B 欄門市名稱"
+    );
+  }
+
+  return { stores, warnings };
+}
+
+function expandHeadcountToMonthlyRows(
+  row: ParsedHeadcountRow,
+  year: number,
+  holidayYmdSet: Set<string>
+): { month: number; laborHourTarget: number; salesTarget: number }[] {
+  const out: { month: number; laborHourTarget: number; salesTarget: number }[] = [];
+  for (let month = 1; month <= 12; month++) {
+    const { startYmd, endYmd } = monthStartEndYmd(year, month);
+    const split = splitWeekdaySaturdayWorkingDaysInRangeUTC(
+      startYmd,
+      endYmd,
+      holidayYmdSet
+    );
+    const workingDays = split.weekday + split.saturday;
+    if (workingDays <= 0) continue;
+
+    const laborHourTarget =
+      Math.round(
+        (row.weekdayDailyHours * split.weekday +
+          row.saturdayDailyHours * split.saturday) *
+          100
+      ) / 100;
+    const salesTarget =
+      Math.round(row.targetRplh * laborHourTarget * 100) / 100;
+    out.push({ month, laborHourTarget, salesTarget });
+  }
+  return out;
 }
 
 function parseMonthlySheet(
@@ -90,7 +300,7 @@ function parseMonthlySheet(
     const months: MonthValues = new Map();
     for (const { month, col } of monthCols) {
       const val = parseNumericCell(row[col]);
-      if (val != null) months.set(month, val);
+      if (val != null && val > 0) months.set(month, val);
     }
     if (months.size === 0) continue;
 
@@ -106,6 +316,139 @@ function parseMonthlySheet(
   return { stores, warnings };
 }
 
+async function writeStoreTargets(input: {
+  year: number;
+  rowsToWrite: {
+    storeId: string;
+    year: number;
+    month: number;
+    salesTarget: number;
+    laborHourTarget: number;
+    rplhTarget: number | null;
+    note: string | null;
+  }[];
+  storeIdByKey: Map<string, string>;
+  laborProfileByStoreId: Map<string, StoreLaborProfile>;
+  regionByStoreId: Map<string, string>;
+}): Promise<number> {
+  const { year, rowsToWrite, storeIdByKey, laborProfileByStoreId, regionByStoreId } =
+    input;
+
+  for (const [storeId, profile] of laborProfileByStoreId) {
+    const region = regionByStoreId.get(storeId);
+    await prisma.retailStore.update({
+      where: { id: storeId },
+      data: {
+        ...(region ? { region } : {}),
+        weekdayBusinessHours: profile.weekdayDailyHours,
+        saturdayBusinessHours: profile.saturdayDailyHours,
+        defaultLaborHoursPerDay: profile.weekdayDailyHours,
+      },
+    });
+  }
+
+  const storeIdsToReplace = [...storeIdByKey.values()];
+  if (rowsToWrite.length > 0) {
+    await prisma.$transaction([
+      prisma.storeTarget.deleteMany({
+        where: { year, storeId: { in: storeIdsToReplace } },
+      }),
+      prisma.storeTarget.createMany({ data: rowsToWrite }),
+    ]);
+  }
+
+  return rowsToWrite.length;
+}
+
+/** 新格式：單一 Excel（H 平日、I 週六 → 各月目標工時） */
+export async function importStoreTargetsFromHeadcountExcel(input: {
+  year: number;
+  file: Buffer;
+}): Promise<StoreTargetImportResult> {
+  const { year, file } = input;
+  const warnings: string[] = [];
+
+  const sync = await ensureRetailStoresFromPerformance();
+  if (sync.created > 0) {
+    warnings.push(
+      `已自動建立 ${sync.created} 間營運門市（由績效門市同步），請確認後再匯入目標`
+    );
+  }
+
+  const holidayYmdSet = await loadHolidayYmdSet(year);
+  const parsed = parseHeadcountLaborTargetSheet(file);
+  warnings.push(...parsed.warnings);
+
+  const retailStores = await prisma.retailStore.findMany({
+    where: { isActive: true },
+    select: { id: true, storeName: true, region: true },
+  });
+
+  const unmatchedStores: string[] = [];
+  const storeIdByKey = new Map<string, string>();
+  const laborProfileByStoreId = new Map<string, StoreLaborProfile>();
+  const regionByStoreId = new Map<string, string>();
+  let skipped = 0;
+
+  type WriteRow = {
+    storeId: string;
+    year: number;
+    month: number;
+    salesTarget: number;
+    laborHourTarget: number;
+    rplhTarget: number | null;
+    note: string | null;
+  };
+  const rowsToWrite: WriteRow[] = [];
+
+  for (const row of parsed.stores) {
+    const retail = resolveRetailStore(row.storeKey, row.storeLabel, retailStores);
+    if (!retail) {
+      unmatchedStores.push(row.storeLabel);
+      continue;
+    }
+
+    storeIdByKey.set(row.storeKey, retail.id);
+    laborProfileByStoreId.set(retail.id, {
+      weekdayDailyHours: row.weekdayDailyHours,
+      saturdayDailyHours: row.saturdayDailyHours,
+    });
+    if (row.region) regionByStoreId.set(retail.id, row.region);
+
+    const monthly = expandHeadcountToMonthlyRows(row, year, holidayYmdSet);
+    for (const m of monthly) {
+      const rplh = computeRplhTarget(m.salesTarget, m.laborHourTarget);
+      rowsToWrite.push({
+        storeId: retail.id,
+        year,
+        month: m.month,
+        salesTarget: m.salesTarget,
+        laborHourTarget: m.laborHourTarget,
+        rplhTarget: rplh ? Number(rplh) : null,
+        note: row.note ?? null,
+      });
+    }
+  }
+
+  const upserted = await writeStoreTargets({
+    year,
+    rowsToWrite,
+    storeIdByKey,
+    laborProfileByStoreId,
+    regionByStoreId,
+  });
+
+  return {
+    year,
+    upserted,
+    skipped,
+    matchedStores: storeIdByKey.size,
+    unmatchedStores: [...new Set(unmatchedStores)],
+    warnings: warnings.slice(0, 50),
+  };
+}
+
+/** 舊格式：月業績 + 月工時兩檔（YYYY-MM 欄位） */
 export async function importStoreTargetsFromExcel(input: {
   year: number;
   salesFile: Buffer;
@@ -156,6 +499,8 @@ export async function importStoreTargetsFromExcel(input: {
 
   const unmatchedStores: string[] = [];
   const storeIdByKey = new Map<string, string>();
+  const laborProfileByStoreId = new Map<string, StoreLaborProfile>();
+  const regionByStoreId = new Map<string, string>();
   let skipped = 0;
 
   type WriteRow = {
@@ -184,13 +529,7 @@ export async function importStoreTargetsFromExcel(input: {
       }
       storeId = retail.id;
       storeIdByKey.set(key, storeId);
-
-      if (region) {
-        await prisma.retailStore.update({
-          where: { id: storeId },
-          data: { region },
-        });
-      }
+      if (region) regionByStoreId.set(storeId, region);
     }
 
     for (let month = 1; month <= 12; month++) {
@@ -236,17 +575,13 @@ export async function importStoreTargetsFromExcel(input: {
     }
   }
 
-  const storeIdsToReplace = [...storeIdByKey.values()];
-  if (rowsToWrite.length > 0) {
-    await prisma.$transaction([
-      prisma.storeTarget.deleteMany({
-        where: { year, storeId: { in: storeIdsToReplace } },
-      }),
-      prisma.storeTarget.createMany({ data: rowsToWrite }),
-    ]);
-  }
-
-  const upserted = rowsToWrite.length;
+  const upserted = await writeStoreTargets({
+    year,
+    rowsToWrite,
+    storeIdByKey,
+    laborProfileByStoreId,
+    regionByStoreId,
+  });
 
   return {
     year,

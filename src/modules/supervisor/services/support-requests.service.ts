@@ -55,6 +55,24 @@ function clampNonNegative(n: number): number {
   return n > 0 ? n : 0;
 }
 
+/** 依門市平日／週六編制或月目標均攤，取得單日目標工時 */
+function resolveDailyLaborTargetHours(input: {
+  isSunday: boolean;
+  isHoliday: boolean;
+  isSaturday: boolean;
+  weekdayHours: number | null | undefined;
+  saturdayHours: number | null | undefined;
+  monthAverageDaily: number | null | undefined;
+}): number | null {
+  const { isSunday, isHoliday, isSaturday, weekdayHours, saturdayHours, monthAverageDaily } =
+    input;
+  if (isSunday || isHoliday) return 0;
+  if (isSaturday && saturdayHours != null && saturdayHours > 0) return saturdayHours;
+  if (!isSaturday && weekdayHours != null && weekdayHours > 0) return weekdayHours;
+  if (monthAverageDaily != null && monthAverageDaily > 0) return monthAverageDaily;
+  return null;
+}
+
 async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<string>> {
   const holidays = await prisma.holiday.findMany({
     where: {
@@ -393,9 +411,17 @@ export async function buildSupportRequestsMonth(input: {
 
     for (const storeId of storeIds) {
       const isSunday = d.getUTCDay() === 0;
+      const isSaturday = d.getUTCDay() === 6;
       const isHoliday = holidaySet.has(day);
-      const rawTarget = dailyTargetByStoreId.get(storeId) ?? null;
-      const targetHours = rawTarget != null ? (isSunday || isHoliday ? 0 : rawTarget) : null;
+      const linked = perfToRetail.get(storeId) ?? null;
+      const targetHours = resolveDailyLaborTargetHours({
+        isSunday,
+        isHoliday,
+        isSaturday,
+        weekdayHours: linked?.settings.weekdayBusinessHours,
+        saturdayHours: linked?.settings.saturdayBusinessHours,
+        monthAverageDaily: dailyTargetByStoreId.get(storeId) ?? null,
+      });
 
       const disp = dispatchByStoreDay.get(`${day}|${storeId}`) ?? null;
       const supportInConfirmedHours = disp ? Math.round(disp.confirmedHours * 100) / 100 : 0;

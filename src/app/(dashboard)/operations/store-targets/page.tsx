@@ -82,8 +82,7 @@ export default function StoreTargetsPage() {
     laborHourTarget: "",
     note: "",
   });
-  const salesInputRef = useRef<HTMLInputElement>(null);
-  const hoursInputRef = useRef<HTMLInputElement>(null);
+  const targetFileInputRef = useRef<HTMLInputElement>(null);
 
   const yearMatrix = useMemo(() => buildYearMatrix(list), [list]);
 
@@ -119,10 +118,9 @@ export default function StoreTargetsPage() {
   }
 
   async function handleImport() {
-    const salesFile = salesInputRef.current?.files?.[0];
-    const hoursFile = hoursInputRef.current?.files?.[0];
-    if (!salesFile || !hoursFile) {
-      setMessage("請同時選擇兩個 Excel 檔案");
+    const targetFile = targetFileInputRef.current?.files?.[0];
+    if (!targetFile) {
+      setMessage("請選擇「目標工時（依人力計算）」Excel 檔案");
       return;
     }
 
@@ -131,8 +129,7 @@ export default function StoreTargetsPage() {
     setImportResult(null);
 
     const form = new FormData();
-    form.append("salesFile", salesFile);
-    form.append("hoursFile", hoursFile);
+    form.append("targetFile", targetFile);
     form.append("year", String(importYear));
 
     const res = await fetch("/api/operations/store-targets/import", {
@@ -151,8 +148,7 @@ export default function StoreTargetsPage() {
     setFilterYear(importYear);
     setFilterMonth("all");
     setMessage(data.message ?? "匯入完成");
-    if (salesInputRef.current) salesInputRef.current.value = "";
-    if (hoursInputRef.current) hoursInputRef.current.value = "";
+    if (targetFileInputRef.current) targetFileInputRef.current.value = "";
     void refresh();
   }
 
@@ -222,7 +218,7 @@ export default function StoreTargetsPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-800">門市目標設定</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Excel 匯入各門市每月業績與工時目標；資料供營運總覽、門市績效分析、業績分析、達標週報使用。
+            上傳「目標工時（依人力計算）」Excel，依 H 欄預估工時展開全年各月目標；供營運總覽、人力支援、達標週報使用。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -250,15 +246,16 @@ export default function StoreTargetsPage() {
         </h2>
         <ul className="mb-4 list-disc pl-5 text-sm text-slate-600 space-y-1">
           <li>
-            <strong>檔案 1</strong>：A 區域、B 門市、C～N = 各月業績目標
+            <strong>A</strong> 區域、<strong>B</strong> 門市、<strong>D</strong> 目標人效、<strong>H</strong>{" "}
+            週一～五每日工時、<strong>I</strong> 週六工時
           </li>
           <li>
-            <strong>檔案 2</strong>：A 區域、B 門市、F～Q = 各月目標工時（表頭 2026-MM）
+            各月目標工時 = H × 當月平日工作天 + I × 當月週六工作天；月業績 = 目標人效 × 月目標工時
           </li>
-          <li>匯入會覆寫該年度已對應門市的全部月目標（約 20 店 × 12 月）</li>
+          <li>週一至五／週六工時皆為 0 的門市（如已閉店）不寫入；匯入會覆寫該年度已對應門市全部月目標</li>
         </ul>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
           <label className="text-sm block">
             <span className="text-slate-600">目標年度</span>
             <input
@@ -268,22 +265,13 @@ export default function StoreTargetsPage() {
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
             />
           </label>
-          <label className="text-sm block">
-            <span className="text-slate-600">月業績目標.xlsx</span>
+          <label className="text-sm block sm:col-span-1 lg:col-span-1">
+            <span className="text-slate-600">目標工時（依人力計算）.xlsx</span>
             <input
-              ref={salesInputRef}
+              ref={targetFileInputRef}
               type="file"
               accept=".xlsx,.xls"
               className="mt-1 block w-full text-sm file:mr-2 file:rounded file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white file:text-sm"
-            />
-          </label>
-          <label className="text-sm block">
-            <span className="text-slate-600">月目標工時.xlsx</span>
-            <input
-              ref={hoursInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="mt-1 block w-full text-sm file:mr-2 file:rounded file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-white file:text-sm"
             />
           </label>
           <button
