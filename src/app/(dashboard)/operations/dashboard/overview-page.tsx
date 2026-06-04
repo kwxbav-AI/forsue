@@ -40,16 +40,14 @@ function defaultOverviewStartDate() {
 /** 門市營收達成分佈與門市狀態圖共用色 */
 const ACHIEVEMENT_COLOR = {
   green: "#bbf7d0",
-  yellow: "#fef9c3",
-  red: "#fbcfe8",
+  pink: "#fbcfe8",
   none: "#e2e8f0",
 };
 
 function achievementBarFill(rate: number | null | undefined): string {
-  if (rate == null || Number.isNaN(rate)) return ACHIEVEMENT_COLOR.red;
+  if (rate == null || Number.isNaN(rate)) return ACHIEVEMENT_COLOR.pink;
   if (rate >= 100) return ACHIEVEMENT_COLOR.green;
-  if (rate >= 80) return ACHIEVEMENT_COLOR.yellow;
-  return ACHIEVEMENT_COLOR.red;
+  return ACHIEVEMENT_COLOR.pink;
 }
 
 const REGION_PIE_COLOR: Record<string, string> = {
@@ -125,6 +123,8 @@ type OverviewData = {
 
 type KpiMetrics = {
   totalRevenue: number;
+  totalTarget: number;
+  revenueAchievementRate: number | null;
   totalLaborHours: number;
   efficiencyRatio: number | null;
   yoyGrowthRate: number | null;
@@ -226,11 +226,10 @@ export default function OperationsOverviewPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const includeHeavy = !heavyLoadedRef.current;
+      const includeMonthlyTrend = !heavyLoadedRef.current;
       const params = new URLSearchParams({ startDate, endDate });
-      if (!includeHeavy) {
+      if (!includeMonthlyTrend) {
         params.set("includeMonthlyTrend", "0");
-        params.set("includeKpi", "0");
       }
 
       if (region) params.set("region", region);
@@ -242,14 +241,12 @@ export default function OperationsOverviewPage() {
         };
         setOverview((prev) => ({
           ...overviewData,
-          monthlyTrend: includeHeavy ?
+          monthlyTrend: includeMonthlyTrend ?
             (overviewData.monthlyTrend ?? [])
           : (prev?.monthlyTrend ?? []),
         }));
-        if (includeHeavy && kpiData) {
-          setKpi(kpiData);
-          heavyLoadedRef.current = true;
-        }
+        if (kpiData) setKpi(kpiData);
+        if (includeMonthlyTrend) heavyLoadedRef.current = true;
       }
     } finally {
       setLoading(false);
@@ -285,14 +282,6 @@ export default function OperationsOverviewPage() {
       }));
   }, [overview]);
 
-  const pieData = overview ?
-    [
-      { name: "達標", value: overview.summary.green, color: ACHIEVEMENT_COLOR.green },
-      { name: "警示", value: overview.summary.yellow, color: ACHIEVEMENT_COLOR.yellow },
-      { name: "未達標", value: overview.summary.red, color: ACHIEVEMENT_COLOR.red },
-    ].filter((x) => x.value > 0)
-  : [];
-
   const regionChart = useMemo(
     () =>
       (overview?.regionStats ?? []).filter((r) =>
@@ -300,6 +289,28 @@ export default function OperationsOverviewPage() {
       ),
     [overview?.regionStats]
   );
+
+  const regionYAxisTicks = useMemo(() => {
+    const rates = regionChart
+      .map((r) => r.achievementRate)
+      .filter((v): v is number => v != null && Number.isFinite(v));
+    const maxRate = rates.length > 0 ? Math.max(...rates, 100) : 100;
+    const top = Math.ceil(maxRate / 20) * 20;
+    const ticks: number[] = [];
+    for (let t = 0; t <= top; t += 20) ticks.push(t);
+    return { domain: [0, top] as [number, number], ticks };
+  }, [regionChart]);
+
+  const pieNotMet =
+    overview ?
+      overview.summary.storeCount - overview.summary.green
+    : 0;
+  const pieData = overview ?
+    [
+      { name: "達標", value: overview.summary.green, color: ACHIEVEMENT_COLOR.green },
+      { name: "未達標", value: pieNotMet, color: ACHIEVEMENT_COLOR.pink },
+    ].filter((x) => x.value > 0)
+  : [];
   const customerMetrics = overview?.customerMetrics;
   const storeChartHeight = Math.min(
     Math.max(200, storeStatusChart.length * 14 + 48),
@@ -362,47 +373,46 @@ export default function OperationsOverviewPage() {
           >
             {loading ? "載入中…" : "重新整理"}
           </button>
-          <Link
-            href="/operations/analysis"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-white"
-          >
-            門市深度分析
-          </Link>
         </div>
       </div>
 
-      {kpi ?
-        <div className="grid gap-3 md:grid-cols-3">
-          <KpiCard
-            title="全公司營收達成值"
-            value={formatMoney(kpi.totalRevenue)}
-            sub={`${kpi.periodStartDate ?? overview?.startDate ?? ""} ~ ${kpi.periodEndDate ?? overview?.endDate ?? ""} · 桃園+宜蘭`}
-            icon={<Target className="h-5 w-5" />}
-            accent="#0284c7"
-          />
-          <KpiCard
-            title="營運部工效比"
-            value={kpi.efficiencyRatio != null ? Math.round(kpi.efficiencyRatio).toLocaleString("zh-TW") : "—"}
-            sub={`${kpi.periodStartDate ?? ""} ~ ${kpi.periodEndDate ?? ""} · 桃園+宜蘭 · 元/hr`}
-            icon={<Clock className="h-5 w-5" />}
-            accent="#1e40af"
-          />
-          <KpiCard
-            title="區間營收成長率"
-            value={
-              kpi.yoyGrowthRate != null ?
-                `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
-              : "—"
-            }
-            sub={`較去年同期同區間 · 桃園+宜蘭`}
-            icon={<Activity className="h-5 w-5" />}
-            accent="#16a34a"
-          />
-        </div>
-      : null}
-
       {overview ?
         <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiCard
+              title="全公司營收目標值"
+              value={formatMoney(kpi?.totalTarget ?? overview.summary.totalTarget)}
+              sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
+              icon={<Target className="h-5 w-5" />}
+              accent="#6366f1"
+            />
+            <KpiCard
+              title="全公司營收達成值"
+              value={formatMoney(kpi?.totalRevenue ?? 0)}
+              sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
+              icon={<Store className="h-5 w-5" />}
+              accent="#0284c7"
+            />
+            <KpiCard
+              title="區間營收成長率"
+              value={
+                kpi?.yoyGrowthRate != null ?
+                  `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
+                : "—"
+              }
+              sub={`較去年同期同區間 · 桃園+宜蘭`}
+              icon={<Activity className="h-5 w-5" />}
+              accent="#16a34a"
+            />
+            <KpiCard
+              title="區間達成率"
+              value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
+              sub="營收達成值 ÷ 營收目標值 · 桃園+宜蘭"
+              icon={<Target className="h-5 w-5" />}
+              accent="#0d9488"
+            />
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             <KpiCard
               title="區間營業額"
@@ -500,27 +510,25 @@ export default function OperationsOverviewPage() {
                   <Tooltip
                     formatter={(v: number, _name: string, item) => {
                       const key = String(item?.dataKey ?? "");
-                      if (key === "revenueWan") return [`${v}`, "月度業績/單位千萬"];
-                      if (key === "achievementRate") return [`${v}%`, "達標率/單位%"];
+                      if (key === "revenueWan") return [`${v} 萬元`, "月度業績"];
+                      if (key === "achievementRate") return [`${v}%`, "達標率"];
                       return [v, _name];
                     }}
                   />
                   <Legend />
-                  <Line
+                  <Bar
                     yAxisId="wan"
-                    type="monotone"
                     dataKey="revenueWan"
-                    name="月度業績/單位千萬"
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    dot={{ r: 4 }}
-                    connectNulls
+                    name="月度業績（萬元）"
+                    fill="#2563eb"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
                   />
                   <Line
                     yAxisId="pct"
                     type="monotone"
                     dataKey="achievementRate"
-                    name="達標率/單位%"
+                    name="達標率（%）"
                     stroke="#16a34a"
                     strokeWidth={2}
                     dot={{ r: 4 }}
@@ -542,8 +550,22 @@ export default function OperationsOverviewPage() {
                 <BarChart data={regionChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="region" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => [`${v}%`, "營收達成率"]} />
+                  <YAxis
+                    domain={regionYAxisTicks.domain}
+                    ticks={regionYAxisTicks.ticks}
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    formatter={(v: number, _n, props) => {
+                      const p = props?.payload as { region?: string; revenue?: number; target?: number } | undefined;
+                      const extra =
+                        p?.target != null && p.target > 0 ?
+                          ` · 營收 ${formatMoney(p.revenue ?? 0)} / 目標 ${formatMoney(p.target)}`
+                        : "";
+                      return [`${v}%${extra}`, "營收達成率"];
+                    }}
+                  />
                   <Bar dataKey="achievementRate" fill="#1e40af" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -600,7 +622,7 @@ export default function OperationsOverviewPage() {
             <div className="lg:col-span-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-3">門市營收達成分佈</h2>
               <p className="text-xs text-slate-500 mb-2">
-                達標 ≥100% 淡綠 · 警示 80–99% 淡黃 · 未達標 &lt;80% 粉紅
+                達標 ≥100% 淡綠 · 未達標 &lt;100% 粉紅
               </p>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
@@ -622,8 +644,7 @@ export default function OperationsOverviewPage() {
               </ResponsiveContainer>
               <div className="flex justify-center gap-4 text-xs">
                 <span className="text-green-700">達標 {overview.summary.green}</span>
-                <span className="text-amber-700">警示 {overview.summary.yellow}</span>
-                <span className="text-rose-700">未達標 {overview.summary.red}</span>
+                <span className="text-rose-700">未達標 {pieNotMet}</span>
               </div>
             </div>
 

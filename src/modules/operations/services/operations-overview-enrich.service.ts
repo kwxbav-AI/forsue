@@ -10,10 +10,14 @@ import {
   sumOpsCatalogTargetByMonth,
 } from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
+  DUAL_OPS_REGIONS,
+} from "@/lib/operations-dashboard";
+import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
+import { sumTargetByMonthForPerformanceStores } from "@/modules/operations/services/operations-revenue-bulk.service";
 import { formatDateOnlyTaipei } from "@/lib/date";
 
 export type RevenueAchievementBucket = "green" | "yellow" | "red" | "none";
@@ -94,13 +98,26 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
   const priorStart = shiftYear(startYmd, -1);
   const priorEnd = shiftYear(endYmd, -1);
 
-  const [dualCurrent, dualPrior] = await Promise.all([
+  const filterStores = await listPerformanceStoresForFilter();
+  const dualStoreIds = filterStores
+    .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
+    .map((s) => s.id);
+
+  const [dualCurrent, dualPrior, targetByMonth] = await Promise.all([
     fetchDualRegionChartTotals(startYmd, endYmd),
     fetchDualRegionChartTotals(priorStart, priorEnd),
+    sumTargetByMonthForPerformanceStores(startYmd, endYmd, dualStoreIds),
   ]);
 
+  const totalTarget = [...targetByMonth.values()].reduce((a, b) => a + b, 0);
+  const totalRevenue = dualCurrent.revenue;
+  const revenueAchievementRate =
+    totalTarget > 0 ? Math.round((totalRevenue / totalTarget) * 1000) / 10 : null;
+
   return {
-    totalRevenue: dualCurrent.revenue,
+    totalRevenue,
+    totalTarget,
+    revenueAchievementRate,
     totalLaborHours: dualCurrent.laborHours,
     efficiencyRatio: dualCurrent.efficiencyRatio,
     yoyGrowthRate: yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue),
