@@ -45,16 +45,25 @@ function toChartsRow(row: {
   };
 }
 
-/**
- * 與績效重算／每日工效比相同公式之區間加總（2026-04-01 起算）。
- * 圖表與營運 Dashboard 共用。
- */
+const chartsPerStoreCache = new Map<string, {
+  expiresAt: number;
+  data: ChartsPerStoreRow[];
+}>();
+const CHARTS_CACHE_MS = 3 * 60 * 1000; // 3 分鐘
+
 export async function fetchChartsPerStore(
   startDate: string,
   endDate: string
 ): Promise<ChartsPerStoreRow[]> {
+  const key = `${startDate}|${endDate}`;
+  const now = Date.now();
+  const cached = chartsPerStoreCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.data;
+
   const rows = await aggregateStoreMetricsForRange(startDate, endDate);
-  return rows.map(toChartsRow);
+  const data = rows.map(toChartsRow);
+  chartsPerStoreCache.set(key, { expiresAt: now + CHARTS_CACHE_MS, data });
+  return data;
 }
 
 /** YoY 去年同期（PerformanceDaily 快照；去年通常無即時上傳） */

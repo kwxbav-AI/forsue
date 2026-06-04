@@ -12,10 +12,63 @@ import {
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
-import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
+import {
+  getReserveStaffSettingForEmployeeDate,
+  getReserveStaffSettingsForDate,
+  type ReserveStaffSettingByDate,
+} from "@/lib/reserve-staff-periods";
 
 /** 單一員工單日、依門市拆分後的工時 { storeId: hours } */
 export type StoreHoursMap = Record<string, number>;
+
+type AttendanceWithEmployee = {
+  employeeId: string;
+  originalStoreId: string | null;
+  workHours: unknown;
+  shiftType: string | null;
+  scheduledWorkHours?: unknown;
+  employee: {
+    id: string;
+    employeeCode: string;
+    name: string;
+    defaultStoreId: string | null;
+    isReserveStaff: boolean;
+    reserveWorkPercent: unknown;
+    hireDate: Date | null;
+  };
+};
+
+export type AllocationPrefetchContext = {
+  activeEmployees: Array<{
+    id: string;
+    defaultStoreId: string | null;
+    isReserveStaff: boolean;
+    reserveWorkPercent: unknown;
+    hireDate: Date | null;
+    employeeCode: string;
+    name: string;
+  }>;
+  fallbackHomeStoreByEmployee: Map<string, string>;
+  reserveSettingsByEmployeeDate: Map<string, ReserveStaffSettingByDate>;
+  attendanceDataStartDate: Date;
+  newHireOffsetOverridesByEmployeeCode: Awaited<
+    ReturnType<typeof getNewHireOffsetOverridesByEmployeeCode>
+  >;
+  workedAttendanceRowsForNewHire: Array<{ employeeId: string; workDate: Date }>;
+  attendancesByExactWorkDate: Map<number, AttendanceWithEmployee[]>;
+  dispatchesByExactWorkDate: Map<number, Awaited<
+    ReturnType<typeof prisma.dispatchRecord.findMany>
+  >>;
+  adjustmentsByExactWorkDate: Map<number, Awaited<
+    ReturnType<typeof prisma.workhourAdjustment.findMany>
+  >>;
+  employeeNameById: Map<string, string>;
+  employeeCodeById: Map<string, string>;
+};
+
+export type StoreHoursComputeOptions = {
+  prefetch?: AllocationPrefetchContext;
+};
 
 function isTrialEmployeeCode(employeeCode: string): boolean {
   const prefix = (employeeCode || "").trim().toLowerCase();
@@ -30,15 +83,20 @@ function isTrialEmployeeCode(employeeCode: string): boolean {
  * 回傳：每位員工在各門市的最終工時
  */
 export async function computeStoreHoursByEmployee(
-  workDate: Date
+  workDate: Date,
+  options?: StoreHoursComputeOptions
 ): Promise<Map<string, StoreHoursMap>> {
+  const prefetch = options?.prefetch;
   const d = toStartOfDay(workDate);
   const exactWorkDate = businessDayWorkDateFromDate(d);
+  const exactKey = exactWorkDate.getTime();
 
-  const attendances = await prisma.attendanceRecord.findMany({
-    where: { workDate: exactWorkDate },
-    include: { employee: true },
-  });
+  const attendances = prefetch
+    ? (prefetch.attendancesByExactWorkDate.get(exactKey) ?? [])
+    : await prisma.attendanceRecord.findMany({
+        where: { workDate: exactWorkDate },
+        include: { employee: true },
+      });
   // 同一員工同一日可能有多筆出勤（中間請假二段卡、或跨天拆分）。
   // 績效/工時計算必須以「當日總出勤工時」套用折算規則（新進/儲備/後勤/試作），而不是只取其中一筆。
   const aggregatedAttendanceByEmployeeId = new Map<
@@ -56,64 +114,74 @@ export async function computeStoreHoursByEmployee(
     });
   }
 
-  const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate: exactWorkDate, confirmStatus: "已確認" },
-  });
+  const dispatches = prefetch
+    ? (prefetch.dispatchesByExactWorkDate.get(exactKey) ?? [])
+    : await prisma.dispatchRecord.findMany({
+        where: { workDate: exactWorkDate, confirmStatus: "已確認" },
+      });
 
-  const adjustments = await prisma.workhourAdjustment.findMany({
-    where: { workDate: exactWorkDate },
-  });
+  const adjustments = prefetch
+    ? (prefetch.adjustmentsByExactWorkDate.get(exactKey) ?? [])
+    : await prisma.workhourAdjustment.findMany({
+        where: { workDate: exactWorkDate },
+      });
 
-  // 錯誤訊息希望顯示「員工姓名」而不是 id
-  const employeeNameById = new Map<string, string>();
-  const employeeCodeById = new Map<string, string>();
-  for (const a of attendances) {
-    if (a.employeeId && a.employee?.name) employeeNameById.set(a.employeeId, a.employee.name);
-    if (a.employeeId && a.employee?.employeeCode) {
-      employeeCodeById.set(a.employeeId, a.employee.employeeCode);
+  const employeeNameById = prefetch
+    ? new Map(prefetch.employeeNameById)
+    : new Map<string, string>();
+  const employeeCodeById = prefetch
+    ? new Map(prefetch.employeeCodeById)
+    : new Map<string, string>();
+  if (!prefetch) {
+    for (const a of attendances) {
+      if (a.employeeId && a.employee?.name) employeeNameById.set(a.employeeId, a.employee.name);
+      if (a.employeeId && a.employee?.employeeCode) {
+        employeeCodeById.set(a.employeeId, a.employee.employeeCode);
+      }
     }
-  }
-  const missingNameIds = Array.from(
-    new Set(
-      [...dispatches.map((x) => x.employeeId), ...adjustments.map((x) => x.employeeId)].filter(
-        (id): id is string => Boolean(id) && !employeeNameById.has(id)
+    const missingNameIds = Array.from(
+      new Set(
+        [...dispatches.map((x) => x.employeeId), ...adjustments.map((x) => x.employeeId)].filter(
+          (id): id is string => Boolean(id) && !employeeNameById.has(id)
+        )
       )
-    )
-  );
-  if (missingNameIds.length > 0) {
-    const emps = await prisma.employee.findMany({
-      where: { id: { in: missingNameIds } },
-      select: { id: true, name: true, employeeCode: true },
-    });
-    for (const e of emps) {
-      if (e.name) employeeNameById.set(e.id, e.name);
-      if (e.employeeCode) employeeCodeById.set(e.id, e.employeeCode);
+    );
+    if (missingNameIds.length > 0) {
+      const emps = await prisma.employee.findMany({
+        where: { id: { in: missingNameIds } },
+        select: { id: true, name: true, employeeCode: true },
+      });
+      for (const e of emps) {
+        if (e.name) employeeNameById.set(e.id, e.name);
+        if (e.employeeCode) employeeCodeById.set(e.id, e.employeeCode);
+      }
     }
   }
   const formatEmployee = (employeeId: string) => employeeNameById.get(employeeId) ?? employeeId;
 
-  // 儲備人力計算規則（以人員名冊的門市為準）
-  // - 全店到齊且加班總時數未超過 3H：以 reserveWorkPercent 計部份工時
-  // - 全店到齊且加班總時數超過 3H：計 100%
-  // - 全店未到齊（含有人員調度調出）：計 100%
-  const activeEmployees = await prisma.employee.findMany({
-    where: { isActive: true },
-    select: { id: true, defaultStoreId: true },
-  });
-  // 有些員工名冊未填門市（defaultStoreId 為 null），但前端會用出勤原門市 fallback 顯示；
-  // 這裡也要用同樣 fallback，否則會導致「全店到齊」永遠判不到該店。
-  const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
-  const fallbackHomeStoreByEmployee = new Map<string, string>();
-  if (noDefaultIds.length > 0) {
-    const attRecords = await prisma.attendanceRecord.findMany({
-      where: { employeeId: { in: noDefaultIds }, originalStoreId: { not: null } },
-      select: { employeeId: true, originalStoreId: true },
-      orderBy: { workDate: "desc" },
-    });
-    for (const a of attRecords) {
-      if (!a.originalStoreId) continue;
-      if (fallbackHomeStoreByEmployee.has(a.employeeId)) continue;
-      fallbackHomeStoreByEmployee.set(a.employeeId, a.originalStoreId);
+  const activeEmployees = prefetch
+    ? prefetch.activeEmployees
+    : await prisma.employee.findMany({
+        where: { isActive: true },
+        select: { id: true, defaultStoreId: true },
+      });
+
+  const fallbackHomeStoreByEmployee = prefetch
+    ? new Map(prefetch.fallbackHomeStoreByEmployee)
+    : new Map<string, string>();
+  if (!prefetch) {
+    const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
+    if (noDefaultIds.length > 0) {
+      const attRecords = await prisma.attendanceRecord.findMany({
+        where: { employeeId: { in: noDefaultIds }, originalStoreId: { not: null } },
+        select: { employeeId: true, originalStoreId: true },
+        orderBy: { workDate: "desc" },
+      });
+      for (const a of attRecords) {
+        if (!a.originalStoreId) continue;
+        if (fallbackHomeStoreByEmployee.has(a.employeeId)) continue;
+        fallbackHomeStoreByEmployee.set(a.employeeId, a.originalStoreId);
+      }
     }
   }
   const assignedByStore = new Map<string, string[]>();
@@ -225,15 +293,33 @@ export async function computeStoreHoursByEmployee(
   }
 
   const employeeStores: Map<string, StoreHoursMap> = new Map();
-  const reserveSettingsByEmployee = await getReserveStaffSettingsForDate(
-    d,
-    Array.from(aggregatedAttendanceByEmployeeId.keys())
-  );
+  const dateStr = formatDateOnly(d);
+  const reserveSettingsByEmployee = prefetch
+    ? new Map(
+        Array.from(aggregatedAttendanceByEmployeeId.entries()).map(([employeeId, att]) => [
+          employeeId,
+          getReserveStaffSettingForEmployeeDate(
+            prefetch.reserveSettingsByEmployeeDate,
+            employeeId,
+            dateStr,
+            {
+              isReserveStaff: att.employee.isReserveStaff,
+              reserveWorkPercent:
+                att.employee.reserveWorkPercent == null
+                  ? null
+                  : Number(att.employee.reserveWorkPercent),
+            }
+          ),
+        ])
+      )
+    : await getReserveStaffSettingsForDate(d, Array.from(aggregatedAttendanceByEmployeeId.keys()));
 
-  // 新進員工工時折算：改用「實際有上班日」累計天數（workHours > 0 的出勤日），而非日曆天。
-  // dayNo = 從到職日起算至當日（含當日）累計的「有上班日」天數。
-  const attendanceDataStartDate = await getAttendanceDataStartDate();
-  const newHireOffsetOverridesByEmployeeCode = await getNewHireOffsetOverridesByEmployeeCode();
+  const attendanceDataStartDate = prefetch
+    ? prefetch.attendanceDataStartDate
+    : await getAttendanceDataStartDate();
+  const newHireOffsetOverridesByEmployeeCode = prefetch
+    ? prefetch.newHireOffsetOverridesByEmployeeCode
+    : await getNewHireOffsetOverridesByEmployeeCode();
   const newHireCandidateIds: string[] = [];
   const hireDateByEmployeeId = new Map<string, Date>();
   const employeeCodeByEmployeeId = new Map<string, string>();
@@ -259,15 +345,21 @@ export async function computeStoreHoursByEmployee(
   );
   const workedAttendanceRows =
     uniqueNewHireCandidateIds.length > 0 && earliestHireDate
-      ? await prisma.attendanceRecord.findMany({
-          where: {
-            employeeId: { in: uniqueNewHireCandidateIds },
-            workDate: { gte: earliestHireDate, lte: exactWorkDate },
-            workHours: { gt: 0 },
-          },
-          select: { employeeId: true, workDate: true },
-          orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
-        })
+      ? prefetch
+        ? prefetch.workedAttendanceRowsForNewHire.filter(
+            (r) =>
+              uniqueNewHireCandidateIds.includes(r.employeeId) &&
+              r.workDate.getTime() <= exactWorkDate.getTime()
+          )
+        : await prisma.attendanceRecord.findMany({
+            where: {
+              employeeId: { in: uniqueNewHireCandidateIds },
+              workDate: { gte: earliestHireDate, lte: exactWorkDate },
+              workHours: { gt: 0 },
+            },
+            select: { employeeId: true, workDate: true },
+            orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
+          })
       : [];
   const workedDayNoIndexByEmployeeId = buildNewHireWorkedDayNoIndex(
     workedAttendanceRows,
@@ -453,8 +545,11 @@ export async function computeStoreOvertimeHoursByStore(
 }
 
 /** 彙總為各門市當日總工時 */
-export async function computeTotalWorkHoursByStore(workDate: Date): Promise<Record<string, number>> {
-  const byEmployee = await computeStoreHoursByEmployee(workDate);
+export async function computeTotalWorkHoursByStore(
+  workDate: Date,
+  options?: StoreHoursComputeOptions
+): Promise<Record<string, number>> {
+  const byEmployee = await computeStoreHoursByEmployee(workDate, options);
   const byStore: Record<string, number> = {};
 
   byEmployee.forEach((storeHours) => {

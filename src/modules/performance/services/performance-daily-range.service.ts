@@ -10,7 +10,10 @@ import {
   clampMetricsDateRange,
   getRevenueMetricsDataStartYmd,
 } from "@/lib/performance-metrics-range";
-import { computeDailyMetricsByStoreResilient } from "./daily-store-metrics.service";
+import {
+  buildRangeDailyMetricsPrefetch,
+  computeDailyMetricsByStoreResilientWithPrefetch,
+} from "./range-daily-metrics-prefetch.service";
 
 export type PerformanceDailyRangeRow = {
   storeId: string;
@@ -154,14 +157,20 @@ async function computeEngineRangeRows(
     effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
   const dayStrs =
     dayLoopStart <= effEnd ? listDateStrings(dayLoopStart, effEnd) : [];
-  const dailyMaps = await mapWithConcurrency(
-    dayStrs,
-    DAY_COMPUTE_CONCURRENCY,
-    (dayStr) =>
-      computeDailyMetricsByStoreResilient(parseDateOnlyUTC(dayStr), {
+
+  let dailyMaps: Map<string, { revenue: number; laborHours: number }>[];
+  if (dayStrs.length > 0) {
+    const prefetch = await buildRangeDailyMetricsPrefetch(dayLoopStart, effEnd, {
+      reportVisibleOnly: true,
+    });
+    dailyMaps = await mapWithConcurrency(dayStrs, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
+      computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch, {
         reportVisibleOnly: true,
       })
-  );
+    );
+  } else {
+    dailyMaps = [];
+  }
 
   for (const daily of dailyMaps) {
     for (const [storeId, m] of daily) {
