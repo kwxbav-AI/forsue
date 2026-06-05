@@ -34,6 +34,26 @@ export function storeOpsRegionLabel(region: StoreOpsRegion): string {
   return `宜蘭全區(包含：${joined})`;
 }
 
+export function groupStoreOpsRetailStoresByRegion<
+  T extends { id: string; storeName: string; region?: string | null },
+>(stores: T[]): { region: StoreOpsRegion; label: string; stores: T[] }[] {
+  const ordered = orderedStoreOpsRetailStores(stores);
+  const used = new Set<string>();
+  return CATALOG_GROUPS.map((g) => {
+    const regionStores = ordered.filter((s) => {
+      if (used.has(s.id)) return false;
+      const match = g.storeNames.some((k) => storeNameMatchesCatalogKey(s.storeName, k));
+      if (match) used.add(s.id);
+      return match;
+    });
+    return {
+      region: g.region as StoreOpsRegion,
+      label: storeOpsRegionLabel(g.region as StoreOpsRegion),
+      stores: regionStores,
+    };
+  }).filter((g) => g.stores.length > 0);
+}
+
 export function orderedStoreOpsRetailStores<
   T extends { id: string; storeName: string; region?: string | null },
 >(stores: T[]): T[] {
