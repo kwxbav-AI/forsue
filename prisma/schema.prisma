@@ -597,22 +597,43 @@ enum DailyReportStatus {
 }
 
 model DailyReport {
-  id          String            @id @default(cuid())
-  storeId     String            @map("store_id")
-  reportDate  DateTime          @db.Date @map("report_date")
-  mainWork    String?           @map("main_work")
-  anomaly     String?
-  submittedAt DateTime?         @map("submitted_at")
-  submittedBy String?           @map("submitted_by")
-  status      DailyReportStatus @default(DRAFT)
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  store       RetailStore       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id           String            @id @default(cuid())
+  storeId      String            @map("store_id")
+  reportDate   DateTime          @db.Date @map("report_date")
+  mainWork     String?           @map("main_work")
+  anomaly      String?
+  submittedAt  DateTime?         @map("submitted_at")
+  submittedBy  String?           @map("submitted_by")
+  status       DailyReportStatus @default(DRAFT)
+  revenue      Int?
+  weather      String?
+  handoverNote String?           @map("handover_note")
+  feedback     String?
+  restockDone  Boolean           @default(false) @map("restock_done")
+  expiryDone   Boolean           @default(false) @map("expiry_done")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  store        RetailStore       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  discountItems DiscountItem[]
 
   @@unique([storeId, reportDate])
   @@index([reportDate])
   @@index([storeId, reportDate])
   @@map("daily_reports")
+}
+
+model DiscountItem {
+  id            String      @id @default(cuid())
+  dailyReportId String      @map("daily_report_id")
+  productName   String      @map("product_name")
+  amount        Int
+  quantity      Int         @default(1)
+  note          String?
+  createdAt     DateTime    @default(now()) @map("created_at")
+  dailyReport   DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+
+  @@index([dailyReportId])
+  @@map("discount_items")
 }
 
 enum TodoStatus {
