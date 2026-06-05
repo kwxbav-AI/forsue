@@ -474,7 +474,6 @@
         { "kind": "PAGE", "pathPattern": "/operations", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/dashboard", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/analysis", "method": null },
-        { "kind": "PAGE", "pathPattern": "/operations/performance", "method": null },
         { "kind": "API", "pathPattern": "/api/operations/performance-analysis", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/supervision", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/supervision/support-calendar", "method": null },

@@ -7,7 +7,6 @@ import {
   Users,
   DollarSign,
   BarChart3,
-  LineChart,
 } from "lucide-react";
 
 export type OpsNavItem = {
@@ -28,14 +27,8 @@ export const OPS_NAV_ITEMS: OpsNavItem[] = [
   },
   {
     href: "/operations/analysis",
-    label: "門市績效分析",
+    label: "績效分析",
     icon: BarChart3,
-    permissionKey: "operations-dashboard",
-  },
-  {
-    href: "/operations/performance",
-    label: "業績分析",
-    icon: LineChart,
     permissionKey: "operations-dashboard",
   },
   {
