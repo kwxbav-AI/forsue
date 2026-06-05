@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const { ALL_ROLE_SPECS, defaultPerm, legacyRoleForKey } = require("./role-permission-defaults.cjs");
 
 function loadModulesSpec() {
   const modulesPath = path.join(__dirname, "..", "docs", "permission-modules.json");
@@ -99,7 +100,47 @@ async function main() {
       }
     }
 
-    console.log(`Sync permissions done. modulesUpserted=${idByKey.size}, patternsUpserted=${patternUpserts}`);
+    // 4) upsert roles + default role permissions
+    const roleIdByKey = new Map();
+    for (const r of ALL_ROLE_SPECS) {
+      const row = await prisma.role.upsert({
+        where: { key: r.key },
+        update: { name: r.name, isActive: true },
+        create: { id: r.key, key: r.key, name: r.name, isActive: true },
+        select: { id: true },
+      });
+      roleIdByKey.set(r.key, row.id);
+    }
+
+    let permissionUpserts = 0;
+    const allModuleRows = await prisma.permissionModule.findMany({
+      select: { id: true, key: true },
+    });
+    for (const role of ALL_ROLE_SPECS.map((r) => r.key)) {
+      const roleId = roleIdByKey.get(role);
+      if (!roleId) continue;
+      for (const m of allModuleRows) {
+        const v = defaultPerm(role, m.key);
+        const canWrite = !!v.canWrite;
+        const canRead = !!v.canRead || canWrite;
+        await prisma.rolePermission.upsert({
+          where: { roleId_moduleId: { roleId, moduleId: m.id } },
+          update: { canRead, canWrite },
+          create: {
+            roleId,
+            legacyRole: legacyRoleForKey(role),
+            moduleId: m.id,
+            canRead,
+            canWrite,
+          },
+        });
+        permissionUpserts++;
+      }
+    }
+
+    console.log(
+      `Sync permissions done. modulesUpserted=${idByKey.size}, patternsUpserted=${patternUpserts}, rolesUpserted=${roleIdByKey.size}, rolePermissionsUpserted=${permissionUpserts}`
+    );
   } finally {
     await prisma.$disconnect();
   }

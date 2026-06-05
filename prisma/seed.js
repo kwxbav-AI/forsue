@@ -162,82 +162,10 @@ async function main() {
     }
   }
 
-  function defaultPerm(role, moduleKey) {
-    const deleteApproveKeys = new Set([
-      "delete-approve-content-entries",
-      "delete-approve-workhour-adjustments",
-      "delete-approve-stores",
-      "delete-approve-store-hour-deductions",
-      "delete-approve-dispatches",
-      "delete-approve-revenue-records",
-    ]);
-
-    // ADMIN: all write
-    if (role === "ADMIN") {
-      // 視覺化欄位權限：扣工時可見（不需要寫入）
-      if (moduleKey === "content-entries-deduct") return { canRead: true, canWrite: false };
-      return { canRead: true, canWrite: true };
-    }
-
-    // EDITOR: mostly write, but keep legacy restriction (cannot manage users)
-    if (role === "EDITOR") {
-      if (deleteApproveKeys.has(moduleKey)) {
-        return { canRead: true, canWrite: false };
-      }
-      if (
-        moduleKey === "settings-users" ||
-        moduleKey === "settings-role-permissions" ||
-        moduleKey === "settings-attendance-location"
-      ) {
-        return { canRead: false, canWrite: false };
-      }
-      // 視覺化欄位權限：扣工時可見（不需要寫入）
-      if (moduleKey === "content-entries-deduct") {
-        return { canRead: true, canWrite: false };
-      }
-      return { canRead: true, canWrite: true };
-    }
-
-    // VIEWER: read-only reports/performance/data/operations, otherwise hidden
-    if (role === "VIEWER") {
-      if (
-        moduleKey === "home" ||
-        moduleKey === "forbidden" ||
-        moduleKey.startsWith("reports") ||
-        moduleKey.startsWith("performance-") ||
-        moduleKey.startsWith("operations") ||
-        moduleKey === "data"
-      ) {
-        return { canRead: true, canWrite: false };
-      }
-      if (moduleKey === "content-entries-deduct") return { canRead: false, canWrite: false };
-      return { canRead: false, canWrite: false };
-    }
-
-    // STORE_STAFF: only specified modules write, others hidden
-    if (role === "STORE_STAFF") {
-      const writeKeys = new Set([
-        "workhour-related",
-        "dispatches",
-        "store-hour-deductions",
-        "content-entries",
-      ]);
-      if (writeKeys.has(moduleKey)) return { canRead: true, canWrite: true };
-      // 扣工時可見：門市人員預設不可見
-      if (moduleKey === "content-entries-deduct") return { canRead: false, canWrite: false };
-      return { canRead: false, canWrite: false };
-    }
-
-    return { canRead: false, canWrite: false };
-  }
+  const { ALL_ROLE_SPECS, defaultPerm, legacyRoleForKey } = require("../scripts/role-permission-defaults.cjs");
 
   // 3b) 預設角色（RolePermission 以 roleId + moduleId 複合鍵對應）
-  const defaultRoleSpecs = [
-    { key: "ADMIN", name: "管理員" },
-    { key: "EDITOR", name: "編輯者" },
-    { key: "VIEWER", name: "檢視者" },
-    { key: "STORE_STAFF", name: "門市人員" },
-  ];
+  const defaultRoleSpecs = ALL_ROLE_SPECS;
   const roleIdByKey = new Map();
   for (const r of defaultRoleSpecs) {
     const row = await prisma.role.upsert({
@@ -253,7 +181,7 @@ async function main() {
   const allModuleRows = await prisma.permissionModule.findMany({
     select: { id: true, key: true },
   });
-  for (const role of ["ADMIN", "EDITOR", "VIEWER", "STORE_STAFF"]) {
+  for (const role of ALL_ROLE_SPECS.map((r) => r.key)) {
     const roleId = roleIdByKey.get(role);
     if (!roleId) continue;
     for (const m of allModuleRows) {
@@ -265,7 +193,7 @@ async function main() {
         update: { canRead, canWrite },
         create: {
           roleId,
-          legacyRole: role,
+          legacyRole: legacyRoleForKey(role),
           moduleId: m.id,
           canRead,
           canWrite,
