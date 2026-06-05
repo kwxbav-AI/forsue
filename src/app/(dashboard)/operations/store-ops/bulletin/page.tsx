@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ROLE_KEYS } from "@/lib/roles";
 import { formatDateTimeTaipei } from "@/lib/date";
 import { OPS_COLORS } from "@/lib/ops-color-tokens";
+import { bulletinTargetFromFilter, REGION_FILTER_PREFIX } from "@/lib/store-ops-retail-stores";
 import { StoreOpsPageHeader } from "@/components/operations/store-ops-page-header";
+import { StoreOpsStoreFilterSelect } from "@/components/operations/StoreOpsStoreFilterSelect";
 import { useStoreOpsContext } from "@/hooks/use-store-ops-context";
 
 type Announcement = {
@@ -22,9 +24,7 @@ export default function StoreOpsBulletinPage() {
   const [items, setItems] = useState<Announcement[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [targetType, setTargetType] = useState<"ALL" | "REGION" | "STORE">("ALL");
-  const [targetRegion, setTargetRegion] = useState("");
-  const [targetStoreId, setTargetStoreId] = useState("");
+  const [publishTarget, setPublishTarget] = useState(`${REGION_FILTER_PREFIX}桃園區`);
   const [loading, setLoading] = useState(true);
 
   const canPublish =
@@ -46,15 +46,16 @@ export default function StoreOpsBulletinPage() {
 
   async function handlePublish(e: React.FormEvent) {
     e.preventDefault();
+    const target = bulletinTargetFromFilter(publishTarget);
     const res = await fetch("/api/operations/store-ops/announcements", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title,
         content,
-        targetType,
-        targetRegion: targetType === "REGION" ? targetRegion : null,
-        targetStoreId: targetType === "STORE" ? targetStoreId : null,
+        targetType: target.targetType,
+        targetRegion: target.targetRegion,
+        targetStoreId: target.targetStoreId,
       }),
     });
     if (res.ok) {
@@ -66,7 +67,7 @@ export default function StoreOpsBulletinPage() {
 
   return (
     <div className="p-6 max-w-3xl">
-      <StoreOpsPageHeader title="公佈欄" subtitle="全區／區域／門市公告" />
+      <StoreOpsPageHeader title="公佈欄" subtitle="桃園／宜蘭全區或單一門市公告" />
       {canPublish ?
         <form
           onSubmit={(e) => void handlePublish(e)}
@@ -91,37 +92,13 @@ export default function StoreOpsBulletinPage() {
             onChange={(e) => setContent(e.target.value)}
             required
           />
-          <select
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            value={targetType}
-            onChange={(e) => setTargetType(e.target.value as typeof targetType)}
-          >
-            <option value="ALL">全公司</option>
-            <option value="REGION">區域</option>
-            <option value="STORE">門市</option>
-          </select>
-          {targetType === "REGION" ?
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="區域（如：桃園區）"
-              value={targetRegion}
-              onChange={(e) => setTargetRegion(e.target.value)}
-            />
-          : null}
-          {targetType === "STORE" ?
-            <select
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              value={targetStoreId}
-              onChange={(e) => setTargetStoreId(e.target.value)}
-            >
-              <option value="">選擇門市</option>
-              {(ctx?.stores ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.storeName}
-                </option>
-              ))}
-            </select>
-          : null}
+          <StoreOpsStoreFilterSelect
+            mode="publish"
+            stores={ctx?.stores ?? []}
+            value={publishTarget}
+            onChange={setPublishTarget}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
           <button
             type="submit"
             className="rounded-lg px-4 py-2 text-sm text-white"

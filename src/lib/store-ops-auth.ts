@@ -83,6 +83,25 @@ export function assertListQueryScope(
   return null;
 }
 
+const STORE_OPS_LIST_REGIONS = new Set(["桃園區", "宜蘭區"]);
+
+/** 列表查詢：storeId 或 region（桃園區／宜蘭區） */
+export function buildStoreListWhere(
+  ctx: AuthContext,
+  opts: { storeId?: string | null; region?: string | null }
+): Record<string, unknown> {
+  const region = opts.region?.trim();
+  const storeId = opts.storeId?.trim();
+  const scope = buildStoreScopeWhere(ctx, storeId || null);
+  if (region) {
+    if (!STORE_OPS_LIST_REGIONS.has(region)) {
+      return { storeId: "__invalid_region__" };
+    }
+    return { ...scope, store: { region } };
+  }
+  return scope;
+}
+
 /** 依角色決定查詢用的 storeId 條件 */
 export function buildStoreScopeWhere(
   ctx: AuthContext,

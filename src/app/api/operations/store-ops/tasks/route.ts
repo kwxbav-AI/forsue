@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC } from "@/lib/date";
 import {
   assertListQueryScope,
-  buildStoreScopeWhere,
+  buildStoreListWhere,
   requireStoreOps,
   resolveWriteStoreId,
 } from "@/lib/store-ops-auth";
@@ -24,13 +24,14 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const storeId = req.nextUrl.searchParams.get("storeId");
+  const region = req.nextUrl.searchParams.get("region");
   const status = req.nextUrl.searchParams.get("status")?.trim();
   const scopeDenied = assertListQueryScope(auth.ctx, storeId);
   if (scopeDenied) return scopeDenied;
 
   const list = await prisma.todoItem.findMany({
     where: {
-      ...buildStoreScopeWhere(auth.ctx, storeId),
+      ...buildStoreListWhere(auth.ctx, { storeId, region }),
       ...(status ? { status: status as "PENDING" | "IN_PROGRESS" | "DONE" | "OVERDUE" } : {}),
     },
     include: { store: { select: { storeName: true, region: true } } },

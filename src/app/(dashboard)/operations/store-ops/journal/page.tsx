@@ -5,7 +5,9 @@ import { ROLE_KEYS } from "@/lib/roles";
 import { formatLocalDateInput } from "@/lib/date";
 import { OPS_COLORS, getStatusColor } from "@/lib/ops-color-tokens";
 import { StoreOpsPageHeader } from "@/components/operations/store-ops-page-header";
+import { StoreOpsStoreFilterSelect } from "@/components/operations/StoreOpsStoreFilterSelect";
 import { useStoreOpsContext } from "@/hooks/use-store-ops-context";
+import { appendStoreFilterToParams } from "@/lib/store-ops-retail-stores";
 
 type Journal = {
   id: string;
@@ -100,30 +102,26 @@ export default function StoreOpsJournalPage() {
   const { ctx, defaultStoreId } = useStoreOpsContext();
   const today = formatLocalDateInput();
   const [items, setItems] = useState<Journal[]>([]);
-  const [storeId, setStoreId] = useState("");
+  const [storeFilter, setStoreFilter] = useState("all");
   const [reportDate, setReportDate] = useState(today);
   const [mainWork, setMainWork] = useState("");
   const [anomaly, setAnomaly] = useState("");
   const [loading, setLoading] = useState(true);
 
   const isStaff = ctx?.roleKey === ROLE_KEYS.STORE_STAFF;
-  const writeStoreId = isStaff ? defaultStoreId : storeId || defaultStoreId;
+  const writeStoreId = isStaff ? defaultStoreId : "";
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ date: reportDate });
-    if (!isStaff && storeId) params.set("storeId", storeId);
+    if (!isStaff) appendStoreFilterToParams(params, storeFilter);
     const res = await fetch(`/api/operations/store-ops/journal?${params}`);
     if (res.ok) {
       const data = await res.json();
       setItems(data.items ?? []);
     }
     setLoading(false);
-  }, [reportDate, storeId, isStaff]);
-
-  useEffect(() => {
-    if (defaultStoreId && !storeId) setStoreId(defaultStoreId);
-  }, [defaultStoreId, storeId]);
+  }, [reportDate, storeFilter, isStaff]);
 
   useEffect(() => {
     void load();
@@ -148,19 +146,15 @@ export default function StoreOpsJournalPage() {
   return (
     <div className="p-6 max-w-3xl">
       <StoreOpsPageHeader title="工作日誌" subtitle={`日期：${reportDate}`} />
-      {!isStaff && (ctx?.stores.length ?? 0) > 1 ?
-        <select
-          className="mb-4 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          value={storeId}
-          onChange={(e) => setStoreId(e.target.value)}
-        >
-          <option value="">全部負責門市</option>
-          {(ctx?.stores ?? []).map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.storeName}
-            </option>
-          ))}
-        </select>
+      {!isStaff ?
+        <div className="mb-4">
+          <StoreOpsStoreFilterSelect
+            mode="filter"
+            stores={ctx?.stores ?? []}
+            value={storeFilter}
+            onChange={setStoreFilter}
+          />
+        </div>
       : null}
       {isStaff && writeStoreId ?
         <>
