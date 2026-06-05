@@ -722,7 +722,7 @@ export default function OperationsOverviewPage() {
                         name="營收達成率"
                         stroke={OPS_COLORS.achievement.chart}
                         strokeWidth={2}
-                        dot={{ r: 3, fill: OPS_COLORS.achievement.border, stroke: OPS_COLORS.achievement.chart }}
+                        dot={{ r: 3, fill: OPS_COLORS.achievement.chart, stroke: OPS_COLORS.achievement.chartDeep }}
                         activeDot={{ r: 4, fill: OPS_COLORS.achievement.chart, stroke: OPS_COLORS.achievement.chartDeep }}
                         connectNulls
                       />
