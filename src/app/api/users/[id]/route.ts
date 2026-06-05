@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const patchSchema = z.object({
   password: z.string().min(6).max(128).optional(),
   roleId: z.string().min(1).optional(),
+  retailStoreId: z.string().min(1).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -55,6 +56,7 @@ export async function PATCH(
   const data: {
     passwordHash?: string;
     roleId?: string;
+    retailStoreId?: string | null;
     isActive?: boolean;
   } = {};
   if (password) data.passwordHash = await hashPassword(password);
@@ -64,6 +66,16 @@ export async function PATCH(
     data.roleId = roleRow.id;
   }
   if (isActive !== undefined) data.isActive = isActive;
+  if (parsed.data.retailStoreId !== undefined) {
+    if (parsed.data.retailStoreId) {
+      const store = await prisma.retailStore.findUnique({
+        where: { id: parsed.data.retailStoreId },
+        select: { id: true },
+      });
+      if (!store) return NextResponse.json({ error: "門市不存在" }, { status: 400 });
+    }
+    data.retailStoreId = parsed.data.retailStoreId;
+  }
 
   const user = await prisma.appUser.update({
     where: { id },
@@ -74,6 +86,7 @@ export async function PATCH(
       roleId: true,
       role: { select: { key: true, name: true } },
       legacyRole: true,
+      retailStoreId: true,
       isActive: true,
     },
   });
@@ -89,6 +102,7 @@ export async function PATCH(
         user.role?.name ??
         DEFAULT_ROLE_LABELS[user.role?.key ?? String(user.legacyRole)] ??
         (user.role?.key ?? String(user.legacyRole)),
+      retailStoreId: user.retailStoreId,
       isActive: user.isActive,
     },
   });

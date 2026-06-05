@@ -538,6 +538,164 @@
       ]
     },
     {
+      "key": "store-ops-notify",
+      "label": "店務：通知中心",
+      "description": "店務回報通知彙整",
+      "group": "店務管理",
+      "sortOrder": 800,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/notify", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/notifications", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/context", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-bulletin-read",
+      "label": "店務：公佈欄（閱讀）",
+      "description": "查看公佈欄公告",
+      "group": "店務管理",
+      "sortOrder": 810,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/bulletin", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/announcements", "method": "GET" }
+      ]
+    },
+    {
+      "key": "store-ops-task",
+      "label": "店務：任務待辦",
+      "description": "門市任務清單",
+      "group": "店務管理",
+      "sortOrder": 820,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/tasks", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/tasks", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-journal-write",
+      "label": "店務：工作日誌（填寫）",
+      "description": "門市填寫工作日誌",
+      "group": "店務管理",
+      "sortOrder": 830,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/journal", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/journal", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-journal-read",
+      "label": "店務：工作日誌（督導查閱）",
+      "description": "督導查閱轄區工作日誌",
+      "group": "店務管理",
+      "sortOrder": 831,
+      "parentKey": "store-ops-journal-write",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/journal", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/journal", "method": "GET" }
+      ]
+    },
+    {
+      "key": "store-ops-repair",
+      "label": "店務：報修",
+      "description": "設備報修追蹤",
+      "group": "店務管理",
+      "sortOrder": 840,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/repairs", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/repairs", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-supply-request",
+      "label": "店務：物資申請（門市）",
+      "description": "門市提出物資申請",
+      "group": "店務管理",
+      "sortOrder": 850,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/supply", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/supply", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-supply-approve",
+      "label": "店務：物資簽核（督導）",
+      "description": "督導審核物資申請",
+      "group": "店務管理",
+      "sortOrder": 851,
+      "parentKey": "store-ops-supply-request",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/supply", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/supply", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-supply-ship",
+      "label": "店務：物資配送（總務）",
+      "description": "總務出貨",
+      "group": "店務管理",
+      "sortOrder": 852,
+      "parentKey": "store-ops-supply-request",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/supply", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/supply", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-wishpool",
+      "label": "店務：商品許願池",
+      "description": "門市商品許願",
+      "group": "店務管理",
+      "sortOrder": 860,
+      "parentKey": "store-ops-notify",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/wishpool", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/wishpool", "method": null }
+      ]
+    },
+    {
+      "key": "store-ops-wishpool-reply",
+      "label": "店務：許願池回覆（採購）",
+      "description": "採購回覆許願",
+      "group": "店務管理",
+      "sortOrder": 861,
+      "parentKey": "store-ops-wishpool",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/wishpool", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/wishpool", "method": null }
+      ]
+    },
+    {
+      "key": "operations-heatmap",
+      "label": "客流熱力圖",
+      "description": "依 DailyStorePerformance 來客數熱力圖",
+      "group": "營運分析",
+      "sortOrder": 745,
+      "parentKey": "operations-dashboard",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/store-ops/heatmap", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/store-ops/heatmap", "method": null }
+      ]
+    },
+    {
+      "key": "operations-supervisors",
+      "label": "督導設定",
+      "description": "督導帳號與負責門市",
+      "group": "營運分析",
+      "sortOrder": 750,
+      "parentKey": "operations-admin",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/supervisors", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/permissions", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/supervisors", "method": null }
+      ]
+    },
+    {
       "key": "reserve-staff",
       "label": "儲備人力設定",
       "description": "儲備人力與工時計算%（含員工資料）",

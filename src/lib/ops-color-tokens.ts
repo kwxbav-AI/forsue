@@ -160,3 +160,13 @@ export const REGION_CHART_COLORS = {
   桃園區: OPS_COLORS.region.taoyuan,
   宜蘭區: OPS_COLORS.region.yilan,
 } as const;
+
+/** 客流熱力圖 6 級（Teal 色系，淺→深） */
+export const HEATMAP_SCALE = [
+  OPS_COLORS.hours.bg,
+  OPS_COLORS.hours.border,
+  OPS_COLORS.hours.chartMute,
+  OPS_COLORS.hours.chart,
+  OPS_COLORS.hours.chartDeep,
+  OPS_COLORS.hours.value,
+] as const;

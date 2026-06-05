@@ -376,17 +376,22 @@ enum UserRole {
 }
 
 model AppUser {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  legacyRole   UserRole @default(EDITOR) @map("role")
-  roleId       String?
-  role         Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  username      String   @unique
+  passwordHash  String
+  legacyRole    UserRole @default(EDITOR) @map("role")
+  roleId        String?
+  role          Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  retailStoreId String?  @map("retail_store_id")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  retailStore      RetailStore?      @relation(fields: [retailStoreId], references: [id], onDelete: SetNull)
+  supervisorStores SupervisorStore[]
 
   @@index([roleId])
+  @@index([retailStoreId])
 }
 
 enum PermissionPatternKind {
@@ -497,6 +502,13 @@ model RetailStore {
   dailyPerformances     DailyStorePerformance[]
   tmsTransactions       TmsTransaction[]
   staffSchedules        StaffSchedule[]
+  dailyReports          DailyReport[]
+  todoItems             TodoItem[]
+  repairRequests        RepairRequest[]
+  supplyRequests        SupplyRequest[]
+  wishItems             WishItem[]
+  supervisorStores      SupervisorStore[]
+  appUsers              AppUser[]
 
   @@unique([storeName])
   @@map("stores")
@@ -575,4 +587,164 @@ model StaffSchedule {
 
   @@index([storeId, workDate])
   @@map("staff_schedules")
+}
+
+// --- 店務回報平台整合（工作日誌、任務、報修、公佈欄、物資、許願池）---
+
+enum DailyReportStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model DailyReport {
+  id          String            @id @default(cuid())
+  storeId     String            @map("store_id")
+  reportDate  DateTime          @db.Date @map("report_date")
+  mainWork    String?           @map("main_work")
+  anomaly     String?
+  submittedAt DateTime?         @map("submitted_at")
+  submittedBy String?           @map("submitted_by")
+  status      DailyReportStatus @default(DRAFT)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  store       RetailStore       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, reportDate])
+  @@index([reportDate])
+  @@index([storeId, reportDate])
+  @@map("daily_reports")
+}
+
+enum TodoStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  OVERDUE
+}
+
+model TodoItem {
+  id          String     @id @default(cuid())
+  storeId     String     @map("store_id")
+  title       String
+  description String?
+  dueDate     DateTime?  @db.Date @map("due_date")
+  status      TodoStatus @default(PENDING)
+  createdBy   String?    @map("created_by")
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  store       RetailStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, dueDate])
+  @@map("todo_items")
+}
+
+enum RepairStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+}
+
+model RepairRequest {
+  id          String       @id @default(cuid())
+  storeId     String       @map("store_id")
+  equipment   String
+  description String?
+  status      RepairStatus @default(PENDING)
+  resolvedAt  DateTime?    @map("resolved_at")
+  resolvedBy  String?      @map("resolved_by")
+  createdBy   String?      @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  store       RetailStore  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, status])
+  @@index([createdAt])
+  @@map("repair_requests")
+}
+
+enum AnnouncementTarget {
+  ALL
+  REGION
+  STORE
+}
+
+model Announcement {
+  id            String             @id @default(cuid())
+  title         String
+  content       String
+  targetType    AnnouncementTarget @default(ALL)
+  targetRegion  String?            @map("target_region")
+  targetStoreId String?            @map("target_store_id")
+  publishedBy   String?            @map("published_by")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+enum SupplyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SHIPPED
+  RECEIVED
+}
+
+model SupplyRequest {
+  id           String       @id @default(cuid())
+  storeId      String       @map("store_id")
+  itemName     String       @map("item_name")
+  quantity     String?
+  neededDate   DateTime?    @db.Date @map("needed_date")
+  note         String?
+  status       SupplyStatus @default(PENDING)
+  submittedBy  String?      @map("submitted_by")
+  submittedAt  DateTime     @default(now()) @map("submitted_at")
+  reviewedBy   String?      @map("reviewed_by")
+  reviewedAt   DateTime?    @map("reviewed_at")
+  rejectReason String?      @map("reject_reason")
+  shippedBy    String?      @map("shipped_by")
+  shippedAt    DateTime?    @map("shipped_at")
+  receivedBy   String?      @map("received_by")
+  receivedAt   DateTime?    @map("received_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  store        RetailStore  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, status])
+  @@index([status])
+  @@map("supply_requests")
+}
+
+model WishItem {
+  id            String    @id @default(cuid())
+  storeId       String    @map("store_id")
+  title         String
+  description   String?
+  endorseCount  Int       @default(0) @map("endorse_count")
+  purchaseReply String?   @map("purchase_reply")
+  repliedBy     String?   @map("replied_by")
+  repliedAt     DateTime? @map("replied_at")
+  createdBy     String?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  store         RetailStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("wish_items")
+}
+
+model SupervisorStore {
+  id           String      @id @default(cuid())
+  supervisorId String      @map("supervisor_id")
+  storeId      String      @map("store_id")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  supervisor   AppUser     @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+  store        RetailStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([supervisorId, storeId])
+  @@index([supervisorId])
+  @@map("supervisor_stores")
 }
