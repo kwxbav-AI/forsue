@@ -297,6 +297,7 @@ function AchievementBucketCard({
   hint,
   storeNames,
   tone,
+  compact = false,
 }: {
   count: number;
   title: string;
@@ -304,6 +305,7 @@ function AchievementBucketCard({
   hint?: string;
   storeNames: string[];
   tone: "met" | "near" | "unmet";
+  compact?: boolean;
 }) {
   const palette =
     tone === "met" ? OPS_COLORS.status.met
@@ -316,16 +318,16 @@ function AchievementBucketCard({
 
   return (
     <div
-      className="group relative rounded-xl border p-6 text-center"
+      className={`group relative rounded-xl border text-center ${compact ? "p-3" : "p-6"}`}
       style={{ backgroundColor: palette.bg, borderColor: palette.border }}
     >
-      <p className="text-4xl font-bold" style={{ color: countColor }}>
+      <p className={`font-bold ${compact ? "text-2xl" : "text-4xl"}`} style={{ color: countColor }}>
         {count}
       </p>
-      <p className="mt-2 font-medium" style={{ color: titleColor }}>
+      <p className={`font-medium ${compact ? "mt-1 text-sm" : "mt-2"}`} style={{ color: titleColor }}>
         {title}
       </p>
-      <p className="text-sm" style={{ color: pctColor }}>
+      <p className={compact ? "text-xs" : "text-sm"} style={{ color: pctColor }}>
         {formatPctOne(pct)}
       </p>
       {hint ?
@@ -674,14 +676,43 @@ export default function OperationsAnalysisPage() {
           : <>
               {a ?
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="font-semibold text-slate-800">達成分析</h2>
-                  <p className="mb-4 mt-1 text-xs text-slate-500">
-                    區間營收達成情況（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市 · 實際營收 ÷ 業績目標）
-                  </p>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <AchievementBucketCard count={a.green} title="達標" pct={a.greenPct} storeNames={a.achievementStores?.green ?? []} tone="met" />
-                    <AchievementBucketCard count={a.yellow} title="接近達標" pct={a.yellowPct} hint="達成率 80%～99%" storeNames={a.achievementStores?.yellow ?? []} tone="near" />
-                    <AchievementBucketCard count={a.red} title="未達標" pct={a.redPct} hint="達成率 < 80%" storeNames={a.achievementStores?.red ?? []} tone="unmet" />
+                  <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                    <div className="min-w-0">
+                      <h2 className="font-semibold text-slate-800">達成分析</h2>
+                      <p className="mb-3 mt-1 text-xs text-slate-500">
+                        區間營收達成情況（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市 · 實際營收 ÷ 業績目標）
+                      </p>
+                      <div className="grid max-w-md grid-cols-3 gap-2">
+                        <AchievementBucketCard compact count={a.green} title="達標" pct={a.greenPct} storeNames={a.achievementStores?.green ?? []} tone="met" />
+                        <AchievementBucketCard compact count={a.yellow} title="接近達標" pct={a.yellowPct} hint="達成率 80%～99%" storeNames={a.achievementStores?.yellow ?? []} tone="near" />
+                        <AchievementBucketCard compact count={a.red} title="未達標" pct={a.redPct} hint="達成率 < 80%" storeNames={a.achievementStores?.red ?? []} tone="unmet" />
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-semibold text-slate-800">區域對標</h2>
+                      <p className="mb-3 mt-1 text-xs text-slate-500">
+                        桃園區 & 宜蘭區 · 月度營收與目標對比（{companyPerf.startDate} ~ {companyPerf.endDate}）
+                      </p>
+                      <div className="h-[200px] w-full min-w-0 lg:h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={regionalChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
+                            <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
+                            <Legend />
+                            {(["桃園區", "宜蘭區"] as const).flatMap((reg) => {
+                              const colors = REGION_CHART_COLORS[reg];
+                              if (!companyPerf.regionalBenchmark.some((r) => r.region === reg)) return [];
+                              return [
+                                <Bar key={`${reg}-target`} dataKey={`${reg}_target`} name={`${reg} 目標`} fill={colors.target} radius={[4, 4, 0, 0]} />,
+                                <Bar key={`${reg}-actual`} dataKey={`${reg}_actual`} name={`${reg} 實際`} fill={colors.actual} radius={[4, 4, 0, 0]} />,
+                              ];
+                            })}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </div>
                 </div>
               : null}
@@ -691,49 +722,23 @@ export default function OperationsAnalysisPage() {
                 <p className="mb-3 mt-1 text-xs text-slate-500">
                   依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
                 </p>
-                <ol className="space-y-2">
+                <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {companyPerf.storeRanking.map((s, i) => (
                     <li
                       key={s.storeId}
                       className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
                     >
-                      <span>
+                      <span className="min-w-0 truncate">
                         <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
                         {s.storeName}
-                        <span className="ml-2 text-xs text-slate-400">{s.region}</span>
+                        <span className="ml-1 text-xs text-slate-400">{s.region}</span>
                       </span>
-                      <span className="font-semibold" style={{ color: OPS_COLORS.hours.label }}>
+                      <span className="ml-2 shrink-0 font-semibold" style={{ color: OPS_COLORS.hours.label }}>
                         {s.targetMetDays} 次
                       </span>
                     </li>
                   ))}
                 </ol>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="font-semibold text-slate-800">區域對標</h2>
-                <p className="mb-3 mt-1 text-xs text-slate-500">
-                  桃園區 & 宜蘭區 · 月度營收與目標對比（{companyPerf.startDate} ~ {companyPerf.endDate}）
-                </p>
-                <div className="h-[300px] w-full min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={regionalChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
-                      <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
-                      <Legend />
-                      {(["桃園區", "宜蘭區"] as const).flatMap((reg) => {
-                        const colors = REGION_CHART_COLORS[reg];
-                        if (!companyPerf.regionalBenchmark.some((r) => r.region === reg)) return [];
-                        return [
-                          <Bar key={`${reg}-target`} dataKey={`${reg}_target`} name={`${reg} 目標`} fill={colors.target} radius={[4, 4, 0, 0]} />,
-                          <Bar key={`${reg}-actual`} dataKey={`${reg}_actual`} name={`${reg} 實際`} fill={colors.actual} radius={[4, 4, 0, 0]} />,
-                        ];
-                      })}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
               </div>
             </>
           }
