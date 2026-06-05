@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei } from "@/lib/date";
+import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import {
   buildDashboardFilterResult,
@@ -8,13 +8,11 @@ import {
 import { yoyGrowthRate } from "@/lib/operations-yoy";
 import {
   fetchChartsPerStore,
-  fetchDualRegionChartTotals,
   filterChartsByCatalogRegions,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
   sumChartRows,
 } from "@/modules/operations/services/operations-metrics.service";
-import { OPS_KPI_CUMULATIVE_START_YMD } from "@/lib/performance-metrics-range";
 import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { parseApiPagination, paginateArray } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
@@ -26,13 +24,6 @@ function shiftYear(dateStr: string, deltaYears: number): string {
   const d = parseDateOnlyUTC(dateStr);
   d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
   return formatDateOnly(d);
-}
-
-function rangesEqual(
-  a: { startDate: string; endDate: string },
-  b: { startDate: string; endDate: string }
-): boolean {
-  return a.startDate === b.startDate && a.endDate === b.endDate;
 }
 
 export async function GET(request: NextRequest) {
@@ -53,7 +44,7 @@ export async function GET(request: NextRequest) {
       dualRegions: [...DUAL_OPS_REGIONS],
       dataSource: "reports-charts",
       dataSourceNote:
-        "與「圖表」相同公式；營收可查自 2025-01-01；KPI 自 2026-01-01 累計至今日",
+        "與「圖表」相同公式；KPI 依篩選區間累計桃園區＋宜蘭區；營收成長率為去年同期同區間",
     };
 
     if (!startDate || !endDate) {
@@ -71,12 +62,6 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate
     );
-    const todayYmd = formatDateOnlyTaipei();
-    const kpiRange = {
-      startDate: OPS_KPI_CUMULATIVE_START_YMD,
-      endDate: todayYmd,
-    };
-
     const [perStore, priorPerStore] = await Promise.all([
       fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
       fetchPriorYearChartsForFilter(
@@ -86,24 +71,11 @@ export async function GET(request: NextRequest) {
       ),
     ]);
 
-    let dualCurrent;
-    if (rangesEqual(kpiRange, effectiveRange)) {
-      const rows = filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS);
-      dualCurrent = sumChartRows(rows);
-    } else {
-      dualCurrent = await fetchDualRegionChartTotals(
-        kpiRange.startDate,
-        kpiRange.endDate
-      );
-    }
-
-    const priorKpiEnd = shiftYear(
-      effectiveRange.endDate < todayYmd ? effectiveRange.endDate : todayYmd,
-      -1
+    const dualCurrent = sumChartRows(
+      filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS)
     );
-    const dualPrior = await fetchDualRegionChartTotals(
-      shiftYear(kpiRange.startDate, -1),
-      priorKpiEnd
+    const dualPrior = sumChartRows(
+      filterChartsByCatalogRegions(priorPerStore, DUAL_OPS_REGIONS)
     );
     const kpiYoyGrowthRate = yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue);
 
@@ -166,8 +138,8 @@ export async function GET(request: NextRequest) {
         yoyGrowthRate: kpiYoyGrowthRate,
         priorYearRevenue: dualPrior.revenue,
         regionLabel: "桃園區 + 宜蘭區",
-        periodStartDate: kpiRange.startDate,
-        periodEndDate: kpiRange.endDate,
+        periodStartDate: effectiveRange.startDate,
+        periodEndDate: effectiveRange.endDate,
       },
       filteredMetrics: {
         totalRevenue: filteredResult.summary.revenue,

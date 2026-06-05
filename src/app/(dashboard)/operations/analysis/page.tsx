@@ -22,13 +22,17 @@ import { OpsFilterBar } from "@/components/operations/OpsFilterBar";
 import { formatLocalDateInput } from "@/lib/date";
 import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
+import {
+  OPS_COLORS,
+  REGION_CHART_COLORS,
+  getYoyColor,
+  type OpsThemeToken,
+} from "@/lib/ops-color-tokens";
 import type { OpsDashboardMeta } from "@/types/operations";
 
 const TABS = [
   { id: "overview", label: "門市概況" },
   { id: "trend", label: "趨勢分析" },
-  { id: "achievement", label: "達成分析" },
-  { id: "regional", label: "區域對標" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -102,11 +106,6 @@ type PerfData = {
   };
 };
 
-const REGION_CHART_COLORS = {
-  桃園區: { target: "#93c5fd", actual: "#1e40af" },
-  宜蘭區: { target: "#c4b5fd", actual: "#6d28d9" },
-} as const;
-
 function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
@@ -153,10 +152,19 @@ function dashMoney(n: number | null | undefined) {
   return formatMoney(n);
 }
 
-function IconBadge({ children, className }: { children: React.ReactNode; className: string }) {
+function IconBadge({
+  children,
+  iconBg,
+  iconColor,
+}: {
+  children: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+}) {
   return (
     <div
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${className}`}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg"
+      style={{ backgroundColor: iconBg, color: iconColor }}
     >
       {children}
     </div>
@@ -168,24 +176,62 @@ function TopMetricCard({
   value,
   unit,
   icon,
-  iconClass,
+  theme,
 }: {
   label: string;
   value: string;
   unit: string;
   icon: string;
-  iconClass: string;
+  theme: OpsThemeToken;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <IconBadge className={iconClass}>{icon}</IconBadge>
+    <div
+      className="flex items-start gap-3 rounded-xl border p-4 shadow-sm"
+      style={{ backgroundColor: theme.bg, borderColor: theme.border }}
+    >
+      <IconBadge iconBg={theme.iconBg} iconColor={theme.icon}>
+        {icon}
+      </IconBadge>
       <div className="min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="mt-1 text-2xl font-bold tabular-nums text-slate-800">
+        <p className="text-xs" style={{ color: theme.label }}>
+          {label}
+        </p>
+        <p className="mt-1 text-2xl font-bold tabular-nums" style={{ color: theme.value }}>
           {value}
-          <span className="ml-1 text-sm font-normal text-slate-500">{unit}</span>
+          <span className="ml-1 text-sm font-normal opacity-70">{unit}</span>
         </p>
       </div>
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  theme,
+  valueColor,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub: React.ReactNode;
+  theme?: OpsThemeToken;
+  valueColor?: string;
+}) {
+  const cardStyle =
+    theme ?
+      { backgroundColor: theme.bg, borderColor: theme.border }
+    : { backgroundColor: "#fff", borderColor: "#e2e8f0" };
+
+  return (
+    <div className="rounded-xl border px-5 py-4 shadow-sm" style={cardStyle}>
+      <p className="text-sm font-medium" style={{ color: theme?.label ?? "#334155" }}>
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-semibold text-slate-400">
+        <span style={{ color: valueColor ?? theme?.value ?? "#1e293b" }}>{value}</span>
+      </p>
+      <p className="mt-2 text-xs text-slate-500">{sub}</p>
     </div>
   );
 }
@@ -215,22 +261,29 @@ function MiniStat({
   value,
   unit,
   icon,
-  iconBg,
+  theme,
 }: {
   label: string;
   value: string;
   unit: string;
   icon: string;
-  iconBg: string;
+  theme: OpsThemeToken;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-      <IconBadge className={iconBg}>{icon}</IconBadge>
+    <div
+      className="flex items-center gap-3 rounded-lg border p-3"
+      style={{ backgroundColor: theme.bg, borderColor: theme.border }}
+    >
+      <IconBadge iconBg={theme.iconBg} iconColor={theme.icon}>
+        {icon}
+      </IconBadge>
       <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-lg font-bold tabular-nums text-slate-800">
+        <p className="text-xs" style={{ color: theme.label }}>
+          {label}
+        </p>
+        <p className="text-lg font-bold tabular-nums" style={{ color: theme.value }}>
           {value}
-          <span className="ml-1 text-xs font-normal text-slate-500">{unit}</span>
+          <span className="ml-1 text-xs font-normal opacity-70">{unit}</span>
         </p>
       </div>
     </div>
@@ -250,46 +303,43 @@ function AchievementBucketCard({
   pct: number;
   hint?: string;
   storeNames: string[];
-  tone: "green" | "amber" | "rose";
+  tone: "met" | "near" | "unmet";
 }) {
-  const styles = {
-    green: {
-      box: "bg-green-50 border-green-100",
-      count: "text-green-700",
-      title: "text-green-800",
-      pct: "text-green-600",
-      hint: "text-green-600/80",
-      pop: "border-green-200 bg-white text-green-900",
-    },
-    amber: {
-      box: "bg-amber-50 border-amber-100",
-      count: "text-amber-700",
-      title: "text-amber-800",
-      pct: "text-amber-600",
-      hint: "text-amber-600/80",
-      pop: "border-amber-200 bg-white text-amber-900",
-    },
-    rose: {
-      box: "bg-rose-50 border-rose-100",
-      count: "text-rose-700",
-      title: "text-rose-800",
-      pct: "text-rose-600",
-      hint: "text-rose-600/80",
-      pop: "border-rose-200 bg-white text-rose-900",
-    },
-  }[tone];
+  const palette =
+    tone === "met" ? OPS_COLORS.status.met
+    : tone === "unmet" ? OPS_COLORS.status.unmet
+    : OPS_COLORS.achievement;
+
+  const countColor = tone === "near" ? OPS_COLORS.achievement.value : palette.value;
+  const titleColor = palette.label;
+  const pctColor = palette.value;
 
   return (
-    <div className={`group relative rounded-xl border p-6 text-center ${styles.box}`}>
-      <p className={`text-4xl font-bold ${styles.count}`}>{count}</p>
-      <p className={`mt-2 font-medium ${styles.title}`}>{title}</p>
-      <p className={`text-sm ${styles.pct}`}>{formatPctOne(pct)}</p>
-      {hint ? <p className={`mt-1 text-[10px] ${styles.hint}`}>{hint}</p> : null}
+    <div
+      className="group relative rounded-xl border p-6 text-center"
+      style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+    >
+      <p className="text-4xl font-bold" style={{ color: countColor }}>
+        {count}
+      </p>
+      <p className="mt-2 font-medium" style={{ color: titleColor }}>
+        {title}
+      </p>
+      <p className="text-sm" style={{ color: pctColor }}>
+        {formatPctOne(pct)}
+      </p>
+      {hint ?
+        <p className="mt-1 text-[10px] opacity-80" style={{ color: titleColor }}>
+          {hint}
+        </p>
+      : null}
       {storeNames.length > 0 ? (
         <div
-          className={`pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[min(100%,280px)] -translate-x-1/2 rounded-lg border px-3 py-2 text-left text-xs opacity-0 shadow-lg transition-opacity group-hover:opacity-100 ${styles.pop}`}
+          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[min(100%,280px)] -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs text-slate-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
         >
-          <p className="mb-1 font-semibold">{title}清單</p>
+          <p className="mb-1 font-semibold" style={{ color: titleColor }}>
+            {title}清單
+          </p>
           <ul className="space-y-0.5">
             {storeNames.map((name) => (
               <li key={name}>{name}</li>
@@ -308,10 +358,12 @@ export default function OperationsAnalysisPage() {
   const [meta, setMeta] = useState<OpsDashboardMeta | null>(null);
   const [kpiMetrics, setKpiMetrics] = useState<KpiMetrics | null>(null);
   const [filtered, setFiltered] = useState<FilteredMetrics | null>(null);
-  const [perfData, setPerfData] = useState<PerfData | null>(null);
+  const [companyPerf, setCompanyPerf] = useState<PerfData | null>(null);
+  const [storePerf, setStorePerf] = useState<PerfData | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [perfLoading, setPerfLoading] = useState(false);
+  const [companyPerfLoading, setCompanyPerfLoading] = useState(false);
+  const [storePerfLoading, setStorePerfLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [queried, setQueried] = useState(false);
@@ -325,9 +377,10 @@ export default function OperationsAnalysisPage() {
   const didInitSelection = useRef(false);
   const didAutoFromUrl = useRef(false);
   const didAutoLoadDefault = useRef(false);
-  const perfCacheRef = useRef<{ key: string; data: PerfData } | null>(null);
+  const companyPerfCacheRef = useRef<{ key: string; data: PerfData } | null>(null);
+  const storePerfCacheRef = useRef<{ key: string; data: PerfData } | null>(null);
 
-  const queryKey = `${startDate}|${endDate}|${region}|${storeId}`;
+  const storeQueryKey = `${startDate}|${endDate}|${region}|${storeId}`;
 
   const loadMeta = useCallback(async () => {
     const res = await fetch("/api/operations/dashboard");
@@ -382,8 +435,10 @@ export default function OperationsAnalysisPage() {
     setQueried(true);
     setFiltered(null);
     setKpiMetrics(null);
-    perfCacheRef.current = null;
-    setPerfData(null);
+    companyPerfCacheRef.current = null;
+    storePerfCacheRef.current = null;
+    setCompanyPerf(null);
+    setStorePerf(null);
 
     const params = new URLSearchParams({
       startDate,
@@ -395,10 +450,18 @@ export default function OperationsAnalysisPage() {
     if (storeId) params.set("storeId", storeId);
     else if (region) params.set("region", region);
 
+    const companyKey = `${startDate}|${endDate}`;
+    setCompanyPerfLoading(true);
+
     try {
-      const res = await fetch(`/api/operations/dashboard?${params}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const [dashRes, companyRes] = await Promise.all([
+        fetch(`/api/operations/dashboard?${params}`),
+        fetch(
+          `/api/operations/performance-analysis?${new URLSearchParams({ startDate, endDate })}`
+        ),
+      ]);
+      const data = await dashRes.json().catch(() => ({}));
+      if (!dashRes.ok) {
         setMessage(data.error || "查詢失敗");
         return;
       }
@@ -410,10 +473,19 @@ export default function OperationsAnalysisPage() {
       }
       setKpiMetrics(data.kpiMetrics ?? null);
       setFiltered(data.filteredMetrics ?? null);
+
+      if (companyRes.ok) {
+        const companyJson = (await companyRes.json()) as PerfData;
+        companyPerfCacheRef.current = { key: companyKey, data: companyJson };
+        setCompanyPerf(companyJson);
+      } else {
+        setCompanyPerf(null);
+      }
     } catch {
       setMessage("查詢失敗");
     } finally {
       setLoading(false);
+      setCompanyPerfLoading(false);
     }
   }, [startDate, endDate, region, storeId]);
 
@@ -434,15 +506,15 @@ export default function OperationsAnalysisPage() {
   }, [meta, storeId, startDate, endDate, handleRefresh]);
 
   useEffect(() => {
-    if (!queried || tab === "overview") return;
+    if (!queried || tab !== "trend") return;
 
-    if (perfCacheRef.current?.key === queryKey) {
-      setPerfData(perfCacheRef.current.data);
+    if (storePerfCacheRef.current?.key === storeQueryKey) {
+      setStorePerf(storePerfCacheRef.current.data);
       return;
     }
 
     let cancelled = false;
-    setPerfLoading(true);
+    setStorePerfLoading(true);
 
     void (async () => {
       try {
@@ -451,23 +523,23 @@ export default function OperationsAnalysisPage() {
         else if (region) params.set("region", region);
         const res = await fetch(`/api/operations/performance-analysis?${params}`);
         if (!res.ok) {
-          if (!cancelled) setPerfData(null);
+          if (!cancelled) setStorePerf(null);
           return;
         }
         const json = (await res.json()) as PerfData;
         if (!cancelled) {
-          perfCacheRef.current = { key: queryKey, data: json };
-          setPerfData(json);
+          storePerfCacheRef.current = { key: storeQueryKey, data: json };
+          setStorePerf(json);
         }
       } finally {
-        if (!cancelled) setPerfLoading(false);
+        if (!cancelled) setStorePerfLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [tab, queryKey, queried, startDate, endDate, region, storeId]);
+  }, [tab, storeQueryKey, queried, startDate, endDate, region, storeId]);
 
   async function handleSyncStores() {
     setSyncing(true);
@@ -482,31 +554,31 @@ export default function OperationsAnalysisPage() {
   const chartData = m?.dailyTrend ?? [];
 
   const regionalChartData = useMemo(() => {
-    if (!perfData?.regionalBenchmark.length) return [];
-    const labels = perfData.regionalBenchmark[0]?.months.map((mo) => mo.label) ?? [];
+    if (!companyPerf?.regionalBenchmark.length) return [];
+    const labels = companyPerf.regionalBenchmark[0]?.months.map((mo) => mo.label) ?? [];
     return labels.map((label, i) => {
       const row: Record<string, string | number> = { label };
-      for (const r of perfData.regionalBenchmark) {
+      for (const r of companyPerf.regionalBenchmark) {
         row[`${r.region}_actual`] = r.months[i]?.actualRevenue ?? 0;
         row[`${r.region}_target`] = r.months[i]?.targetRevenue ?? 0;
       }
       return row;
     });
-  }, [perfData]);
+  }, [companyPerf]);
 
   const subtitle =
     queried && m ?
       `${startDate} ~ ${endDate} · ${m.filterLabel}`
     : "篩選日期與門市後按「重新整理」查看績效指標";
 
-  const a = perfData?.achievementSummary;
+  const a = companyPerf?.achievementSummary;
 
   return (
     <div className="space-y-5 pb-8 max-w-7xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-            <BarChart3 className="h-6 w-6 text-blue-800" />
+            <BarChart3 className="h-6 w-6" style={{ color: OPS_COLORS.revenue.value }} />
             績效 & 業績分析
           </h1>
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
@@ -548,48 +620,39 @@ export default function OperationsAnalysisPage() {
       />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-          <p className="text-sm font-medium text-sky-700">全公司營收達成值</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-400">
-            {queried && kpiMetrics && !loading ?
-              <span className="text-slate-800">{formatMoney(kpiMetrics.totalRevenue)}</span>
-            : "—"}
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            {queried && kpiMetrics?.periodStartDate && kpiMetrics?.periodEndDate ?
+        <KpiCard
+          label="全公司營收達成值"
+          theme={OPS_COLORS.revenue}
+          value={queried && kpiMetrics && !loading ? formatMoney(kpiMetrics.totalRevenue) : "—"}
+          sub={
+            queried && kpiMetrics?.periodStartDate && kpiMetrics?.periodEndDate ?
               `${kpiMetrics.periodStartDate} ~ ${kpiMetrics.periodEndDate} · ${kpiMetrics.regionLabel ?? "桃園區 + 宜蘭區"}`
-            : "宜蘭區 + 桃園區（查詢後顯示）"}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-800">營運部工效比</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-400">
-            {queried && kpiMetrics && !loading ?
-              <span className="text-slate-800">
+            : "宜蘭區 + 桃園區（查詢後顯示）"
+          }
+        />
+        <KpiCard
+          label="營運部工效比"
+          theme={OPS_COLORS.hours}
+          value={
+            queried && kpiMetrics && !loading ?
+              <>
                 {formatRatio(kpiMetrics.efficiencyRatio)}
-                <span className="ml-1 text-base font-normal text-slate-500">元/hr</span>
-              </span>
-            : "—"}
-          </p>
-          <p className="mt-2 text-xs text-slate-500">營收達成值 ÷ 總工時</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-          <p className="text-sm font-medium text-emerald-700">YoY 營收成長率</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-400">
-            {queried && kpiMetrics && !loading ?
-              <span
-                className={
-                  kpiMetrics.yoyGrowthRate != null && kpiMetrics.yoyGrowthRate >= 0 ?
-                    "text-emerald-700"
-                  : "text-slate-800"
-                }
-              >
-                {formatYoy(kpiMetrics.yoyGrowthRate)}
-              </span>
-            : "—"}
-          </p>
-          <p className="mt-2 text-xs text-slate-500">較去年同期</p>
-        </div>
+                <span className="ml-1 text-base font-normal opacity-70">元/hr</span>
+              </>
+            : "—"
+          }
+          sub="營收達成值 ÷ 總工時"
+        />
+        <KpiCard
+          label="營收成長率"
+          value={queried && kpiMetrics && !loading ? formatYoy(kpiMetrics.yoyGrowthRate) : "—"}
+          valueColor={
+            queried && kpiMetrics && !loading ?
+              getYoyColor(kpiMetrics.yoyGrowthRate)
+            : OPS_COLORS.yoy.neutral
+          }
+          sub="較去年同期"
+        />
       </div>
 
       {message ?
@@ -598,17 +661,97 @@ export default function OperationsAnalysisPage() {
         </p>
       : null}
 
+      {queried ?
+        <div className="space-y-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            全區視角 · 桃園區 + 宜蘭區
+          </p>
+
+          {companyPerfLoading || loading ?
+            <p className="py-6 text-center text-sm text-slate-500">載入全區數據中…</p>
+          : !companyPerf ?
+            <p className="py-6 text-center text-sm text-slate-500">全區數據載入失敗，請重新整理</p>
+          : <>
+              {a ?
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="font-semibold text-slate-800">達成分析</h2>
+                  <p className="mb-4 mt-1 text-xs text-slate-500">
+                    區間營收達成情況（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市 · 實際營收 ÷ 業績目標）
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <AchievementBucketCard count={a.green} title="達標" pct={a.greenPct} storeNames={a.achievementStores?.green ?? []} tone="met" />
+                    <AchievementBucketCard count={a.yellow} title="接近達標" pct={a.yellowPct} hint="達成率 80%～99%" storeNames={a.achievementStores?.yellow ?? []} tone="near" />
+                    <AchievementBucketCard count={a.red} title="未達標" pct={a.redPct} hint="達成率 < 80%" storeNames={a.achievementStores?.red ?? []} tone="unmet" />
+                  </div>
+                </div>
+              : null}
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="font-semibold text-slate-800">門市排名</h2>
+                <p className="mb-3 mt-1 text-xs text-slate-500">
+                  依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
+                </p>
+                <ol className="space-y-2">
+                  {companyPerf.storeRanking.map((s, i) => (
+                    <li
+                      key={s.storeId}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                    >
+                      <span>
+                        <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
+                        {s.storeName}
+                        <span className="ml-2 text-xs text-slate-400">{s.region}</span>
+                      </span>
+                      <span className="font-semibold" style={{ color: OPS_COLORS.hours.label }}>
+                        {s.targetMetDays} 次
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="font-semibold text-slate-800">區域對標</h2>
+                <p className="mb-3 mt-1 text-xs text-slate-500">
+                  桃園區 & 宜蘭區 · 月度營收與目標對比（{companyPerf.startDate} ~ {companyPerf.endDate}）
+                </p>
+                <div className="h-[300px] w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={regionalChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
+                      <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
+                      <Legend />
+                      {(["桃園區", "宜蘭區"] as const).flatMap((reg) => {
+                        const colors = REGION_CHART_COLORS[reg];
+                        if (!companyPerf.regionalBenchmark.some((r) => r.region === reg)) return [];
+                        return [
+                          <Bar key={`${reg}-target`} dataKey={`${reg}_target`} name={`${reg} 目標`} fill={colors.target} radius={[4, 4, 0, 0]} />,
+                          <Bar key={`${reg}-actual`} dataKey={`${reg}_actual`} name={`${reg} 實際`} fill={colors.actual} radius={[4, 4, 0, 0]} />,
+                        ];
+                      })}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </>
+          }
+        </div>
+      : null}
+
       <div className="flex gap-1 border-b border-slate-200">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            className="-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors border-transparent text-slate-500 hover:text-slate-700"
+            style={
               tab === t.id ?
-                "border-blue-700 text-blue-800"
-              : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+                { borderColor: OPS_COLORS.revenue.value, color: OPS_COLORS.revenue.value }
+              : undefined
+            }
           >
             {t.label}
           </button>
@@ -623,31 +766,53 @@ export default function OperationsAnalysisPage() {
         : m ?
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              <TopMetricCard label="營業額" value={formatMoney(m.totalRevenue)} unit="元" icon="💰" iconClass="bg-blue-100 text-blue-600" />
-              <TopMetricCard label="工時" value={formatHours(m.totalLaborHours)} unit="hr" icon="⏱" iconClass="bg-emerald-100 text-emerald-600" />
-              <TopMetricCard label="工效比" value={formatRatio(m.efficiencyRatio)} unit="元/hr" icon="⚡" iconClass="bg-violet-100 text-violet-600" />
-              <TopMetricCard label="月營收目標" value={dashMoney(m.revenueForecast)} unit="元" icon="📈" iconClass="bg-amber-100 text-amber-600" />
-              <TopMetricCard label="營收達成值" value={formatMoney(m.revenueAchievement ?? m.totalRevenue)} unit="元" icon="✓" iconClass="bg-teal-100 text-teal-600" />
-              <TopMetricCard label="達成率" value={formatPctValue(m.revenueAchievementRate ?? null)} unit="%" icon="%" iconClass="bg-rose-100 text-rose-600" />
+              <TopMetricCard label="營業額" value={formatMoney(m.totalRevenue)} unit="元" icon="💰" theme={OPS_COLORS.revenue} />
+              <TopMetricCard label="工時" value={formatHours(m.totalLaborHours)} unit="hr" icon="⏱" theme={OPS_COLORS.hours} />
+              <TopMetricCard label="工效比" value={formatRatio(m.efficiencyRatio)} unit="元/hr" icon="⚡" theme={OPS_COLORS.hours} />
+              <TopMetricCard label="月營收目標" value={dashMoney(m.revenueForecast)} unit="元" icon="📈" theme={OPS_COLORS.achievement} />
+              <TopMetricCard label="營收達成值" value={formatMoney(m.revenueAchievement ?? m.totalRevenue)} unit="元" icon="✓" theme={OPS_COLORS.revenue} />
+              <TopMetricCard label="達成率" value={formatPctValue(m.revenueAchievementRate ?? null)} unit="%" icon="%" theme={OPS_COLORS.achievement} />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <IconBadge className="bg-sky-100 text-sky-600">📊</IconBadge>
+              <div
+                className="flex items-center gap-4 rounded-xl border bg-white p-4 shadow-sm"
+                style={{ borderColor: "#e2e8f0" }}
+              >
+                <IconBadge iconBg="#F1EFE8" iconColor={OPS_COLORS.yoy.neutral}>
+                  📊
+                </IconBadge>
                 <div>
-                  <p className="text-sm font-medium text-slate-800">YoY 營收成長率</p>
-                  <p className="text-2xl font-bold text-slate-800">{formatYoy(m.yoyGrowthRate ?? null)}</p>
+                  <p className="text-sm font-medium text-slate-800">營收成長率</p>
+                  <p
+                    className="text-2xl font-bold"
+                    style={{ color: getYoyColor(m.yoyGrowthRate ?? null) }}
+                  >
+                    {formatYoy(m.yoyGrowthRate ?? null)}
+                  </p>
                   <p className="text-xs text-slate-500">較去年同期</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <IconBadge className="bg-indigo-100 text-indigo-600">⏰</IconBadge>
+              <div
+                className="flex items-center gap-4 rounded-xl border p-4 shadow-sm"
+                style={{
+                  backgroundColor: OPS_COLORS.hours.bg,
+                  borderColor: OPS_COLORS.hours.border,
+                }}
+              >
+                <IconBadge iconBg={OPS_COLORS.hours.iconBg} iconColor={OPS_COLORS.hours.icon}>
+                  ⏰
+                </IconBadge>
                 <div>
-                  <p className="text-sm font-medium text-slate-800">門市每日營業時長</p>
-                  <p className="text-2xl font-bold text-slate-800">
+                  <p className="text-sm font-medium" style={{ color: OPS_COLORS.hours.label }}>
+                    門市每日營業時長
+                  </p>
+                  <p className="text-2xl font-bold" style={{ color: OPS_COLORS.hours.value }}>
                     {m.businessHoursLabel ?? dashHours(m.dailyBusinessHours)}
                   </p>
-                  <p className="text-xs text-slate-500">週一～五與週六可分別設定</p>
+                  <p className="text-xs opacity-70" style={{ color: OPS_COLORS.hours.label }}>
+                    週一～五與週六可分別設定
+                  </p>
                 </div>
               </div>
             </div>
@@ -655,9 +820,15 @@ export default function OperationsAnalysisPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <PanelCard title="工時明細">
                 <div className="space-y-3">
-                  <MiniStat label="實際出勤總工時" value={formatHours(m.actualAttendanceHours ?? m.totalLaborHours)} unit="hr" icon="👥" iconBg="bg-blue-100 text-blue-600" />
-                  <MiniStat label="加班工時" value={dashHours(m.overtimeHours)} unit="hr" icon="⏰" iconBg="bg-red-100 text-red-600" />
-                  <MiniStat label="加班時數佔比" value={formatPctValue(m.overtimeRatio ?? null)} unit="%" icon="◐" iconBg="bg-orange-100 text-orange-600" />
+                  <MiniStat label="實際出勤總工時" value={formatHours(m.actualAttendanceHours ?? m.totalLaborHours)} unit="hr" icon="👥" theme={OPS_COLORS.hours} />
+                  <MiniStat
+                    label="加班工時"
+                    value={dashHours(m.overtimeHours)}
+                    unit="hr"
+                    icon="⏰"
+                    theme={{ ...OPS_COLORS.hours, value: OPS_COLORS.hours.chartDeep, icon: OPS_COLORS.hours.chartDeep }}
+                  />
+                  <MiniStat label="加班時數佔比" value={formatPctValue(m.overtimeRatio ?? null)} unit="%" icon="◐" theme={OPS_COLORS.achievement} />
                 </div>
               </PanelCard>
 
@@ -685,13 +856,20 @@ export default function OperationsAnalysisPage() {
                     </p>
                   </div>
                   {!hasLaborTarget ?
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-xs text-amber-900">
+                    <div
+                      className="rounded-lg border p-3"
+                      style={{
+                        backgroundColor: OPS_COLORS.achievement.bg,
+                        borderColor: OPS_COLORS.achievement.border,
+                      }}
+                    >
+                      <p className="text-xs" style={{ color: OPS_COLORS.achievement.value }}>
                         請至「門市目標設定」匯入月目標工時；營業時長請至「營運門市管理」設定
                       </p>
                       <Link
                         href="/operations/store-targets"
-                        className="mt-2 inline-block rounded-md bg-amber-400 px-3 py-1 text-xs font-medium text-amber-950 hover:bg-amber-500"
+                        className="mt-2 inline-block rounded-md px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                        style={{ backgroundColor: OPS_COLORS.achievement.chartDeep }}
                       >
                         前往門市目標設定
                       </Link>
@@ -701,7 +879,14 @@ export default function OperationsAnalysisPage() {
               </PanelCard>
             </div>
 
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <div
+              className="rounded-xl border px-4 py-3 text-sm"
+              style={{
+                backgroundColor: OPS_COLORS.revenue.bg,
+                borderColor: OPS_COLORS.revenue.border,
+                color: OPS_COLORS.revenue.value,
+              }}
+            >
               <span className="mr-2">💡</span>
               總結：區間內總營業額為 {formatMoney(m.totalRevenue)} 元，總工時為 {formatHours(m.totalLaborHours)} hr，整體工效比為 {formatRatio(m.efficiencyRatio)} 元/hr。
             </div>
@@ -710,7 +895,7 @@ export default function OperationsAnalysisPage() {
       : null}
 
       {tab === "trend" ?
-        perfLoading ?
+        storePerfLoading ?
           <p className="py-12 text-center text-sm text-slate-500">載入中…</p>
         : !queried || !m ?
           <p className="py-12 text-center text-sm text-slate-500">請先查詢門市概況</p>
@@ -721,15 +906,15 @@ export default function OperationsAnalysisPage() {
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="revGradMerged" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                        <stop offset="0%" stopColor={OPS_COLORS.revenue.chart} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={OPS_COLORS.revenue.chart} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatMoney(Number(v))} />
                     <Tooltip formatter={(v: number) => [formatMoney(v), "營業額"]} />
-                    <Area type="monotone" dataKey="revenue" stroke="#2563eb" fill="url(#revGradMerged)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="revenue" stroke={OPS_COLORS.revenue.chart} fill="url(#revGradMerged)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -743,7 +928,7 @@ export default function OperationsAnalysisPage() {
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: number) => [formatHours(v), "工時"]} />
-                    <Line type="monotone" dataKey="laborHours" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="laborHours" stroke={OPS_COLORS.hours.chart} strokeWidth={2} dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -752,14 +937,14 @@ export default function OperationsAnalysisPage() {
             <PanelCard title="月度營收 vs 目標">
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={perfData?.revenueTrend ?? []}>
+                  <BarChart data={storePerf?.revenueTrend ?? []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
                     <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
                     <Legend />
-                    <Bar dataKey="targetRevenue" name="目標營收" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="actualRevenue" name="實際營收" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="targetRevenue" name="目標營收" fill={OPS_COLORS.revenue.chartMute} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="actualRevenue" name="實際營收" fill={OPS_COLORS.revenue.chart} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -768,13 +953,13 @@ export default function OperationsAnalysisPage() {
             <PanelCard title="人均產值趨勢">
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={perfData?.productivityTrend ?? []}>
+                  <LineChart data={storePerf?.productivityTrend ?? []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: number) => [`${v} 元/hr`, "人均產值"]} />
                     <Legend />
-                    <Line type="monotone" dataKey="perCapita" name="人均產值" stroke="#16a34a" strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                    <Line type="monotone" dataKey="perCapita" name="人均產值" stroke={OPS_COLORS.hours.chart} strokeWidth={2} dot={{ r: 4 }} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -782,79 +967,6 @@ export default function OperationsAnalysisPage() {
           </div>
       : null}
 
-      {tab === "achievement" ?
-        perfLoading ?
-          <p className="py-12 text-center text-sm text-slate-500">載入中…</p>
-        : !perfData ?
-          <p className="py-12 text-center text-sm text-slate-500">請先查詢門市概況</p>
-        : <div className="space-y-5">
-            {a ?
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="font-semibold text-slate-800">營收達成率</h2>
-                <p className="mb-4 mt-1 text-xs text-slate-500">
-                  區間營收達成情況（{perfData.startDate} ~ {perfData.endDate} · 實際營收 ÷ 業績目標）
-                </p>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <AchievementBucketCard count={a.green} title="達標" pct={a.greenPct} storeNames={a.achievementStores?.green ?? []} tone="green" />
-                  <AchievementBucketCard count={a.yellow} title="接近達標" pct={a.yellowPct} hint="達成率 80%～99%" storeNames={a.achievementStores?.yellow ?? []} tone="amber" />
-                  <AchievementBucketCard count={a.red} title="未達標" pct={a.redPct} hint="達成率 < 80%" storeNames={a.achievementStores?.red ?? []} tone="rose" />
-                </div>
-              </div>
-            : null}
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="font-semibold text-slate-800">門市排名</h2>
-              <p className="mb-3 mt-1 text-xs text-slate-500">
-                依區間工效比達標次數（{perfData.startDate} ~ {perfData.endDate}）
-              </p>
-              <ol className="space-y-2">
-                {perfData.storeRanking.map((s, i) => (
-                  <li
-                    key={s.storeId}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
-                      {s.storeName}
-                      <span className="ml-2 text-xs text-slate-400">{s.region}</span>
-                    </span>
-                    <span className="font-semibold text-blue-800">{s.targetMetDays} 次</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </div>
-      : null}
-
-      {tab === "regional" ?
-        perfLoading ?
-          <p className="py-12 text-center text-sm text-slate-500">載入中…</p>
-        : !perfData ?
-          <p className="py-12 text-center text-sm text-slate-500">請先查詢門市概況</p>
-        : <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-800">區域對標</h2>
-            <p className="mb-3 mt-1 text-xs text-slate-500">桃園區 & 宜蘭區 · 月度營收與目標對比</p>
-            <div className="h-[300px] w-full min-w-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={regionalChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
-                  <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
-                  <Legend />
-                  {(["桃園區", "宜蘭區"] as const).flatMap((reg) => {
-                    const colors = REGION_CHART_COLORS[reg];
-                    if (!perfData.regionalBenchmark.some((r) => r.region === reg)) return [];
-                    return [
-                      <Bar key={`${reg}-target`} dataKey={`${reg}_target`} name={`${reg} 目標`} fill={colors.target} radius={[4, 4, 0, 0]} />,
-                      <Bar key={`${reg}-actual`} dataKey={`${reg}_actual`} name={`${reg} 實際`} fill={colors.actual} radius={[4, 4, 0, 0]} />,
-                    ];
-                  })}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-      : null}
     </div>
   );
 }

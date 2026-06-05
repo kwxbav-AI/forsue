@@ -31,29 +31,27 @@ import {
 
 import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
 import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
+import {
+  OPS_COLORS,
+  getYoyColor,
+  type OpsThemeToken,
+} from "@/lib/ops-color-tokens";
 
 function defaultOverviewStartDate() {
   const ymd = currentMonthStartYmdLocal();
   return ymd < OPS_REVENUE_METRICS_START_YMD ? OPS_REVENUE_METRICS_START_YMD : ymd;
 }
 
-/** 門市營收達成分佈與門市狀態圖共用色 */
-const ACHIEVEMENT_COLOR = {
-  green: "#bbf7d0",
-  pink: "#fbcfe8",
-  none: "#e2e8f0",
+const REGION_PIE_COLOR: Record<string, string> = {
+  桃園區: OPS_COLORS.region.taoyuan.actual,
+  宜蘭區: OPS_COLORS.region.yilan.actual,
 };
 
 function achievementBarFill(rate: number | null | undefined): string {
-  if (rate == null || Number.isNaN(rate)) return ACHIEVEMENT_COLOR.pink;
-  if (rate >= 100) return ACHIEVEMENT_COLOR.green;
-  return ACHIEVEMENT_COLOR.pink;
+  if (rate == null || Number.isNaN(rate)) return OPS_COLORS.status.none.border;
+  if (rate >= 100) return OPS_COLORS.status.met.dot;
+  return OPS_COLORS.status.unmet.border;
 }
-
-const REGION_PIE_COLOR: Record<string, string> = {
-  桃園區: "#e9a2a6",
-  宜蘭區: "#067086",
-};
 
 type OverviewStore = {
   storeId: string;
@@ -146,26 +144,44 @@ function KpiCard({
   value,
   sub,
   icon,
-  accent,
+  theme,
+  valueColor,
 }: {
   title: string;
   value: string;
   sub?: string;
   icon: React.ReactNode;
-  accent: string;
+  theme?: OpsThemeToken;
+  valueColor?: string;
 }) {
+  const cardStyle =
+    theme ?
+      { backgroundColor: theme.bg, borderColor: theme.border }
+    : { backgroundColor: "#fff", borderColor: "#e2e8f0" };
+
+  const iconWrapStyle =
+    theme ?
+      { backgroundColor: theme.iconBg, color: theme.icon }
+    : { backgroundColor: "#f1f5f9", color: OPS_COLORS.yoy.neutral };
+
   return (
-    <div
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm border-l-4"
-      style={{ borderLeftColor: accent }}
-    >
+    <div className="rounded-xl border p-4 shadow-sm" style={cardStyle}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
-          {sub ? <p className="text-xs text-slate-500 mt-0.5">{sub}</p> : null}
+          <p
+            className="text-xs font-medium uppercase tracking-wide"
+            style={{ color: theme?.label ?? "#64748b" }}
+          >
+            {title}
+          </p>
+          <p className="mt-1 text-2xl font-bold" style={{ color: valueColor ?? theme?.value ?? "#0f172a" }}>
+            {value}
+          </p>
+          {sub ?
+            <p className="mt-0.5 text-xs text-slate-500">{sub}</p>
+          : null}
         </div>
-        <div className="rounded-lg p-2" style={{ backgroundColor: `${accent}18`, color: accent }}>
+        <div className="rounded-lg p-2" style={iconWrapStyle}>
           {icon}
         </div>
       </div>
@@ -307,8 +323,8 @@ export default function OperationsOverviewPage() {
     : 0;
   const pieData = overview ?
     [
-      { name: "達標", value: overview.summary.green, color: ACHIEVEMENT_COLOR.green },
-      { name: "未達標", value: pieNotMet, color: ACHIEVEMENT_COLOR.pink },
+      { name: "達標", value: overview.summary.green, color: OPS_COLORS.status.met.bg },
+      { name: "未達標", value: pieNotMet, color: OPS_COLORS.status.unmet.bg },
     ].filter((x) => x.value > 0)
   : [];
   const customerMetrics = overview?.customerMetrics;
@@ -323,7 +339,7 @@ export default function OperationsOverviewPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Activity className="h-6 w-6 text-blue-800" />
+            <Activity className="h-6 w-6" style={{ color: OPS_COLORS.revenue.value }} />
             營運總覽
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -369,7 +385,8 @@ export default function OperationsOverviewPage() {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: OPS_COLORS.revenue.value }}
           >
             {loading ? "載入中…" : "重新整理"}
           </button>
@@ -384,14 +401,14 @@ export default function OperationsOverviewPage() {
               value={formatMoney(kpi?.totalTarget ?? overview.summary.totalTarget)}
               sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
               icon={<Target className="h-5 w-5" />}
-              accent="#6366f1"
+              theme={OPS_COLORS.achievement}
             />
             <KpiCard
               title="全公司營收達成值"
               value={formatMoney(kpi?.totalRevenue ?? 0)}
               sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
               icon={<Store className="h-5 w-5" />}
-              accent="#0284c7"
+              theme={OPS_COLORS.revenue}
             />
             <KpiCard
               title="區間營收成長率"
@@ -400,16 +417,16 @@ export default function OperationsOverviewPage() {
                   `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
                 : "—"
               }
-              sub={`較去年同期同區間 · 桃園+宜蘭`}
+              valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
+              sub="較去年同期同區間 · 桃園+宜蘭"
               icon={<Activity className="h-5 w-5" />}
-              accent="#16a34a"
             />
             <KpiCard
               title="區間達成率"
               value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
               sub="營收達成值 ÷ 營收目標值 · 桃園+宜蘭"
               icon={<Target className="h-5 w-5" />}
-              accent="#0d9488"
+              theme={OPS_COLORS.achievement}
             />
           </div>
 
@@ -419,21 +436,21 @@ export default function OperationsOverviewPage() {
               value={formatMoney(overview.summary.totalRevenue)}
               sub={`${overview.startDate} ~ ${overview.endDate} · ${regionLabel}`}
               icon={<Store className="h-5 w-5" />}
-              accent="#1e40af"
+              theme={OPS_COLORS.revenue}
             />
             <KpiCard
               title="營收達成率"
               value={formatPctOne(overview.summary.revenueAchievementRate)}
               sub={`月業績目標 · 達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
               icon={<Target className="h-5 w-5" />}
-              accent="#16a34a"
+              theme={OPS_COLORS.achievement}
             />
             <KpiCard
               title="總工時"
               value={overview.summary.totalLaborHours.toFixed(1)}
               sub="hr"
               icon={<Clock className="h-5 w-5" />}
-              accent="#7c3aed"
+              theme={OPS_COLORS.hours}
             />
             <KpiCard
               title="區間工效比"
@@ -444,7 +461,7 @@ export default function OperationsOverviewPage() {
               }
               sub="元 / hr"
               icon={<Activity className="h-5 w-5" />}
-              accent="#0d9488"
+              theme={OPS_COLORS.hours}
             />
             <KpiCard
               title="來客數（結帳單）"
@@ -459,7 +476,7 @@ export default function OperationsOverviewPage() {
                 : "請至資料上傳中心匯入"
               }
               icon={<Users className="h-5 w-5" />}
-              accent="#c026d3"
+              theme={OPS_COLORS.customer}
             />
             <KpiCard
               title="平均客單價"
@@ -470,13 +487,17 @@ export default function OperationsOverviewPage() {
               }
               sub="銷售總額 ÷ 來客數"
               icon={<Receipt className="h-5 w-5" />}
-              accent="#ea580c"
+              theme={OPS_COLORS.customer}
             />
           </div>
 
           <p className="text-xs text-slate-500 -mt-2">
             來客數與平均客單價請至{" "}
-            <Link href="/uploads" className="text-blue-700 hover:underline">
+            <Link
+              href="/uploads"
+              className="hover:underline"
+              style={{ color: OPS_COLORS.revenue.label }}
+            >
               資料上傳中心
             </Link>{" "}
             匯入「來客數／平均客單」Excel。
@@ -520,7 +541,7 @@ export default function OperationsOverviewPage() {
                     yAxisId="wan"
                     dataKey="revenueWan"
                     name="月度業績（萬元）"
-                    fill="#2563eb"
+                    fill={OPS_COLORS.revenue.chart}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={40}
                   />
@@ -529,7 +550,7 @@ export default function OperationsOverviewPage() {
                     type="monotone"
                     dataKey="achievementRate"
                     name="達標率（%）"
-                    stroke="#16a34a"
+                    stroke={OPS_COLORS.achievement.chart}
                     strokeWidth={2}
                     dot={{ r: 4 }}
                     connectNulls
@@ -566,7 +587,7 @@ export default function OperationsOverviewPage() {
                       return [`${v}%${extra}`, "營收達成率"];
                     }}
                   />
-                  <Bar dataKey="achievementRate" fill="#1e40af" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="achievementRate" fill={OPS_COLORS.achievement.chartDeep} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -622,7 +643,7 @@ export default function OperationsOverviewPage() {
             <div className="lg:col-span-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-3">門市營收達成分佈</h2>
               <p className="text-xs text-slate-500 mb-2">
-                達標 ≥100% 淡綠 · 未達標 &lt;100% 粉紅
+                達標 ≥100% · 未達標 &lt;100%（語意色）
               </p>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
@@ -643,8 +664,8 @@ export default function OperationsOverviewPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex justify-center gap-4 text-xs">
-                <span className="text-green-700">達標 {overview.summary.green}</span>
-                <span className="text-rose-700">未達標 {pieNotMet}</span>
+                <span style={{ color: OPS_COLORS.status.met.label }}>達標 {overview.summary.green}</span>
+                <span style={{ color: OPS_COLORS.status.unmet.label }}>未達標 {pieNotMet}</span>
               </div>
             </div>
 
@@ -699,10 +720,10 @@ export default function OperationsOverviewPage() {
                         type="monotone"
                         dataKey="revenueAchievementRate"
                         name="營收達成率"
-                        stroke="#64748b"
+                        stroke={OPS_COLORS.achievement.chart}
                         strokeWidth={2}
-                        dot={{ r: 3, fill: "#94a3b8", stroke: "#64748b" }}
-                        activeDot={{ r: 4, fill: "#94a3b8", stroke: "#475569" }}
+                        dot={{ r: 3, fill: OPS_COLORS.achievement.chartMute, stroke: OPS_COLORS.achievement.chart }}
+                        activeDot={{ r: 4, fill: OPS_COLORS.achievement.chart, stroke: OPS_COLORS.achievement.chartDeep }}
                         connectNulls
                       />
                     </ComposedChart>
@@ -722,7 +743,7 @@ export default function OperationsOverviewPage() {
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-green-700 shrink-0">
+                    <span className="font-medium shrink-0" style={{ color: OPS_COLORS.status.met.value }}>
                       {formatPctOne(s.revenueAchievementRate)}
                     </span>
                   </li>
@@ -737,19 +758,28 @@ export default function OperationsOverviewPage() {
                     <span>
                       {i + 1}. {s.storeName}
                     </span>
-                    <span className="font-medium text-red-600 shrink-0">
+                    <span className="font-medium shrink-0" style={{ color: OPS_COLORS.status.unmet.value }}>
                       {formatPctOne(s.revenueAchievementRate)}
                     </span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 min-w-0">
-              <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2 mb-3">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <div
+              className="rounded-xl border p-4 min-w-0"
+              style={{
+                backgroundColor: OPS_COLORS.achievement.bg,
+                borderColor: OPS_COLORS.achievement.border,
+              }}
+            >
+              <h2
+                className="text-sm font-semibold flex items-center gap-2 mb-3"
+                style={{ color: OPS_COLORS.achievement.value }}
+              >
+                <AlertTriangle className="h-4 w-4" style={{ color: OPS_COLORS.achievement.chartDeep }} />
                 督導高優先預警
               </h2>
-              <p className="text-xs text-amber-800/90 mb-3">
+              <p className="text-xs mb-3 opacity-90" style={{ color: OPS_COLORS.achievement.label }}>
                 依營收達成率、工效比偏低、總工時偏高綜合排序（相較同區間門市中位數）
               </p>
               {priorityAlerts.length ?
@@ -757,17 +787,25 @@ export default function OperationsOverviewPage() {
                   {priorityAlerts.map((a, i) => (
                     <div
                       key={a.storeId}
-                      className="rounded-lg border border-amber-200/70 bg-white overflow-hidden"
+                      className="rounded-lg border bg-white overflow-hidden"
+                      style={{ borderColor: OPS_COLORS.achievement.border }}
                     >
                       <div className="flex items-stretch gap-0">
-                        <div className="w-8 shrink-0 flex items-center justify-center bg-amber-100 text-amber-900 text-xs font-bold">
+                        <div
+                          className="w-8 shrink-0 flex items-center justify-center text-xs font-bold"
+                          style={{
+                            backgroundColor: OPS_COLORS.achievement.iconBg,
+                            color: OPS_COLORS.achievement.value,
+                          }}
+                        >
                           {i + 1}
                         </div>
                         <div className="flex-1 px-3 py-2.5 min-w-0">
                           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                             <Link
                               href={`/operations/analysis?storeId=${encodeURIComponent(a.storeId)}&startDate=${encodeURIComponent(overview.startDate)}&endDate=${encodeURIComponent(overview.endDate)}`}
-                              className="font-semibold text-slate-900 hover:text-blue-700"
+                              className="font-semibold hover:underline"
+                              style={{ color: OPS_COLORS.revenue.label }}
                             >
                               {a.storeName}
                             </Link>
@@ -777,7 +815,12 @@ export default function OperationsOverviewPage() {
                             {a.reasons.map((r) => (
                               <span
                                 key={r}
-                                className="inline-block rounded-md bg-amber-50 border border-amber-100 px-2 py-0.5 text-xs text-amber-950 leading-snug"
+                                className="inline-block rounded-md border px-2 py-0.5 text-xs leading-snug"
+                                style={{
+                                  backgroundColor: "#fff",
+                                  borderColor: OPS_COLORS.achievement.border,
+                                  color: OPS_COLORS.achievement.value,
+                                }}
                               >
                                 {r}
                               </span>
