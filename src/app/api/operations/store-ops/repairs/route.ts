@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import {
+  assertListQueryScope,
   buildStoreScopeWhere,
   requireStoreOps,
   resolveWriteStoreId,
@@ -22,6 +23,8 @@ export async function GET(req: NextRequest) {
 
   const storeId = req.nextUrl.searchParams.get("storeId");
   const status = req.nextUrl.searchParams.get("status")?.trim();
+  const scopeDenied = assertListQueryScope(auth.ctx, storeId);
+  if (scopeDenied) return scopeDenied;
 
   const list = await prisma.repairRequest.findMany({
     where: {

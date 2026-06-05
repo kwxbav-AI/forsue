@@ -1,3 +1,4 @@
+import { formatDateTimeShortTaipei } from "@/lib/date";
 import { OPS_COLORS } from "@/lib/ops-color-tokens";
 
 type SupplyStatus = "PENDING" | "APPROVED" | "REJECTED" | "SHIPPED" | "RECEIVED";
@@ -20,8 +21,7 @@ const STEPS = [
 
 function fmtTime(iso?: string | null) {
   if (!iso) return null;
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return formatDateTimeShortTaipei(iso);
 }
 
 function stepState(

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC } from "@/lib/date";
 import {
+  assertListQueryScope,
   buildStoreScopeWhere,
   requireStoreOps,
   resolveWriteStoreId,
@@ -24,6 +25,8 @@ export async function GET(req: NextRequest) {
 
   const date = req.nextUrl.searchParams.get("date")?.trim();
   const storeId = req.nextUrl.searchParams.get("storeId");
+  const scopeDenied = assertListQueryScope(auth.ctx, storeId);
+  if (scopeDenied) return scopeDenied;
 
   const list = await prisma.dailyReport.findMany({
     where: {

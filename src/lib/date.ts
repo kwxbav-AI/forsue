@@ -155,6 +155,25 @@ export function calendarDayBoundsFromDate(workDate: Date): { start: Date; end: D
   return calendarDayBoundsFromYmd(formatDateOnly(toStartOfDay(workDate)));
 }
 
+/** ISO/UTC 時間戳記 → 台北時間完整字串（前端顯示用） */
+export function formatDateTimeTaipei(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleString("zh-TW", { timeZone: TAIPEI_TZ });
+}
+
+/** ISO/UTC 時間戳記 → 台北時間簡短字串（M/D HH:mm） */
+export function formatDateTimeShortTaipei(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleString("zh-TW", {
+    timeZone: TAIPEI_TZ,
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 /** 取得週的起始日 (週一) — 依執行環境本地時區 */
 export function getWeekStart(d: Date): Date {
   const day = d.getDay();
