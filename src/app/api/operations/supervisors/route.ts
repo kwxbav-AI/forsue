@@ -51,7 +51,8 @@ export async function GET(req: NextRequest) {
 
 const postSchema = z.object({
   username: z.string().min(2).max(64),
-  password: z.string().min(6).max(128),
+  /** 新帳號必填；已存在帳號可省略（僅更新角色與門市綁定） */
+  password: z.string().min(6).max(128).optional(),
   storeIds: z.array(z.string().min(1)).min(1),
 });
 
@@ -79,13 +80,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "尚未建立 SUPERVISOR 角色，請先執行 seed" }, { status: 400 });
   }
 
-  const exists = await prisma.appUser.findUnique({
-    where: { username: parsed.data.username.trim() },
-  });
-  if (exists) {
-    return NextResponse.json({ error: "此帳號已存在" }, { status: 409 });
-  }
-
+  const username = parsed.data.username.trim();
   const storeIds = [...new Set(parsed.data.storeIds)];
   const stores = await prisma.retailStore.findMany({
     where: { id: { in: storeIds }, isActive: true },
@@ -95,11 +90,59 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "部分門市不存在或已停用" }, { status: 400 });
   }
 
+  const existing = await prisma.appUser.findUnique({
+    where: { username },
+    include: { role: { select: { key: true } } },
+  });
+
+  if (existing) {
+    if (existing.role?.key === ROLE_KEYS.ADMIN) {
+      return NextResponse.json(
+        {
+          error:
+            "管理員帳號無法改為督導。請使用其他帳號，或至「權限設定」先調整角色後再綁定門市。",
+        },
+        { status: 400 }
+      );
+    }
+
+    const updateData: { roleId: string; passwordHash?: string } = {
+      roleId: supervisorRole.id,
+    };
+    if (parsed.data.password) {
+      updateData.passwordHash = await hashPassword(parsed.data.password);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.appUser.update({
+        where: { id: existing.id },
+        data: updateData,
+      });
+      await tx.supervisorStore.deleteMany({ where: { supervisorId: existing.id } });
+      await tx.supervisorStore.createMany({
+        data: storeIds.map((storeId) => ({
+          supervisorId: existing.id,
+          storeId,
+        })),
+      });
+    });
+
+    return NextResponse.json({
+      id: existing.id,
+      username: existing.username,
+      updated: true,
+    });
+  }
+
+  if (!parsed.data.password) {
+    return NextResponse.json({ error: "新帳號請設定密碼" }, { status: 400 });
+  }
+
   const passwordHash = await hashPassword(parsed.data.password);
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.appUser.create({
       data: {
-        username: parsed.data.username.trim(),
+        username,
         passwordHash,
         roleId: supervisorRole.id,
         legacyRole: "EDITOR",
@@ -114,5 +157,5 @@ export async function POST(req: NextRequest) {
     return created;
   });
 
-  return NextResponse.json({ id: user.id, username: user.username }, { status: 201 });
+  return NextResponse.json({ id: user.id, username: user.username, created: true }, { status: 201 });
 }

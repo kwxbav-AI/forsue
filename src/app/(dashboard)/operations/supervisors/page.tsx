@@ -20,6 +20,7 @@ export default function SupervisorsPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [storeIds, setStoreIds] = useState<string[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -45,39 +46,56 @@ export default function SupervisorsPage() {
     setStoreIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  function startEdit(s: Supervisor) {
+    setEditingId(s.id);
+    setUsername(s.username);
+    setPassword("");
+    setStoreIds(s.stores.map((x) => x.storeId));
     setMessage(null);
-    const res = await fetch("/api/operations/supervisors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, storeIds }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setMessage(data.error || "建立失敗");
-      return;
-    }
+  }
+
+  function resetForm() {
+    setEditingId(null);
     setUsername("");
     setPassword("");
     setStoreIds([]);
-    await load();
+    setMessage(null);
   }
 
-  async function updateStores(supervisorId: string, ids: string[]) {
-    const res = await fetch(`/api/operations/supervisors/${supervisorId}/stores`, {
-      method: "PUT",
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    if (storeIds.length === 0) {
+      setMessage("請至少選擇一間負責門市");
+      return;
+    }
+
+    const res = await fetch("/api/operations/supervisors", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storeIds: ids }),
+      body: JSON.stringify({
+        username,
+        ...(password ? { password } : {}),
+        storeIds,
+      }),
     });
-    if (res.ok) await load();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error || "儲存失敗");
+      return;
+    }
+    setMessage(
+      data.updated ? `已更新「${username}」的督導門市綁定` : `已建立督導帳號「${username}」`
+    );
+    resetForm();
+    await load();
   }
 
   return (
     <div className="p-6 max-w-4xl">
       <StoreOpsPageHeader
         title="督導設定"
-        subtitle="建立督導帳號並綁定負責門市"
+        subtitle="建立新督導，或為既有帳號綁定負責門市"
         action={
           <Link
             href="/operations/permissions"
@@ -101,13 +119,16 @@ export default function SupervisorsPage() {
         </p>
       : null}
       <form
-        onSubmit={(e) => void handleCreate(e)}
+        onSubmit={(e) => void handleSave(e)}
         className="mb-8 space-y-3 rounded-xl border bg-white p-4 shadow-sm"
         style={{ borderColor: OPS_COLORS.achievement.border }}
       >
         <h2 className="text-sm font-semibold" style={{ color: OPS_COLORS.achievement.value }}>
-          新增督導
+          {editingId ? "編輯督導門市" : "新增／設定督導"}
         </h2>
+        <p className="text-xs" style={{ color: OPS_COLORS.achievement.label }}>
+          帳號已存在時，將設為督導角色並更新門市綁定；密碼可留空（不變更原密碼）。
+        </p>
         <div className="flex flex-wrap gap-2">
           <input
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -119,10 +140,9 @@ export default function SupervisorsPage() {
           <input
             type="password"
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            placeholder="密碼"
+            placeholder={editingId ? "留空則不變更密碼" : "新帳號請設定密碼"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -141,17 +161,32 @@ export default function SupervisorsPage() {
             </label>
           ))}
         </div>
-        <button
-          type="submit"
-          className="rounded-lg px-4 py-2 text-sm text-white"
-          style={{ backgroundColor: OPS_COLORS.achievement.chartDeep }}
-        >
-          建立督導
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            className="rounded-lg px-4 py-2 text-sm text-white"
+            style={{ backgroundColor: OPS_COLORS.achievement.chartDeep }}
+          >
+            儲存
+          </button>
+          {editingId || username || storeIds.length > 0 || password ?
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+              onClick={resetForm}
+            >
+              取消
+            </button>
+          : null}
+        </div>
       </form>
       {loading ?
         <p className="text-sm" style={{ color: OPS_COLORS.status.none.label }}>
           載入中…
+        </p>
+      : items.length === 0 ?
+        <p className="text-sm" style={{ color: OPS_COLORS.status.none.label }}>
+          尚無督導帳號，請於上方表單設定。
         </p>
       : <ul className="space-y-4">
           {items.map((s) => (
@@ -160,30 +195,24 @@ export default function SupervisorsPage() {
               className="rounded-xl border bg-white p-4 shadow-sm"
               style={{ borderColor: OPS_COLORS.revenue.border }}
             >
-              <p className="font-medium" style={{ color: OPS_COLORS.revenue.value }}>
-                {s.username}
-              </p>
-              <p className="mt-1 text-xs" style={{ color: OPS_COLORS.revenue.label }}>
-                負責門市：{s.stores.map((x) => x.storeName).join("、") || "（未設定）"}
-              </p>
-              <button
-                type="button"
-                className="mt-2 text-xs hover:underline"
-                style={{ color: OPS_COLORS.revenue.label }}
-                onClick={() => {
-                  const picked = window.prompt(
-                    "輸入門市 ID（逗號分隔）",
-                    s.stores.map((x) => x.storeId).join(",")
-                  );
-                  if (picked == null) return;
-                  void updateStores(
-                    s.id,
-                    picked.split(",").map((x) => x.trim()).filter(Boolean)
-                  );
-                }}
-              >
-                更新負責門市
-              </button>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium" style={{ color: OPS_COLORS.revenue.value }}>
+                    {s.username}
+                  </p>
+                  <p className="mt-1 text-xs" style={{ color: OPS_COLORS.revenue.label }}>
+                    負責門市：{s.stores.map((x) => x.storeName).join("、") || "（未設定）"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs hover:underline"
+                  style={{ color: OPS_COLORS.revenue.label }}
+                  onClick={() => startEdit(s)}
+                >
+                  編輯門市
+                </button>
+              </div>
             </li>
           ))}
         </ul>
