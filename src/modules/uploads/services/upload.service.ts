@@ -17,6 +17,7 @@ import type {
   UploadResult,
 } from "../types";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
+import { resolvePendingDeletionRequests } from "@/lib/deletion-request-service";
 
 /** 同一日多筆列會各自 new Date()，用 Set 無法去重；依 YYYY-MM-DD 只重算一次 */
 function uniqueCalendarDates(dates: Date[]): Date[] {
@@ -571,6 +572,19 @@ export async function uploadDispatch(
   const uniqueTimes = new Set<number>();
   parsed.data.forEach((r) => uniqueTimes.add(toStartOfDay(r.workDate).getTime()));
   uniqueTimes.forEach((t) => uniqueDates.push(new Date(t)));
+
+  const dispatchIdsToReplace = await prisma.dispatchRecord.findMany({
+    where: { workDate: { in: uniqueDates } },
+    select: { id: true },
+  });
+  if (dispatchIdsToReplace.length > 0) {
+    await resolvePendingDeletionRequests(
+      "DISPATCH_RECORD",
+      dispatchIdsToReplace.map((r) => r.id),
+      { reason: "調度資料已重新上傳覆蓋" }
+    );
+  }
+
   await prisma.dispatchRecord.deleteMany({
     where: { workDate: { in: uniqueDates } },
   });

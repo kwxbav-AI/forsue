@@ -69,8 +69,14 @@ export async function POST(
     return NextResponse.json({ ok: true, status: "REJECTED" });
   }
 
+  let alreadyAbsent = false;
   try {
-    await performDeletionForTarget(row.targetType, row.targetId, session.username);
+    const result = await performDeletionForTarget(
+      row.targetType,
+      row.targetId,
+      session.username
+    );
+    alreadyAbsent = result.alreadyAbsent;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "執行刪除失敗";
     return NextResponse.json({ error: msg }, { status: 400 });
@@ -80,11 +86,19 @@ export async function POST(
     where: { id: requestId },
     data: {
       status: "APPROVED",
-      reason: reason?.trim() || row.reason,
+      reason:
+        reason?.trim() ||
+        row.reason ||
+        (alreadyAbsent ? "目標資料已不存在（可能已被刪除或上傳覆蓋）" : null),
       reviewedByUsername: session.username,
       reviewedAt: new Date(),
     },
   });
 
-  return NextResponse.json({ ok: true, status: "APPROVED" });
+  return NextResponse.json({
+    ok: true,
+    status: "APPROVED",
+    alreadyAbsent,
+    message: alreadyAbsent ? "目標資料已不存在，申請已結案" : undefined,
+  });
 }

@@ -869,7 +869,7 @@ export default function OperationsAnalysisPage() {
                       }}
                     >
                       <p className="text-xs" style={{ color: OPS_COLORS.achievement.value }}>
-                        請至「門市目標設定」匯入月目標工時；營業時長請至「營運門市管理」設定
+                        請至「門市目標設定」匯入月業績目標與依人力計算工時；營業時長請至「營運門市管理」設定
                       </p>
                       <Link
                         href="/operations/store-targets"

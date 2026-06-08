@@ -87,6 +87,9 @@ export function PendingDeletionPanel({
         alert(data.error || "核准失敗");
         return;
       }
+      if (data.message) {
+        alert(data.message);
+      }
     }
     await load();
     window.dispatchEvent(new CustomEvent("pending-deletions-changed"));

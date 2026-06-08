@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hasModuleEffectivePermission } from "@/lib/permissions-db";
 import type { DeletionRequestTargetType } from "@prisma/client";
+import { resolvePendingDeletionRequests } from "@/lib/deletion-request-service";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,10 @@ export async function DELETE(
 
     if (canApprove) {
       const deleted = await prisma.dispatchRecord.delete({ where: { id } });
+      await resolvePendingDeletionRequests("DISPATCH_RECORD", id, {
+        reviewedByUsername: session.username,
+        reason: "管理員直接刪除",
+      });
       await performanceEngineService.recalculateDailyPerformance(deleted.workDate);
       return NextResponse.json({ success: true });
     }
