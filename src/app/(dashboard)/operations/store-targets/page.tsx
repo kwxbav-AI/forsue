@@ -82,6 +82,7 @@ export default function StoreTargetsPage() {
     laborHourTarget: "",
     note: "",
   });
+  const salesFileInputRef = useRef<HTMLInputElement>(null);
   const targetFileInputRef = useRef<HTMLInputElement>(null);
 
   const yearMatrix = useMemo(() => buildYearMatrix(list), [list]);
@@ -118,7 +119,12 @@ export default function StoreTargetsPage() {
   }
 
   async function handleImport() {
+    const salesFile = salesFileInputRef.current?.files?.[0];
     const targetFile = targetFileInputRef.current?.files?.[0];
+    if (!salesFile) {
+      setMessage("請選擇「月業績目標」Excel 檔案");
+      return;
+    }
     if (!targetFile) {
       setMessage("請選擇「目標工時（依人力計算）」Excel 檔案");
       return;
@@ -129,6 +135,7 @@ export default function StoreTargetsPage() {
     setImportResult(null);
 
     const form = new FormData();
+    form.append("salesFile", salesFile);
     form.append("targetFile", targetFile);
     form.append("year", String(importYear));
 
@@ -148,6 +155,7 @@ export default function StoreTargetsPage() {
     setFilterYear(importYear);
     setFilterMonth("all");
     setMessage(data.message ?? "匯入完成");
+    if (salesFileInputRef.current) salesFileInputRef.current.value = "";
     if (targetFileInputRef.current) targetFileInputRef.current.value = "";
     void refresh();
   }
@@ -218,7 +226,7 @@ export default function StoreTargetsPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-800">門市目標設定</h1>
           <p className="mt-1 text-sm text-slate-500">
-            上傳「目標工時（依人力計算）」Excel，依 H 欄預估工時展開全年各月目標；供營運總覽、人力支援、達標週報使用。
+            同時上傳月業績目標與依人力計算工時兩份 Excel，合併寫入各月業績與工時目標。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -246,16 +254,18 @@ export default function StoreTargetsPage() {
         </h2>
         <ul className="mb-4 list-disc pl-5 text-sm text-slate-600 space-y-1">
           <li>
-            <strong>A</strong> 區域、<strong>B</strong> 門市、<strong>D</strong> 目標人效、<strong>H</strong>{" "}
-            週一～五每日工時、<strong>I</strong> 週六工時
+            <strong>月業績目標</strong>：A 區域、B 門市、C～N 欄 <code>YYYY-MM</code> 各月業績
           </li>
           <li>
-            各月目標工時 = H × 當月平日工作天 + I × 當月週六工作天；月業績 = 目標人效 × 月目標工時
+            <strong>依人力計算</strong>：A 區域、B 門市、H 週一～五預估工時/日、I 週六預估工時（正兼職排定後的每日工時）
           </li>
-          <li>週一至五／週六工時皆為 0 的門市（如已閉店）不寫入；匯入會覆寫該年度已對應門市全部月目標</li>
+          <li>
+            各月目標工時 = H × 當月平日工作天 + I × 當月週六工作天；月業績取自月業績檔；RPLH = 月業績 ÷ 月工時
+          </li>
+          <li>該月業績或工時為 0 的月份略過；匯入會覆寫該年度已對應門市全部月目標</li>
         </ul>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end">
           <label className="text-sm block">
             <span className="text-slate-600">目標年度</span>
             <input
@@ -265,7 +275,16 @@ export default function StoreTargetsPage() {
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
             />
           </label>
-          <label className="text-sm block sm:col-span-1 lg:col-span-1">
+          <label className="text-sm block">
+            <span className="text-slate-600">月業績目標 .xlsx</span>
+            <input
+              ref={salesFileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="mt-1 block w-full text-sm file:mr-2 file:rounded file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white file:text-sm"
+            />
+          </label>
+          <label className="text-sm block">
             <span className="text-slate-600">目標工時（依人力計算）.xlsx</span>
             <input
               ref={targetFileInputRef}

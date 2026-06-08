@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   importStoreTargetsFromExcel,
   importStoreTargetsFromHeadcountExcel,
+  importStoreTargetsFromSalesAndHeadcountExcel,
 } from "@/modules/operations/services/store-target-import.service";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,15 @@ export async function POST(request: NextRequest) {
     }
 
     let result;
-    if (targetFile?.size) {
+    if (salesFile?.size && targetFile?.size) {
+      const salesBuf = Buffer.from(await salesFile.arrayBuffer());
+      const headcountBuf = Buffer.from(await targetFile.arrayBuffer());
+      result = await importStoreTargetsFromSalesAndHeadcountExcel({
+        year,
+        salesFile: salesBuf,
+        headcountFile: headcountBuf,
+      });
+    } else if (targetFile?.size) {
       const buf = Buffer.from(await targetFile.arrayBuffer());
       result = await importStoreTargetsFromHeadcountExcel({ year, file: buf });
     } else if (salesFile?.size && hoursFile?.size) {
@@ -38,7 +47,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "請上傳「目標工時（依人力計算）」Excel，或同時上傳舊版月業績＋月工時兩檔",
+            "請同時上傳「月業績目標」與「目標工時（依人力計算）」兩份 Excel",
         },
         { status: 400 }
       );

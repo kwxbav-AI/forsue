@@ -181,6 +181,12 @@ function parseHeadcountLaborTargetSheet(buffer: Buffer): {
   const { headerRow, weekdayCol, saturdayCol, rplhCol, noteCol } =
     findHeadcountHeaderRow(rows);
   const warnings: string[] = [];
+  const header = (rows[headerRow] ?? []).map((c) => String(c ?? "").trim());
+  const formatError = assertHeadcountLaborColumns(header, weekdayCol, saturdayCol);
+  if (formatError) {
+    return { stores: [], warnings: [formatError] };
+  }
+
   const stores: ParsedHeadcountRow[] = [];
 
   for (let i = headerRow + 1; i < rows.length; i++) {
@@ -222,12 +228,12 @@ function parseHeadcountLaborTargetSheet(buffer: Buffer): {
   return { stores, warnings };
 }
 
-function expandHeadcountToMonthlyRows(
+function expandHeadcountToMonthlyLabor(
   row: ParsedHeadcountRow,
   year: number,
   holidayYmdSet: Set<string>
-): { month: number; laborHourTarget: number; salesTarget: number }[] {
-  const out: { month: number; laborHourTarget: number; salesTarget: number }[] = [];
+): { month: number; laborHourTarget: number }[] {
+  const out: { month: number; laborHourTarget: number }[] = [];
   for (let month = 1; month <= 12; month++) {
     const { startYmd, endYmd } = monthStartEndYmd(year, month);
     const split = splitWeekdaySaturdayWorkingDaysInRangeUTC(
@@ -244,11 +250,22 @@ function expandHeadcountToMonthlyRows(
           row.saturdayDailyHours * split.saturday) *
           100
       ) / 100;
-    const salesTarget =
-      Math.round(row.targetRplh * laborHourTarget * 100) / 100;
-    out.push({ month, laborHourTarget, salesTarget });
+    out.push({ month, laborHourTarget });
   }
   return out;
+}
+
+function assertHeadcountLaborColumns(
+  header: string[],
+  weekdayCol: number,
+  saturdayCol: number
+): string | null {
+  const wd = normalizeHeaderLabel(header[weekdayCol] ?? "");
+  const sat = normalizeHeaderLabel(header[saturdayCol] ?? "");
+  if (MONTH_HEADER_RE.test(wd) || MONTH_HEADER_RE.test(sat)) {
+    return "此檔案似為「月目標工時」格式（H/I 為 YYYY-MM 欄），請改上傳「依人力計算」檔（H=週一～五預估工時/日、I=週六預估工時）";
+  }
+  return null;
 }
 
 function parseMonthlySheet(
@@ -360,7 +377,160 @@ async function writeStoreTargets(input: {
   return rowsToWrite.length;
 }
 
-/** 新格式：單一 Excel（H 平日、I 週六 → 各月目標工時） */
+/**
+ * 標準匯入：月業績目標檔（C～N 各月業績）+ 依人力計算檔（H/I 展開各月工時）
+ */
+export async function importStoreTargetsFromSalesAndHeadcountExcel(input: {
+  year: number;
+  salesFile: Buffer;
+  headcountFile: Buffer;
+}): Promise<StoreTargetImportResult> {
+  const { year, salesFile, headcountFile } = input;
+  const warnings: string[] = [];
+
+  const sync = await ensureRetailStoresFromPerformance();
+  if (sync.created > 0) {
+    warnings.push(
+      `已自動建立 ${sync.created} 間營運門市（由績效門市同步），請確認後再匯入目標`
+    );
+  }
+
+  const holidayYmdSet = await loadHolidayYmdSet(year);
+  const salesParsed = parseMonthlySheet(salesFile, year);
+  const headcountParsed = parseHeadcountLaborTargetSheet(headcountFile);
+  warnings.push(...salesParsed.warnings, ...headcountParsed.warnings);
+
+  if (headcountParsed.warnings.some((w) => w.includes("月目標工時"))) {
+    return {
+      year,
+      upserted: 0,
+      skipped: 0,
+      matchedStores: 0,
+      unmatchedStores: [],
+      warnings: warnings.slice(0, 50),
+    };
+  }
+
+  const salesByKey = new Map(
+    salesParsed.stores.map((s) => [s.storeKey, s] as const)
+  );
+  const headcountByKey = new Map(
+    headcountParsed.stores.map((s) => [s.storeKey, s] as const)
+  );
+  const allKeys = new Set([...salesByKey.keys(), ...headcountByKey.keys()]);
+
+  const retailStores = await prisma.retailStore.findMany({
+    where: { isActive: true },
+    select: { id: true, storeName: true, region: true },
+  });
+
+  const unmatchedStores: string[] = [];
+  const storeIdByKey = new Map<string, string>();
+  const laborProfileByStoreId = new Map<string, StoreLaborProfile>();
+  const regionByStoreId = new Map<string, string>();
+  let skipped = 0;
+
+  type WriteRow = {
+    storeId: string;
+    year: number;
+    month: number;
+    salesTarget: number;
+    laborHourTarget: number;
+    rplhTarget: number | null;
+    note: string | null;
+  };
+  const rowsToWrite: WriteRow[] = [];
+
+  for (const key of allKeys) {
+    const salesRow = salesByKey.get(key);
+    const headcountRow = headcountByKey.get(key);
+    const label = salesRow?.storeLabel ?? headcountRow?.storeLabel ?? key;
+    const region = salesRow?.region ?? headcountRow?.region ?? "";
+
+    if (!salesRow) {
+      warnings.push(`${label}：月業績檔無此門市，略過`);
+      continue;
+    }
+    if (!headcountRow) {
+      unmatchedStores.push(`${label}（缺依人力計算檔）`);
+      continue;
+    }
+
+    const retail = resolveRetailStore(key, label, retailStores);
+    if (!retail) {
+      unmatchedStores.push(label);
+      continue;
+    }
+
+    storeIdByKey.set(key, retail.id);
+    laborProfileByStoreId.set(retail.id, {
+      weekdayDailyHours: headcountRow.weekdayDailyHours,
+      saturdayDailyHours: headcountRow.saturdayDailyHours,
+    });
+    if (region) regionByStoreId.set(retail.id, region);
+
+    const laborByMonth = new Map(
+      expandHeadcountToMonthlyLabor(headcountRow, year, holidayYmdSet).map(
+        (m) => [m.month, m.laborHourTarget] as const
+      )
+    );
+
+    for (let month = 1; month <= 12; month++) {
+      const salesTarget = salesRow.months.get(month) ?? null;
+      const laborHourTarget = laborByMonth.get(month) ?? null;
+
+      if (
+        salesTarget == null ||
+        laborHourTarget == null ||
+        salesTarget <= 0 ||
+        laborHourTarget <= 0
+      ) {
+        if (
+          (salesTarget != null && salesTarget > 0) ||
+          (laborHourTarget != null && laborHourTarget > 0)
+        ) {
+          skipped += 1;
+          if (warnings.length < 50) {
+            warnings.push(
+              `${label} ${year}/${month}：缺少業績或工時，略過（需月業績檔與依人力檔皆有有效值）`
+            );
+          }
+        }
+        continue;
+      }
+
+      const rplh = computeRplhTarget(salesTarget, laborHourTarget);
+      rowsToWrite.push({
+        storeId: retail.id,
+        year,
+        month,
+        salesTarget,
+        laborHourTarget,
+        rplhTarget: rplh ? Number(rplh) : null,
+        note: salesRow.note ?? headcountRow.note ?? null,
+      });
+    }
+  }
+
+  const upserted = await writeStoreTargets({
+    year,
+    rowsToWrite,
+    storeIdByKey,
+    laborProfileByStoreId,
+    regionByStoreId,
+  });
+
+  return {
+    year,
+    upserted,
+    skipped,
+    matchedStores: storeIdByKey.size,
+    unmatchedStores: [...new Set(unmatchedStores)],
+    warnings: warnings.slice(0, 50),
+  };
+}
+
+/** 僅依人力檔（H/I → 工時，業績 = 目標人效 × 工時）；建議改用上方的雙檔匯入 */
 export async function importStoreTargetsFromHeadcountExcel(input: {
   year: number;
   file: Buffer;
@@ -415,14 +585,15 @@ export async function importStoreTargetsFromHeadcountExcel(input: {
     });
     if (row.region) regionByStoreId.set(retail.id, row.region);
 
-    const monthly = expandHeadcountToMonthlyRows(row, year, holidayYmdSet);
+    const monthly = expandHeadcountToMonthlyLabor(row, year, holidayYmdSet);
     for (const m of monthly) {
-      const rplh = computeRplhTarget(m.salesTarget, m.laborHourTarget);
+      const salesTarget = Math.round(row.targetRplh * m.laborHourTarget * 100) / 100;
+      const rplh = computeRplhTarget(salesTarget, m.laborHourTarget);
       rowsToWrite.push({
         storeId: retail.id,
         year,
         month: m.month,
-        salesTarget: m.salesTarget,
+        salesTarget,
         laborHourTarget: m.laborHourTarget,
         rplhTarget: rplh ? Number(rplh) : null,
         note: row.note ?? null,
