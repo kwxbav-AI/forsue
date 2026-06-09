@@ -345,9 +345,17 @@ export default function OperationsOverviewPage() {
     ].filter((x) => x.value > 0)
   : [];
   const customerMetrics = overview?.customerMetrics;
+  const storeStatusPctYAxis = useMemo(
+    () => ({
+      domain: [0, 100] as [number, number],
+      ticks: [0, 20, 40, 60, 80, 100],
+    }),
+    []
+  );
+
   const storeChartHeight = Math.min(
-    Math.max(200, storeStatusChart.length * 14 + 48),
-    280
+    Math.max(260, Math.round((storeStatusChart.length * 14 + 48) * 1.3)),
+    364
   );
   const regionLabel = region || "全區";
   const workingDays = overview?.workingDaysInRange ?? 0;
@@ -740,7 +748,8 @@ export default function OperationsOverviewPage() {
                       <YAxis
                         yAxisId="pct"
                         orientation="right"
-                        domain={[0, "auto"]}
+                        domain={storeStatusPctYAxis.domain}
+                        ticks={storeStatusPctYAxis.ticks}
                         tick={{ fontSize: 10 }}
                         tickFormatter={(v) => `${v}%`}
                       />

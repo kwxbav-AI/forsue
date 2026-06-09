@@ -13,6 +13,15 @@ export default function OperationsSupervisionPage() {
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <Link
+          href="/operations/supervision/shift-calendar"
+          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors"
+        >
+          <h2 className="text-sm font-semibold text-slate-800">人員排班月曆</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            月曆總覽上傳的門市排班表 · 點選日期查看各人員班別與時數
+          </p>
+        </Link>
+        <Link
           href="/operations/supervision/support-calendar"
           className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors"
         >

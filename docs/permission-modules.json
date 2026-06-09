@@ -477,6 +477,8 @@
         { "kind": "API", "pathPattern": "/api/operations/performance-analysis", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/supervision", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/supervision/support-calendar", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/supervision/shift-calendar", "method": null },
+        { "kind": "API", "pathPattern": "/api/operations/shift-plans/month", "method": "GET" },
         { "kind": "PAGE", "pathPattern": "/operations/marketing", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/compensation", "method": null },
         { "kind": "PAGE", "pathPattern": "/operations/work-hours", "method": null },
