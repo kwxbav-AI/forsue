@@ -90,6 +90,9 @@ export default async function DashboardLayout({
                 設定區
               </Link>
             ) : null}
+            <Link href="/bonus/monthly" className="text-slate-600 hover:text-sky-600">
+              績效獎金
+            </Link>
             {canOperations ? (
               <Link
                 href="/operations/dashboard"

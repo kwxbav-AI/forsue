@@ -28,6 +28,7 @@ model Store {
   storeHourDeductions  StoreHourDeduction[]
   changeLogs           StoreChangeLog[]
   shiftPlans           StoreShiftPlan[]
+  newStoreSetting      NewStoreSetting?
 }
 
 model StoreChangeLog {
@@ -91,6 +92,7 @@ model Employee {
   dispatches       DispatchRecord[]
   adjustments      WorkhourAdjustment[]
   reserveStaffPeriods EmployeeReserveStaffPeriod[]
+  bonusResults        MonthlyBonusResult[]
 }
 
 model EmployeeReserveStaffPeriod {
@@ -481,6 +483,77 @@ model DeletionRequest {
 
   @@index([status, createdAt])
   @@index([targetType, targetId])
+}
+
+// --- 績效獎金模組 ---
+
+model NewStoreSetting {
+  id              String   @id @default(cuid())
+  storeId         String   @unique
+  openDate        DateTime @db.Date
+  guaranteeMonths Int      @default(5)
+  dailyGuarantee  Decimal  @db.Decimal(10, 2) @default(2640)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+}
+
+model BonusMultiplier {
+  id         String   @id @default(cuid())
+  position   String   @unique
+  multiplier Decimal  @db.Decimal(5, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model MonthlyBonusResult {
+  id                  String   @id @default(cuid())
+  yearMonth           String
+  employeeId          String
+  employeeCode        String
+  employeeName        String
+  storeName           String
+  position            String?
+  totalCalcHours      Decimal  @db.Decimal(10, 2)
+  targetBonus         Decimal  @db.Decimal(10, 2)
+  operationsBonus     Decimal  @db.Decimal(10, 2)
+  subtotalBonus       Decimal  @db.Decimal(10, 2)
+  newHireRatio        Decimal  @db.Decimal(5, 2)
+  isNewStoreGuarantee Boolean  @default(false)
+  guaranteeAmount     Decimal? @db.Decimal(10, 2)
+  bonusMultiplier     Decimal  @db.Decimal(5, 2)
+  accountabilityRatio Decimal  @db.Decimal(5, 2) @default(1)
+  finalBonus          Decimal  @db.Decimal(10, 2)
+  calculatedAt        DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  dailyDetails        MonthlyBonusDailyDetail[]
+
+  @@unique([yearMonth, employeeId])
+  @@index([yearMonth])
+}
+
+model MonthlyBonusDailyDetail {
+  id              String   @id @default(cuid())
+  bonusResultId   String
+  workDate        DateTime @db.Date
+  weekday         Int
+  storeId         String
+  storeName       String
+  isTargetMet     Boolean
+  isExceeded      Boolean
+  efficiencyRatio Decimal  @db.Decimal(12, 2)
+  scheduledHours  Decimal  @db.Decimal(10, 2)
+  actualWorkHours Decimal  @db.Decimal(10, 2)
+  calcHours       Decimal  @db.Decimal(10, 2)
+  baseBonus       Decimal  @db.Decimal(10, 2)
+  dailyBonus      Decimal  @db.Decimal(10, 2)
+  dispatchNote    String?
+  bonusResult     MonthlyBonusResult @relation(fields: [bonusResultId], references: [id], onDelete: Cascade)
+
+  @@index([bonusResultId])
+  @@index([workDate])
 }
 
 // --- 零售門市營運分析（營運總覽 Dashboard）---

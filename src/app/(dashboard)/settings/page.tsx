@@ -90,6 +90,20 @@ export default async function SettingsHubPage() {
             <p className="mt-1 text-sm text-slate-500">設定哪些部門不做打卡地點比對</p>
           </Link>
         ) : null}
+        <Link
+          href="/settings/new-stores"
+          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+        >
+          <span className="font-medium text-slate-800">新店保障設定</span>
+          <p className="mt-1 text-sm text-slate-500">設定新開幕門市及獎金保障期間</p>
+        </Link>
+        <Link
+          href="/settings/bonus-multipliers"
+          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+        >
+          <span className="font-medium text-slate-800">獎金倍率設定</span>
+          <p className="mt-1 text-sm text-slate-500">依職稱設定績效獎金倍率</p>
+        </Link>
       </div>
     </div>
   );

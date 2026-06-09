@@ -1,0 +1,556 @@
+import { prisma } from "@/lib/prisma";
+import Decimal from "decimal.js";
+import { parseDateOnlyUTC, businessDayWorkDateFromDate } from "@/lib/date";
+
+// ─── 常數 ──────────────────────────────────────────────────────────────────────
+const BASE_BONUS = 168;
+const EXCEED_BONUS = 336;
+const EXCEED_THRESHOLD = 6000;
+const OPS_BONUS_PER_PERSON = 72;
+const FULL_HOURS = 8;
+const MONTHLY_GUARANTEE = new Decimal(2640);
+
+const DEFAULT_MULTIPLIERS: Record<string, number> = {
+  進階兼職: 1.4,
+  初階兼職: 1.2,
+  兼職新人: 1,
+  一級營業員: 1.6,
+  二級營業員: 1.4,
+  三級營業員: 1.2,
+  新進營業員: 1,
+  一級店長: 1.8,
+  二級店長: 1.7,
+  三級店長: 1.7,
+  副店長: 1.6,
+  兼職人員: 1,
+  專員: 1,
+  "兼職-寒假短期工讀": 0,
+  臨時理貨人員: 1,
+  "兼職-暑假短期工讀": 0,
+  蔬果處理人員: 1,
+};
+
+// ─── 工時計算規則 (Rule 7) ─────────────────────────────────────────────────────
+function calcBonusHours(actualHours: number, scheduledHours: number): number {
+  let rounded: number;
+  if (actualHours + 0.1 > 8) {
+    rounded = 8;
+  } else {
+    rounded = Math.ceil(actualHours * 2) / 2;
+  }
+  return Math.min(rounded, scheduledHours);
+}
+
+// ─── 新人比例 (Rule 2) ─────────────────────────────────────────────────────────
+function newHireRatio(hireDate: Date | null, yearMonth: string): number {
+  if (!hireDate) return 1;
+  const [y, m] = yearMonth.split("-").map(Number);
+  const hireY = hireDate.getFullYear();
+  const hireM = hireDate.getMonth() + 1;
+  const monthsSinceHire = (y - hireY) * 12 + (m - hireM);
+  if (monthsSinceHire === 0) return 0.5;
+  if (monthsSinceHire === 1) return 0.8;
+  return 1;
+}
+
+// ─── 是否為兼職 ────────────────────────────────────────────────────────────────
+function isPartTime(shiftType: string | null | undefined, scheduledHours: number): boolean {
+  if (shiftType?.startsWith("FT-")) return false;
+  if (shiftType?.startsWith("PT-")) return true;
+  return scheduledHours < FULL_HOURS;
+}
+
+// ─── 主要輸出型別 ──────────────────────────────────────────────────────────────
+export interface BonusDailyDetail {
+  workDate: string;
+  weekday: number;
+  storeId: string;
+  storeName: string;
+  isTargetMet: boolean;
+  isExceeded: boolean;
+  efficiencyRatio: number;
+  scheduledHours: number;
+  actualWorkHours: number;
+  calcHours: number;
+  baseBonus: number;
+  dailyBonus: number;
+  dispatchNote: string | null;
+}
+
+export interface BonusEmployeeResult {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  storeName: string;
+  position: string | null;
+  totalCalcHours: number;
+  targetBonus: number;
+  operationsBonus: number;
+  subtotalBonus: number;
+  newHireRatio: number;
+  isNewStoreGuarantee: boolean;
+  guaranteeAmount: number | null;
+  bonusMultiplier: number;
+  accountabilityRatio: number;
+  finalBonus: number;
+  dailyDetails: BonusDailyDetail[];
+}
+
+// ─── 主計算函式 ────────────────────────────────────────────────────────────────
+export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmployeeResult[]> {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const startDate = parseDateOnlyUTC(`${yearMonth}-01`);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const endDate = parseDateOnlyUTC(`${yearMonth}-${String(lastDay).padStart(2, "0")}`);
+
+  // 取得所有資料
+  const [attendances, dispatches, performanceDailies, employees, newStoreSettings, multiplierRows, existingResults] =
+    await Promise.all([
+      prisma.attendanceRecord.findMany({
+        where: { workDate: { gte: startDate, lte: endDate } },
+        include: { employee: true },
+        orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
+      }),
+      prisma.dispatchRecord.findMany({
+        where: { workDate: { gte: startDate, lte: endDate } },
+      }),
+      prisma.performanceDaily.findMany({
+        where: { workDate: { gte: startDate, lte: endDate } },
+        include: { store: { select: { id: true, name: true } } },
+      }),
+      prisma.employee.findMany({
+        where: { isActive: true },
+        include: { defaultStore: { select: { name: true } } },
+      }),
+      prisma.newStoreSetting.findMany({ include: { store: { select: { id: true, name: true } } } }),
+      prisma.bonusMultiplier.findMany(),
+      prisma.monthlyBonusResult.findMany({
+        where: { yearMonth },
+        select: { employeeId: true, accountabilityRatio: true },
+      }),
+    ]);
+
+  // 建立查找索引
+  const multiplierMap = new Map<string, number>(
+    multiplierRows.map((r: { position: string; multiplier: unknown }) => [r.position, Number(r.multiplier)])
+  );
+  const getMultiplier = (position: string | null) =>
+    position ? (multiplierMap.get(position) ?? DEFAULT_MULTIPLIERS[position] ?? 1) : 1;
+
+  const accountabilityMap = new Map<string, number>(
+    existingResults.map((r: { employeeId: string; accountabilityRatio: unknown }) => [r.employeeId, Number(r.accountabilityRatio)])
+  );
+
+  const employeeMap = new Map(employees.map((e) => [e.id, e]));
+
+  // 新店查找：storeId → 是否在本月保障期內
+  const newStoreIds = new Set<string>();
+  for (const ns of newStoreSettings) {
+    const openDate = ns.openDate;
+    const guaranteeEndDate = new Date(openDate);
+    guaranteeEndDate.setUTCMonth(guaranteeEndDate.getUTCMonth() + ns.guaranteeMonths);
+    if (startDate <= guaranteeEndDate && endDate >= openDate) {
+      newStoreIds.add(ns.storeId);
+    }
+  }
+
+  // PerformanceDaily 按日期+門市索引
+  const perfMap = new Map<string, (typeof performanceDailies)[number]>();
+  for (const p of performanceDailies) {
+    perfMap.set(`${p.workDate.toISOString().slice(0, 10)}_${p.storeId}`, p);
+  }
+
+  // 出勤按日期+員工索引（每日可能多筆）
+  const attByDateEmployee = new Map<string, (typeof attendances)[number][]>();
+  for (const a of attendances) {
+    const key = `${a.workDate.toISOString().slice(0, 10)}_${a.employeeId}`;
+    const list = attByDateEmployee.get(key) ?? [];
+    list.push(a);
+    attByDateEmployee.set(key, list);
+  }
+
+  // 調度按日期+員工索引
+  const dispByDateEmployee = new Map<string, (typeof dispatches)[number][]>();
+  for (const d of dispatches) {
+    const key = `${d.workDate.toISOString().slice(0, 10)}_${d.employeeId}`;
+    const list = dispByDateEmployee.get(key) ?? [];
+    list.push(d);
+    dispByDateEmployee.set(key, list);
+  }
+
+  // ─── 逐日計算 ────────────────────────────────────────────────────────────────
+  // dailyBonusByEmployee[employeeId][dateStr] = BonusDailyDetail
+  const dailyBonusByEmployee = new Map<string, Map<string, BonusDailyDetail>>();
+  // 每日個人計算工時（用於分配營運成果獎金池）
+  const dailyCalcHoursByEmployee = new Map<string, Map<string, number>>();
+  // 每日營運成果獎金池
+  const dailyOpsPool = new Map<string, number>(); // dateStr → pool amount
+
+  // 遍歷每一天
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    const dateStr = cur.toISOString().slice(0, 10);
+    const weekday = cur.getUTCDay(); // 0=Sun, 1-5=Mon-Fri, 6=Sat
+    const exactDate = businessDayWorkDateFromDate(cur);
+
+    // 取得今天所有有出勤的員工
+    const todayAttendees = new Set<string>();
+    for (const a of attendances) {
+      if (a.workDate.toISOString().slice(0, 10) === dateStr) {
+        todayAttendees.add(a.employeeId);
+      }
+    }
+
+    // 計算今日每個員工的計算工時（用於池子分配）
+    const dailyCalcHoursMap = new Map<string, number>();
+
+    // 計算每個員工當日達標獎金
+    for (const employeeId of todayAttendees) {
+      const attList = attByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
+      if (attList.length === 0) continue;
+
+      // 累加實際工時（多筆出勤）
+      const totalActual = attList.reduce((sum, a) => sum + Number(a.workHours), 0);
+      const scheduledHours = attList[0].scheduledWorkHours
+        ? Number(attList[0].scheduledWorkHours)
+        : FULL_HOURS;
+      const shiftType = attList[0].shiftType;
+      const originalStoreId = attList[0].originalStoreId;
+
+      const calcH = calcBonusHours(totalActual, scheduledHours);
+      dailyCalcHoursMap.set(employeeId, calcH);
+
+      // 判斷門市達標狀態
+      const dispList = dispByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
+      const hasDispatch = dispList.length > 0;
+
+      let storeId = originalStoreId ?? (employeeMap.get(employeeId)?.defaultStoreId ?? "");
+      let storeName = "";
+      let isTargetMet = false;
+      let isExceeded = false;
+      let effRatio = 0;
+      let dispatchNote: string | null = null;
+      let baseBonus = 0;
+
+      if (!hasDispatch) {
+        // 無調度：直接看原門市績效
+        const perf = perfMap.get(`${dateStr}_${storeId}`);
+        if (perf) {
+          storeName = perf.store.name;
+          effRatio = Number(perf.efficiencyRatio);
+          isTargetMet = perf.isTargetMet;
+          isExceeded = weekday >= 1 && weekday <= 5 && effRatio >= EXCEED_THRESHOLD;
+        }
+      } else {
+        // 有調度：檢查原店及支援店
+        const disp = dispList[0];
+        const isXType = (disp.remark ?? "").includes("(X)");
+        const fromStoreId = disp.fromStoreId ?? storeId;
+        const toStoreId = disp.toStoreId;
+
+        const fromPerf = perfMap.get(`${dateStr}_${fromStoreId}`);
+        const toPerf = perfMap.get(`${dateStr}_${toStoreId}`);
+
+        const fromMet = fromPerf?.isTargetMet ?? false;
+        const toMet = toPerf?.isTargetMet ?? false;
+        const fromExceeded =
+          weekday >= 1 && weekday <= 5 && Number(fromPerf?.efficiencyRatio ?? 0) >= EXCEED_THRESHOLD;
+        const toExceeded =
+          weekday >= 1 && weekday <= 5 && Number(toPerf?.efficiencyRatio ?? 0) >= EXCEED_THRESHOLD;
+
+        const anyMet = fromMet || toMet;
+        isTargetMet = anyMet;
+
+        if (anyMet) {
+          if (isXType) {
+            // 取兩店較高的獎金（超標 > 達標，皆未達則 0）
+            const fromBonus = fromMet ? (fromExceeded ? EXCEED_BONUS : BASE_BONUS) : 0;
+            const toBonus = toMet ? (toExceeded ? EXCEED_BONUS : BASE_BONUS) : 0;
+            baseBonus = Math.max(fromBonus, toBonus);
+            isExceeded = baseBonus === EXCEED_BONUS;
+            dispatchNote = "調店(X)";
+          } else {
+            // 正常調度：1.5倍
+            const anyExceeded = fromExceeded || toExceeded;
+            isExceeded = anyExceeded;
+            baseBonus = anyExceeded ? EXCEED_BONUS : BASE_BONUS;
+            dispatchNote = "調店×1.5";
+          }
+          // 使用到店的門市資訊顯示
+          storeId = toStoreId;
+        }
+
+        if (toPerf) {
+          storeName = toPerf.store.name;
+          effRatio = Number(toPerf.efficiencyRatio);
+        } else if (fromPerf) {
+          storeName = fromPerf.store.name;
+          effRatio = Number(fromPerf.efficiencyRatio);
+        }
+      }
+
+      if (!isTargetMet || calcH === 0) {
+        // 未達標或無工時 → 0 獎金，但仍記錄
+        const detail: BonusDailyDetail = {
+          workDate: dateStr,
+          weekday,
+          storeId,
+          storeName,
+          isTargetMet: false,
+          isExceeded: false,
+          efficiencyRatio: effRatio,
+          scheduledHours,
+          actualWorkHours: totalActual,
+          calcHours: calcH,
+          baseBonus: 0,
+          dailyBonus: 0,
+          dispatchNote,
+        };
+        if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
+        dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
+        continue;
+      }
+
+      // 計算當日比例
+      let ratio: number;
+      const pt = isPartTime(shiftType, scheduledHours);
+      if (weekday === 6) {
+        // 六：>=3h → 100%, <3h → 50%
+        ratio = calcH >= 3 ? 1 : 0.5;
+      } else if (pt) {
+        // 兼職平日：按排班工時比例
+        ratio = scheduledHours > 0 ? Math.min(calcH / scheduledHours, 1) : 0;
+      } else {
+        // 正職平日：按 8h 比例
+        ratio = Math.min(calcH / FULL_HOURS, 1);
+      }
+
+      if (!baseBonus) {
+        baseBonus = isExceeded ? EXCEED_BONUS : BASE_BONUS;
+      }
+
+      let dailyBonus = new Decimal(baseBonus).mul(ratio);
+      // 調度1.5倍
+      if (dispatchNote === "調店×1.5") {
+        dailyBonus = dailyBonus.mul(1.5);
+      }
+
+      const detail: BonusDailyDetail = {
+        workDate: dateStr,
+        weekday,
+        storeId,
+        storeName,
+        isTargetMet,
+        isExceeded,
+        efficiencyRatio: effRatio,
+        scheduledHours,
+        actualWorkHours: totalActual,
+        calcHours: calcH,
+        baseBonus,
+        dailyBonus: dailyBonus.toDecimalPlaces(2).toNumber(),
+        dispatchNote,
+      };
+      if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
+      dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
+    }
+
+    // 計算今日營運成果獎金池
+    // 池子 = 72 × (達標門市的上班人數)
+    const reachedStores = new Set<string>();
+    for (const p of performanceDailies) {
+      if (p.workDate.toISOString().slice(0, 10) === dateStr && p.isTargetMet) {
+        reachedStores.add(p.storeId);
+      }
+    }
+    let poolWorkers = 0;
+    for (const employeeId of todayAttendees) {
+      const attList = attByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
+      const origStoreId = attList[0]?.originalStoreId ?? "";
+      if (reachedStores.has(origStoreId)) poolWorkers++;
+    }
+    dailyOpsPool.set(dateStr, poolWorkers * OPS_BONUS_PER_PERSON);
+
+    // 記錄計算工時
+    const dailyCalcEntry = new Map<string, number>();
+    dailyCalcHoursMap.forEach((h, eid) => dailyCalcEntry.set(eid, h));
+    dailyCalcHoursByEmployee.set(dateStr, dailyCalcEntry);
+
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+
+  // ─── 計算每日營運成果獎金分配 ────────────────────────────────────────────────
+  const totalOpsBonus = new Map<string, number>(); // employeeId → 月份累計營運成果獎金
+
+  dailyOpsPool.forEach((pool, dateStr) => {
+    if (pool <= 0) return;
+    const calcMap = dailyCalcHoursByEmployee.get(dateStr);
+    if (!calcMap) return;
+    const totalHours = Array.from(calcMap.values()).reduce((s, h) => s + h, 0);
+    if (totalHours <= 0) return;
+    calcMap.forEach((h, eid) => {
+      const share = new Decimal(pool).mul(h).div(totalHours).toDecimalPlaces(2).toNumber();
+      totalOpsBonus.set(eid, (totalOpsBonus.get(eid) ?? 0) + share);
+    });
+  });
+
+  // ─── 彙總每人結果 ─────────────────────────────────────────────────────────────
+  const results: BonusEmployeeResult[] = [];
+
+  // 取得所有有出勤記錄的員工
+  const allEmployeeIds = new Set<string>();
+  for (const a of attendances) allEmployeeIds.add(a.employeeId);
+
+  for (const employeeId of allEmployeeIds) {
+    const emp = employeeMap.get(employeeId);
+    if (!emp) continue;
+
+    const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
+    const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
+
+    const totalCalcHours = details.reduce((s, d) => s + d.calcHours, 0);
+    const targetBonus = details.reduce((s, d) => s + d.dailyBonus, 0);
+    const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;
+    let subtotalBonus = new Decimal(targetBonus).add(operationsBonus);
+
+    // 新人比例
+    const nhRatio = newHireRatio(emp.hireDate, yearMonth);
+    subtotalBonus = subtotalBonus.mul(nhRatio);
+
+    // 新店保障
+    const homeStoreId = emp.defaultStoreId ?? "";
+    const isNewStore = newStoreIds.has(homeStoreId);
+    let guaranteeAmount: Decimal | null = null;
+    let isNewStoreGuarantee = false;
+
+    if (isNewStore) {
+      // 計算該員工的保障金額（按兼職比例）
+      const allDetails = details.filter((d) => d.calcHours > 0);
+      const pt = allDetails.length > 0 && isPartTime(null, allDetails[0].scheduledHours);
+      let guarantee = MONTHLY_GUARANTEE;
+      if (pt) {
+        const avgScheduled =
+          allDetails.length > 0
+            ? allDetails.reduce((s, d) => s + d.scheduledHours, 0) / allDetails.length
+            : FULL_HOURS;
+        guarantee = MONTHLY_GUARANTEE.div(FULL_HOURS).mul(avgScheduled);
+      }
+      guarantee = guarantee.mul(nhRatio);
+      if (subtotalBonus.lessThan(guarantee)) {
+        subtotalBonus = guarantee;
+        guaranteeAmount = guarantee;
+        isNewStoreGuarantee = true;
+      }
+    }
+
+    const multiplier = getMultiplier(emp.position);
+    const accountability = accountabilityMap.get(employeeId) ?? 1;
+    const finalBonus = subtotalBonus.mul(multiplier).mul(accountability).toDecimalPlaces(0).toNumber();
+
+    // 主要門市名稱（從詳細記錄取最常出現的）
+    const storeNameCounts = new Map<string, number>();
+    for (const d of details) {
+      storeNameCounts.set(d.storeName, (storeNameCounts.get(d.storeName) ?? 0) + 1);
+    }
+    const storeName =
+      Array.from(storeNameCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+      emp.defaultStore?.name ?? "";
+
+    results.push({
+      employeeId,
+      employeeCode: emp.employeeCode,
+      employeeName: emp.name,
+      storeName,
+      position: emp.position,
+      totalCalcHours: new Decimal(totalCalcHours).toDecimalPlaces(2).toNumber(),
+      targetBonus: new Decimal(targetBonus).toDecimalPlaces(2).toNumber(),
+      operationsBonus: new Decimal(operationsBonus).toDecimalPlaces(2).toNumber(),
+      subtotalBonus: subtotalBonus.toDecimalPlaces(2).toNumber(),
+      newHireRatio: nhRatio,
+      isNewStoreGuarantee,
+      guaranteeAmount: guaranteeAmount?.toDecimalPlaces(2).toNumber() ?? null,
+      bonusMultiplier: multiplier,
+      accountabilityRatio: accountability,
+      finalBonus,
+      dailyDetails: details,
+    });
+  }
+
+  return results.sort((a, b) => a.storeName.localeCompare(b.storeName) || a.employeeName.localeCompare(b.employeeName));
+}
+
+// ─── 儲存計算結果 ──────────────────────────────────────────────────────────────
+export async function saveMonthlyBonusResults(
+  yearMonth: string,
+  results: BonusEmployeeResult[]
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    // 保留既有的權責比例設定
+    const existing = await tx.monthlyBonusResult.findMany({
+      where: { yearMonth },
+      select: { employeeId: true, accountabilityRatio: true },
+    });
+    const savedAccountability = new Map(existing.map((r: { employeeId: string; accountabilityRatio: unknown }) => [r.employeeId, r.accountabilityRatio]));
+
+    // 刪除舊結果（含明細）
+    await tx.monthlyBonusDailyDetail.deleteMany({
+      where: { bonusResult: { yearMonth } },
+    });
+    await tx.monthlyBonusResult.deleteMany({ where: { yearMonth } });
+
+    // 批次寫入新結果
+    for (const r of results) {
+      const savedAccountabilityRatio = savedAccountability.get(r.employeeId);
+      const accountabilityRatio = savedAccountabilityRatio
+        ? Number(savedAccountabilityRatio)
+        : r.accountabilityRatio;
+      // 若權責比例已被修改，重算最終獎金
+      const finalBonus =
+        accountabilityRatio !== r.accountabilityRatio
+          ? new Decimal(r.subtotalBonus).mul(r.bonusMultiplier).mul(accountabilityRatio).toDecimalPlaces(0).toNumber()
+          : r.finalBonus;
+
+      const created = await tx.monthlyBonusResult.create({
+        data: {
+          yearMonth,
+          employeeId: r.employeeId,
+          employeeCode: r.employeeCode,
+          employeeName: r.employeeName,
+          storeName: r.storeName,
+          position: r.position,
+          totalCalcHours: r.totalCalcHours,
+          targetBonus: r.targetBonus,
+          operationsBonus: r.operationsBonus,
+          subtotalBonus: r.subtotalBonus,
+          newHireRatio: r.newHireRatio,
+          isNewStoreGuarantee: r.isNewStoreGuarantee,
+          guaranteeAmount: r.guaranteeAmount,
+          bonusMultiplier: r.bonusMultiplier,
+          accountabilityRatio,
+          finalBonus,
+        },
+      });
+
+      // 寫入每日明細
+      if (r.dailyDetails.length > 0) {
+        await tx.monthlyBonusDailyDetail.createMany({
+          data: r.dailyDetails.map((d) => ({
+            bonusResultId: created.id,
+            workDate: parseDateOnlyUTC(d.workDate),
+            weekday: d.weekday,
+            storeId: d.storeId,
+            storeName: d.storeName,
+            isTargetMet: d.isTargetMet,
+            isExceeded: d.isExceeded,
+            efficiencyRatio: d.efficiencyRatio,
+            scheduledHours: d.scheduledHours,
+            actualWorkHours: d.actualWorkHours,
+            calcHours: d.calcHours,
+            baseBonus: d.baseBonus,
+            dailyBonus: d.dailyBonus,
+            dispatchNote: d.dispatchNote,
+          })),
+        });
+      }
+    }
+  });
+}
