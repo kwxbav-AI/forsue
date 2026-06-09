@@ -73,6 +73,7 @@ export function OperationsShell({
   }, [hasDynamicBadge, pathname]);
 
   let lastWasStoreOps = false;
+  let lastWasSupervision = false;
 
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] flex min-h-[calc(100vh-4rem)] w-screen max-w-none bg-slate-100">
@@ -88,16 +89,25 @@ export function OperationsShell({
           {visibleNav.map((item) => {
             const active =
               pathname === item.href ||
-              (item.href !== "/operations/dashboard" && pathname.startsWith(item.href));
+              (item.href !== "/operations/dashboard" && pathname.startsWith(item.href)) ||
+              (!!item.supervision && pathname.startsWith("/operations/supervision"));
             const showStoreOpsLabel = item.storeOps && !lastWasStoreOps;
+            const showSupervisionLabel = item.supervision && !lastWasSupervision;
             if (item.storeOps) lastWasStoreOps = true;
             else lastWasStoreOps = false;
+            if (item.supervision) lastWasSupervision = true;
+            else lastWasSupervision = false;
 
             return (
               <div key={item.href}>
                 {showStoreOpsLabel ?
                   <p className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">
                     店務管理
+                  </p>
+                : null}
+                {showSupervisionLabel ?
+                  <p className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-wider text-sky-400/80">
+                    督導管理
                   </p>
                 : null}
                 <NavLink

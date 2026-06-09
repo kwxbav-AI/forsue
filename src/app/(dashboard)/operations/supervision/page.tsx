@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { SupervisionTabs } from "@/components/operations/supervision-tabs";
 
 export default function OperationsSupervisionPage() {
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-3xl space-y-5">
+      <SupervisionTabs />
       <h1 className="text-2xl font-bold text-slate-900">督導管理</h1>
       <p className="mt-2 text-sm text-slate-600">
         C 階段功能：巡店任務、高優先預警與改善追蹤。目前營運總覽已依工效比「未達標」門市顯示警示清單。
