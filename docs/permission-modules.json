@@ -707,6 +707,42 @@
         { "kind": "PAGE", "pathPattern": "/reserve-staff", "method": null },
         { "kind": "API", "pathPattern": "/api/employees", "method": null }
       ]
+    },
+    {
+      "key": "bonus-monthly",
+      "label": "績效獎金月報",
+      "description": "計算與查詢每月績效獎金",
+      "group": "績效獎金",
+      "sortOrder": 800,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/bonus/monthly", "method": null },
+        { "kind": "API", "pathPattern": "/api/bonus", "method": null }
+      ]
+    },
+    {
+      "key": "settings-new-stores",
+      "label": "新店保障設定",
+      "description": "設定新開幕門市及獎金保障期間",
+      "group": "設定",
+      "sortOrder": 680,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/new-stores", "method": null },
+        { "kind": "API", "pathPattern": "/api/settings/new-stores", "method": null }
+      ]
+    },
+    {
+      "key": "settings-bonus-multipliers",
+      "label": "獎金倍率設定",
+      "description": "依職稱設定績效獎金倍率",
+      "group": "設定",
+      "sortOrder": 690,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/bonus-multipliers", "method": null },
+        { "kind": "API", "pathPattern": "/api/settings/bonus-multipliers", "method": null }
+      ]
     }
   ]
 }
