@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { toDateRangeTaipei } from "@/lib/date";
+import { toDateRange, toDateRangeTaipei } from "@/lib/date";
 import {
   DUAL_OPS_REGIONS,
   OPS_REGION_CATALOG,
@@ -211,6 +211,53 @@ export async function fetchDualRegionChartTotals(
   const perStore = await fetchChartsPerStore(startDate, endDate);
   const rows = filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS);
   return sumChartRows(rows);
+}
+
+/** 桃園＋宜蘭 catalog 門市 ID（含已停用，不含 hideInReports） */
+export async function listDualRegionStoreIdsForRevenue(): Promise<string[]> {
+  const allowedKeys = getCatalogKeysForRegions(DUAL_OPS_REGIONS);
+  const stores = await prisma.store.findMany({
+    where: { hideInReports: false },
+    select: { id: true, name: true },
+  });
+  return stores
+    .filter((s) => {
+      const key = normalizeStoreKey(s.name);
+      if (allowedKeys.has(key)) return true;
+      for (const catalogKey of allowedKeys) {
+        if (storeNameMatchesCatalogKey(s.name, catalogKey)) return true;
+      }
+      return false;
+    })
+    .map((s) => s.id);
+}
+
+/**
+ * 桃園＋宜蘭區間營收加總（直接查 revenueRecord、UTC 日曆區間）。
+ * 供 YoY 成長率使用，避免圖表加總漏計已停用門市或僅去年同期有營收之門市。
+ */
+export async function fetchDualRegionRevenueTotal(
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  const storeIds = await listDualRegionStoreIdsForRevenue();
+  if (storeIds.length === 0) return 0;
+
+  const { start, end } = toDateRange(startDate, endDate);
+  const grouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: {
+      storeId: { in: storeIds },
+      revenueDate: { gte: start, lte: end },
+    },
+    _sum: { revenueAmount: true },
+  });
+
+  let revenue = 0;
+  for (const g of grouped) {
+    revenue += Number(g._sum.revenueAmount ?? 0);
+  }
+  return revenue;
 }
 
 function catalogStoreNameRank(name: string, catalogKey: string): number {

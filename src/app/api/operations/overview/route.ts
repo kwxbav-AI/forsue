@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
       region: region || undefined,
     });
 
-    const [{ stores, customerMetrics }, monthlyTrend, kpiMetrics] = await Promise.all([
+    const [{ stores, customerMetrics, workingDaysInRange }, monthlyTrend, kpiMetrics] =
+      await Promise.all([
       overviewBundlePromise,
       includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
       includeKpi ?
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
       startDate: effective.startDate,
       endDate: effective.endDate,
       region: region || null,
+      workingDaysInRange,
       monthlyTrend,
       kpiMetrics,
       priorityAlerts,

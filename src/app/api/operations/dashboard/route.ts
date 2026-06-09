@@ -8,6 +8,7 @@ import {
 import { yoyGrowthRate } from "@/lib/operations-yoy";
 import {
   fetchChartsPerStore,
+  fetchDualRegionRevenueTotal,
   filterChartsByCatalogRegions,
   getOpsCatalogStoreCount,
   listPerformanceStoresForFilter,
@@ -74,10 +75,13 @@ export async function GET(request: NextRequest) {
     const dualCurrent = sumChartRows(
       filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS)
     );
-    const dualPrior = sumChartRows(
-      filterChartsByCatalogRegions(priorPerStore, DUAL_OPS_REGIONS)
-    );
-    const kpiYoyGrowthRate = yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue);
+    const priorStart = shiftYear(effectiveRange.startDate, -1);
+    const priorEnd = shiftYear(effectiveRange.endDate, -1);
+    const [dualPriorRevenue, dualCurrentRevenue] = await Promise.all([
+      fetchDualRegionRevenueTotal(priorStart, priorEnd),
+      fetchDualRegionRevenueTotal(effectiveRange.startDate, effectiveRange.endDate),
+    ]);
+    const kpiYoyGrowthRate = yoyGrowthRate(dualCurrentRevenue, dualPriorRevenue);
 
     const selectedStore = storeId
       ? filterStores.find((s) => s.id === storeId)
@@ -132,11 +136,11 @@ export async function GET(request: NextRequest) {
         pageSize: includeStores ? pageSize : null,
       },
       kpiMetrics: {
-        totalRevenue: dualCurrent.revenue,
+        totalRevenue: dualCurrentRevenue,
         totalLaborHours: dualCurrent.laborHours,
         efficiencyRatio: dualCurrent.efficiencyRatio,
         yoyGrowthRate: kpiYoyGrowthRate,
-        priorYearRevenue: dualPrior.revenue,
+        priorYearRevenue: dualPriorRevenue,
         regionLabel: "桃園區 + 宜蘭區",
         periodStartDate: effectiveRange.startDate,
         periodEndDate: effectiveRange.endDate,

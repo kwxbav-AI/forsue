@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { serializeRetailStore } from "@/lib/operations-serialize";
+import { filterStoreOpsRetailStores } from "@/lib/store-ops-retail-stores";
 import { normalizeRetailBusinessHours } from "@/lib/retail-store-hours";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     where: activeOnly ? { isActive: true } : undefined,
     orderBy: [{ region: "asc" }, { storeName: "asc" }],
   });
-  return NextResponse.json(list.map(serializeRetailStore));
+  return NextResponse.json(filterStoreOpsRetailStores(list).map(serializeRetailStore));
 }
 
 export async function POST(request: NextRequest) {

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { computeRplhTarget } from "@/lib/operations";
 import { serializeStoreTarget } from "@/lib/operations-serialize";
+import { isStoreOpsRetailStore } from "@/lib/store-ops-retail-stores";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,9 @@ export async function GET(request: NextRequest) {
       ? [{ year: "desc" }, { month: "desc" }, { store: { storeName: "asc" } }]
       : [{ store: { storeName: "asc" } }, { month: "asc" }],
   });
-  return NextResponse.json(list.map(serializeStoreTarget));
+  return NextResponse.json(
+    list.filter((row) => isStoreOpsRetailStore(row.store.storeName)).map(serializeStoreTarget)
+  );
 }
 
 export async function POST(request: NextRequest) {

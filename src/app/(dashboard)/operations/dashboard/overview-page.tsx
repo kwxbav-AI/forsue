@@ -63,6 +63,10 @@ type OverviewStore = {
   laborHours: number;
   efficiencyRatio: number | null;
   targetMetDays: number;
+  periodLaborHourTarget: number | null;
+  regularLaborHours: number | null;
+  overtimeHours: number | null;
+  overtimeRateOnTarget: number | null;
   status: "green" | "yellow" | "red" | "none";
   statusLabel: string;
 };
@@ -90,6 +94,7 @@ type PriorityAlert = {
 type OverviewData = {
   startDate: string;
   endDate: string;
+  workingDaysInRange?: number;
   monthlyTrend: MonthlyTrendPoint[];
   summary: {
     storeCount: number;
@@ -137,6 +142,18 @@ function formatMoney(n: number) {
 function formatPctOne(n: number | null | undefined) {
   if (n == null || Number.isNaN(n)) return "—";
   return `${Number(n).toFixed(1)}%`;
+}
+
+function formatHours(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "—";
+  return Number(n).toFixed(1);
+}
+
+function overtimeRateRowClass(rate: number | null | undefined): string {
+  if (rate == null || Number.isNaN(rate)) return "";
+  if (rate <= 50) return "bg-emerald-50/70";
+  if (rate <= 75) return "bg-amber-50/70";
+  return "bg-red-50/70";
 }
 
 function KpiCard({
@@ -333,6 +350,19 @@ export default function OperationsOverviewPage() {
     280
   );
   const regionLabel = region || "全區";
+  const workingDays = overview?.workingDaysInRange ?? 0;
+
+  const targetMetRanking = useMemo(() => {
+    if (!overview) return [];
+    return [...overview.stores].sort((a, b) => b.targetMetDays - a.targetMetDays);
+  }, [overview]);
+
+  const overtimeRanking = useMemo(() => {
+    if (!overview) return [];
+    return [...overview.stores]
+      .filter((s) => s.laborHours > 0 || s.overtimeHours != null)
+      .sort((a, b) => (b.overtimeHours ?? 0) - (a.overtimeHours ?? 0));
+  }, [overview]);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -381,6 +411,18 @@ export default function OperationsOverviewPage() {
               </option>
             ))}
           </select>
+          {overview && workingDays > 0 ?
+            <span
+              className="self-end rounded-lg border px-2.5 py-1.5 text-xs font-medium tabular-nums"
+              style={{
+                backgroundColor: OPS_COLORS.hours.bg,
+                borderColor: OPS_COLORS.hours.border,
+                color: OPS_COLORS.hours.label,
+              }}
+            >
+              總營業天數 {workingDays} 天
+            </span>
+          : null}
           <button
             type="button"
             onClick={() => void load()}
@@ -730,6 +772,129 @@ export default function OperationsOverviewPage() {
                   </ResponsiveContainer>
                 </div>
               : <p className="text-sm text-slate-500 py-12 text-center">區間無營收資料</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4">
+            <div
+              className="rounded-xl border p-4 shadow-sm"
+              style={{
+                backgroundColor: OPS_COLORS.achievement.bg,
+                borderColor: OPS_COLORS.achievement.border,
+              }}
+            >
+              <h2
+                className="text-sm font-semibold"
+                style={{ color: OPS_COLORS.achievement.value }}
+              >
+                達標次數統計
+              </h2>
+              <p className="text-xs mt-0.5 mb-3" style={{ color: OPS_COLORS.achievement.label }}>
+                {overview.startDate} ~ {overview.endDate} · {regionLabel}
+                {workingDays > 0 ? ` · 總營業天數 ${workingDays} 天` : ""}
+              </p>
+              <p className="text-[11px] mb-2 text-slate-500">
+                工效比每日達標（平日 ≥ 4,000、週六 ≥ 5,500 元/hr，排除週日與假日）
+              </p>
+              {targetMetRanking.length ?
+                <div className="max-h-[280px] overflow-y-auto rounded-lg border border-white/60 bg-white/80">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="py-2 pl-3 pr-2 text-left font-medium">門市</th>
+                        <th className="py-2 px-2 text-right font-medium">達標次數</th>
+                        <th className="py-2 pr-3 pl-2 text-right font-medium">達標率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {targetMetRanking.map((s) => {
+                        const metRate =
+                          workingDays > 0 ?
+                            Math.round((s.targetMetDays / workingDays) * 1000) / 10
+                          : null;
+                        return (
+                          <tr key={s.storeId} className="border-t border-slate-100">
+                            <td className="py-1.5 pl-3 pr-2 text-slate-800">
+                              <span className="font-medium">{s.storeName}</span>
+                              {s.region ?
+                                <span className="ml-1 text-slate-400">{s.region}</span>
+                              : null}
+                            </td>
+                            <td
+                              className="py-1.5 px-2 text-right font-semibold tabular-nums"
+                              style={{ color: OPS_COLORS.achievement.value }}
+                            >
+                              {s.targetMetDays}
+                            </td>
+                            <td className="py-1.5 pr-3 pl-2 text-right tabular-nums text-slate-600">
+                              {formatPctOne(metRate)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              : <p className="text-sm text-slate-500 py-6 text-center">區間無門市資料</p>}
+            </div>
+
+            <div
+              className="rounded-xl border p-4 shadow-sm"
+              style={{
+                backgroundColor: OPS_COLORS.hours.bg,
+                borderColor: OPS_COLORS.hours.border,
+              }}
+            >
+              <h2 className="text-sm font-semibold" style={{ color: OPS_COLORS.hours.value }}>
+                各店加班時數
+              </h2>
+              <p className="text-xs mt-0.5 mb-3" style={{ color: OPS_COLORS.hours.label }}>
+                {overview.startDate} ~ {overview.endDate} · {regionLabel}
+              </p>
+              <p className="text-[11px] mb-2 text-slate-500">
+                正班工時 = 實際與區間目標工時取較小者 · 加班 = |實際 − 目標| · 加班率 = 加班 ÷ 目標工時
+              </p>
+              {overtimeRanking.length ?
+                <div className="max-h-[280px] overflow-y-auto rounded-lg border border-white/60 bg-white/80">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="py-2 pl-3 pr-2 text-left font-medium">門市</th>
+                        <th className="py-2 px-2 text-right font-medium">正班</th>
+                        <th className="py-2 px-2 text-right font-medium">加班</th>
+                        <th className="py-2 pr-3 pl-2 text-right font-medium">加班率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overtimeRanking.map((s) => (
+                        <tr
+                          key={s.storeId}
+                          className={`border-t border-slate-100 ${overtimeRateRowClass(s.overtimeRateOnTarget)}`}
+                        >
+                          <td className="py-1.5 pl-3 pr-2 text-slate-800">
+                            <span className="font-medium">{s.storeName}</span>
+                            {s.region ?
+                              <span className="ml-1 text-slate-400">{s.region}</span>
+                            : null}
+                          </td>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-slate-700">
+                            {formatHours(s.regularLaborHours)}h
+                          </td>
+                          <td
+                            className="py-1.5 px-2 text-right font-semibold tabular-nums"
+                            style={{ color: OPS_COLORS.hours.chartDeep }}
+                          >
+                            {formatHours(s.overtimeHours)}h
+                          </td>
+                          <td className="py-1.5 pr-3 pl-2 text-right tabular-nums text-slate-700">
+                            {formatPctOne(s.overtimeRateOnTarget)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              : <p className="text-sm text-slate-500 py-6 text-center">區間無工時資料</p>}
             </div>
           </div>
 

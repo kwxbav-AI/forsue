@@ -74,14 +74,6 @@ export const OPS_REGION_CATALOG: ReadonlyArray<{
 
   },
 
-  {
-
-    region: "台北區",
-
-    storeNames: ["萬隆", "虎林", "嘉興", "福德"],
-
-  },
-
 ] as const;
 
 
@@ -173,7 +165,7 @@ export function inferRetailRegion(
 
   if (dept) {
 
-    const m = dept.match(/^(桃園區|宜蘭區|台北區)/);
+    const m = dept.match(/^(桃園區|宜蘭區)/);
 
     if (m) return m[1];
 

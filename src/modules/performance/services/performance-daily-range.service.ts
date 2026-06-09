@@ -3,7 +3,7 @@ import {
   parseDateOnlyUTC,
   addCalendarDaysUTC,
   formatDateOnly,
-  toDateRangeTaipei,
+  toDateRange,
 } from "@/lib/date";
 import { getAttendanceDataStartDate } from "@/lib/attendance-data";
 import {
@@ -81,7 +81,8 @@ async function addBulkRevenueBeforeAttendanceStart(
 ): Promise<void> {
   if (effStart > revenueOnlyEnd || effStart >= attendanceStartYmd) return;
 
-  const { start, end } = toDateRangeTaipei(effStart, revenueOnlyEnd);
+  // 營收以 UTC 日曆日寫入 @db.Date，須用 UTC 區間（與 /api/reports/revenue 一致）
+  const { start, end } = toDateRange(effStart, revenueOnlyEnd);
   const grouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
     where: { revenueDate: { gte: start, lte: end } },
@@ -206,7 +207,7 @@ async function computeEngineRangeRows(
       const row = accum.get(id);
       const store = resolvedById.get(id);
       if (!row) continue;
-      if (!store || !store.isActive || store.hideInReports) {
+      if (!store || store.hideInReports) {
         accum.delete(id);
         continue;
       }

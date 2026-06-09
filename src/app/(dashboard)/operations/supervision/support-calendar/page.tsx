@@ -14,6 +14,7 @@ import {
   SUPPORT_SEVERITY_HINTS,
   SUPPORT_SEVERITY_LABELS,
 } from "@/modules/supervisor/types/support-requests";
+import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 
 function currentYearMonth() {
   const now = new Date();
@@ -152,9 +153,10 @@ export default function SupervisorSupportCalendarPage() {
   const selectedStores = selectedDate ? dateMap.get(selectedDate) ?? [] : [];
 
   const regionOptions = useMemo(() => {
+    const opsRegions = DUAL_OPS_REGIONS as readonly string[];
     const set = new Set<string>();
     for (const s of data?.meta.stores ?? []) {
-      if (s.region) set.add(s.region);
+      if (s.region && opsRegions.includes(s.region)) set.add(s.region);
     }
     const list = [...set];
     list.sort((a, b) => a.localeCompare(b));

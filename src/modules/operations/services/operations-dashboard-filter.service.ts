@@ -396,7 +396,10 @@ function buildStoreRow(
   };
 }
 
-function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterStoreRow {
+function aggregateSummaryRows(
+  rows: DashboardFilterStoreRow[],
+  priorTotalRevenue?: number
+): DashboardFilterStoreRow {
   if (rows.length === 0) {
     return {
       storeId: "",
@@ -427,7 +430,6 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
   let laborHours = 0;
   let monthlySalesTarget = 0;
   let monthlyLaborHourTarget = 0;
-  let priorYearRevenue = 0;
   let periodLaborTarget = 0;
   let hasDefaultLabor = false;
   let hasSalesTarget = false;
@@ -436,7 +438,6 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
   for (const r of rows) {
     revenue += r.revenue;
     laborHours += r.laborHours;
-    priorYearRevenue += r.priorYearRevenue;
     if (r.revenueForecast != null && r.revenueForecast > 0) {
       monthlySalesTarget += r.revenueForecast;
       hasSalesTarget = true;
@@ -455,6 +456,9 @@ function aggregateSummaryRows(rows: DashboardFilterStoreRow[]): DashboardFilterS
     computeOvertimeHours(laborHours, periodLaborTarget)
   : null;
   const overtimeHours = overtimeRaw != null ? Math.abs(overtimeRaw) : null;
+  const priorYearRevenue =
+    priorTotalRevenue ??
+    rows.reduce((a, r) => a + r.priorYearRevenue, 0);
 
   return {
     storeId: "",
@@ -695,7 +699,8 @@ export async function buildDashboardFilterResult(input: {
     );
   });
 
-  const summary = aggregateSummaryRows(storeRows);
+  const priorYearRevenueTotal = priorCharts.reduce((a, r) => a + r.revenueSum, 0);
+  const summary = aggregateSummaryRows(storeRows, priorYearRevenueTotal);
   const totals = metricsFromChartRows(filteredCharts);
 
   const dailyTrend =

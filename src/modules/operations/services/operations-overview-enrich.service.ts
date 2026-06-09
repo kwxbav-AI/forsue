@@ -15,6 +15,7 @@ import {
 import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
+  fetchDualRegionRevenueTotal,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
 import { sumTargetByMonthForPerformanceStores } from "@/modules/operations/services/operations-revenue-bulk.service";
@@ -37,6 +38,36 @@ export const REVENUE_ACHIEVEMENT_LABEL: Record<RevenueAchievementBucket, string>
   red: "未達標",
   none: "無目標",
 };
+
+function roundHours(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** 正班工時：實際工時與區間目標工時取較小者 */
+function computeRegularLaborHours(
+  laborHours: number,
+  periodLaborHourTarget: number | null,
+  overtimeHours: number | null
+): number | null {
+  if (periodLaborHourTarget != null && periodLaborHourTarget > 0) {
+    return roundHours(Math.min(laborHours, periodLaborHourTarget));
+  }
+  if (overtimeHours != null) {
+    return roundHours(Math.max(0, laborHours - overtimeHours));
+  }
+  return laborHours > 0 ? roundHours(laborHours) : null;
+}
+
+/** 加班率 = 加班時數 ÷ 區間目標工時（原時數） */
+function computeOvertimeRateOnTarget(
+  overtimeHours: number | null,
+  periodLaborHourTarget: number | null
+): number | null {
+  if (overtimeHours == null || periodLaborHourTarget == null || periodLaborHourTarget <= 0) {
+    return null;
+  }
+  return Math.round((overtimeHours / periodLaborHourTarget) * 1000) / 10;
+}
 
 function shiftYear(dateStr: string, deltaYears: number): string {
   const d = parseDateOnlyUTC(dateStr);
@@ -103,14 +134,15 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
     .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
     .map((s) => s.id);
 
-  const [dualCurrent, dualPrior, targetByMonth] = await Promise.all([
+  const [dualCurrent, currentRevenue, priorRevenue, targetByMonth] = await Promise.all([
     fetchDualRegionChartTotals(startYmd, endYmd),
-    fetchDualRegionChartTotals(priorStart, priorEnd),
+    fetchDualRegionRevenueTotal(startYmd, endYmd),
+    fetchDualRegionRevenueTotal(priorStart, priorEnd),
     sumTargetByMonthForPerformanceStores(startYmd, endYmd, dualStoreIds),
   ]);
 
   const totalTarget = [...targetByMonth.values()].reduce((a, b) => a + b, 0);
-  const totalRevenue = dualCurrent.revenue;
+  const totalRevenue = currentRevenue;
   const revenueAchievementRate =
     totalTarget > 0 ? Math.round((totalRevenue / totalTarget) * 1000) / 10 : null;
 
@@ -120,8 +152,8 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
     revenueAchievementRate,
     totalLaborHours: dualCurrent.laborHours,
     efficiencyRatio: dualCurrent.efficiencyRatio,
-    yoyGrowthRate: yoyGrowthRate(dualCurrent.revenue, dualPrior.revenue),
-    priorYearRevenue: dualPrior.revenue,
+    yoyGrowthRate: yoyGrowthRate(currentRevenue, priorRevenue),
+    priorYearRevenue: priorRevenue,
     regionLabel: "宜蘭區 + 桃園區",
     periodStartDate: startYmd,
     periodEndDate: endYmd,
@@ -226,6 +258,8 @@ export async function buildEnrichedOverviewStores(input: {
       const meta = metaByPerfId.get(row.storeId);
       const revenueAchievementRate = row.revenueAchievementRate;
       const bucket = revenueAchievementBucket(revenueAchievementRate);
+      const periodLaborHourTarget = row.defaultLaborHours;
+      const overtimeHours = row.overtimeHours;
       return {
         storeId: row.storeId,
         storeName: row.storeName,
@@ -239,11 +273,26 @@ export async function buildEnrichedOverviewStores(input: {
         priorYearRevenue: row.priorYearRevenue,
         yoyGrowthRate: row.yoyGrowthRate,
         targetMetDays: metDaysMap.get(row.storeId) ?? 0,
+        periodLaborHourTarget,
+        regularLaborHours: computeRegularLaborHours(
+          row.laborHours,
+          periodLaborHourTarget,
+          overtimeHours
+        ),
+        overtimeHours,
+        overtimeRateOnTarget: computeOvertimeRateOnTarget(
+          overtimeHours,
+          periodLaborHourTarget
+        ),
         status: bucket,
         statusLabel: REVENUE_ACHIEVEMENT_LABEL[bucket],
       };
     })
     .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0));
 
-  return { stores, customerMetrics };
+  return {
+    stores,
+    customerMetrics,
+    workingDaysInRange: filterResult.workingDaysInRange,
+  };
 }

@@ -411,7 +411,7 @@ export default function PerformanceDailyPage() {
             className="rounded border border-slate-300 px-2 py-1.5 text-sm min-w-[100px]"
           >
             <option value="">全部</option>
-            {OPS_FILTER_REGIONS.filter((r) => r === "桃園區" || r === "宜蘭區").map((r) => (
+            {OPS_FILTER_REGIONS.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>

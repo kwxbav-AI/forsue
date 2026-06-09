@@ -20,7 +20,7 @@ import {
 } from "recharts";
 import { OpsFilterBar } from "@/components/operations/OpsFilterBar";
 import { formatLocalDateInput } from "@/lib/date";
-import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
+import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
 import {
   OPS_COLORS,
@@ -424,7 +424,8 @@ export default function OperationsAnalysisPage() {
   }, [meta, searchParams]);
 
   const regionOptions = useMemo(() => {
-    const fromApi = meta?.regions ?? [];
+    const opsRegions = DUAL_OPS_REGIONS as readonly string[];
+    const fromApi = (meta?.regions ?? []).filter((r) => opsRegions.includes(r));
     if (fromApi.length >= OPS_FILTER_REGIONS.length) return fromApi;
     return [...OPS_FILTER_REGIONS];
   }, [meta?.regions]);

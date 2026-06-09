@@ -10,7 +10,7 @@ import {
   monthStartEndYmd,
   parseMonthParam,
 } from "@/lib/month-working-calendar";
-import { inferRetailRegion } from "@/lib/operations-dashboard";
+import { DUAL_OPS_REGIONS, inferRetailRegion } from "@/lib/operations-dashboard";
 import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
 import type {
@@ -191,12 +191,14 @@ export async function buildSupportRequestsMonth(input: {
     orderBy: { name: "asc" },
   });
 
+  const opsRegions = DUAL_OPS_REGIONS as readonly string[];
   const storesWithRegion = stores
     .map((s) => ({
       id: s.id,
       storeName: s.name,
       region: inferRetailRegion(s.name, s.department),
     }))
+    .filter((s) => s.region != null && opsRegions.includes(s.region))
     .filter((s) => (input.region ? s.region === input.region : true));
 
   const storeIds = storesWithRegion.map((s) => s.id);
