@@ -201,7 +201,7 @@ export default function BonusMonthlyPage() {
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-600">
+            <thead className="sticky top-14 z-10 bg-slate-50 text-xs text-slate-600 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="px-3 py-2 text-left">員工編號</th>
                 <th className="px-3 py-2 text-left">姓名</th>
@@ -316,7 +316,7 @@ export default function BonusMonthlyPage() {
                   {expandedId === r.id && (
                     <tr>
                       <td colSpan={14} className="bg-slate-50 px-4 py-3">
-                        <DailyDetailTable details={r.dailyDetails} />
+                        <DailyDetailTable details={r.dailyDetails} newHireRatio={r.newHireRatio} />
                       </td>
                     </tr>
                   )}
@@ -354,7 +354,7 @@ function StatCard({
   );
 }
 
-function DailyDetailTable({ details }: { details: DailyDetail[] }) {
+function DailyDetailTable({ details, newHireRatio }: { details: DailyDetail[]; newHireRatio: number }) {
   if (details.length === 0) return <p className="text-xs text-slate-400">無每日明細</p>;
   return (
     <div className="overflow-x-auto">
@@ -390,7 +390,7 @@ function DailyDetailTable({ details }: { details: DailyDetail[] }) {
               <td className="px-2 py-1 text-right">{d.scheduledHours}h</td>
               <td className="px-2 py-1 text-right">{d.actualWorkHours.toFixed(2)}h</td>
               <td className="px-2 py-1 text-right">{d.calcHours}h</td>
-              <td className="px-2 py-1 text-right font-medium">{d.dailyBonus > 0 ? Math.round(d.dailyBonus).toLocaleString("zh-TW") : "—"}</td>
+              <td className="px-2 py-1 text-right font-medium">{d.dailyBonus > 0 ? Math.round(d.dailyBonus * newHireRatio).toLocaleString("zh-TW") : "—"}</td>
               <td className="px-2 py-1 text-slate-500">
                 {d.dispatchNote && (
                   <span className="rounded bg-blue-100 px-1 py-0.5 text-blue-700">{d.dispatchNote}</span>

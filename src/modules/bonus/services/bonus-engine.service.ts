@@ -418,14 +418,22 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const totalCalcHours = details.reduce((s, d) => s + d.calcHours, 0);
     const targetBonus = details.reduce((s, d) => s + d.dailyBonus, 0);
     const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;
-    let subtotalBonus = new Decimal(targetBonus).add(operationsBonus);
 
-    // 新人比例
+    // 新人比例：只套用在達標獎金，營運成果不乘比例
     const nhRatio = newHireRatio(emp.hireDate, yearMonth);
-    subtotalBonus = subtotalBonus.mul(nhRatio);
+    let subtotalBonus = new Decimal(targetBonus).mul(nhRatio).add(operationsBonus);
 
-    // 新店保障
-    const homeStoreId = emp.defaultStoreId ?? "";
+    // 新店保障：優先用 defaultStoreId，若為 null 則從出勤記錄推算最常出現的門市
+    let homeStoreId = emp.defaultStoreId ?? "";
+    if (!homeStoreId) {
+      const storeIdCounts = new Map<string, number>();
+      for (const a of attendances) {
+        if (a.employeeId === employeeId && a.originalStoreId) {
+          storeIdCounts.set(a.originalStoreId, (storeIdCounts.get(a.originalStoreId) ?? 0) + 1);
+        }
+      }
+      homeStoreId = Array.from(storeIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+    }
     const isNewStore = newStoreIds.has(homeStoreId);
     let guaranteeAmount: Decimal | null = null;
     let isNewStoreGuarantee = false;
