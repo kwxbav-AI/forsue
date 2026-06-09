@@ -89,8 +89,7 @@ export function OperationsShell({
           {visibleNav.map((item) => {
             const active =
               pathname === item.href ||
-              (item.href !== "/operations/dashboard" && pathname.startsWith(item.href)) ||
-              (!!item.supervision && pathname.startsWith("/operations/supervision"));
+              (item.href !== "/operations/dashboard" && pathname.startsWith(item.href));
             const showStoreOpsLabel = item.storeOps && !lastWasStoreOps;
             const showSupervisionLabel = item.supervision && !lastWasSupervision;
             if (item.storeOps) lastWasStoreOps = true;

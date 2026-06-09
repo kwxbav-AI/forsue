@@ -49,7 +49,7 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
       label: "人力支援管理",
       icon: HandHelping,
       permissionKey: "operations-dashboard",
-      supervision: true,
+      storeOps: true,
     },
     { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", badge: "dynamic", storeOps: true },
     { href: "/operations/store-ops/bulletin", label: "公佈欄", icon: Megaphone, permissionKey: "store-ops-notify", storeOps: true },
@@ -80,13 +80,13 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
       label: "人力支援管理",
       icon: HandHelping,
       permissionKey: "operations-dashboard",
-      supervision: true,
+      storeOps: true,
     },
-    { href: "/operations/store-ops/heatmap", label: "客流熱力圖", icon: Map, permissionKey: "operations-heatmap" },
     { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", badge: "dynamic", storeOps: true },
     { href: "/operations/store-ops/bulletin", label: "公佈欄", icon: Megaphone, permissionKey: "store-ops-notify", storeOps: true },
     { href: "/operations/store-ops/journal", label: "工作日誌", icon: FileText, permissionKey: "store-ops-journal-read", storeOps: true },
     { href: "/operations/store-ops/supply", label: "物資申請", icon: Package, permissionKey: "store-ops-supply-approve", badge: "dynamic", storeOps: true },
+    { href: "/operations/store-ops/heatmap", label: "客流熱力圖", icon: Map, permissionKey: "operations-heatmap" },
   ],
   STORE_STAFF: [
     { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", storeOps: true },
@@ -126,7 +126,7 @@ export const OPS_NAV_ITEMS_LEGACY: OpsNavItem[] = [
     label: "人力支援管理",
     icon: HandHelping,
     permissionKey: "operations-dashboard",
-    supervision: true,
+    storeOps: true,
   },
 ];
 
