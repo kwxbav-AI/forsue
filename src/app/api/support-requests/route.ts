@@ -9,6 +9,7 @@ const querySchema = z.object({
   store: z.string().optional(),
   storeId: z.string().optional(),
   region: z.string().optional(),
+  supervisorZone: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
       store: searchParams.get("store") ?? undefined,
       storeId: searchParams.get("storeId") ?? undefined,
       region: searchParams.get("region") ?? undefined,
+      supervisorZone: searchParams.get("supervisorZone") ?? undefined,
     });
     if (!parsed.success) {
       return NextResponse.json(
@@ -36,6 +38,8 @@ export async function GET(request: NextRequest) {
       month: parsed.data.month.trim(),
       storeId: storeIdParam ? storeIdParam : null,
       region: parsed.data.region?.trim() ? parsed.data.region.trim() : null,
+      supervisorZone:
+        parsed.data.supervisorZone?.trim() ? parsed.data.supervisorZone.trim() : null,
     });
 
     return NextResponse.json(data);

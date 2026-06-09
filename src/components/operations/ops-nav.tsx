@@ -15,7 +15,6 @@ import {
   Heart,
   Map,
   Shield,
-  CalendarDays,
   HandHelping,
 } from "lucide-react";
 import { isRoleKey, type RoleKey } from "@/lib/roles";
@@ -28,8 +27,6 @@ export type OpsNavItem = {
   badge?: string;
   /** 店務管理區塊（琥珀色系側欄提示） */
   storeOps?: boolean;
-  /** 督導管理區塊（藍色系側欄提示） */
-  supervision?: boolean;
 };
 
 export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
@@ -37,13 +34,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
     { href: "/operations/dashboard", label: "營運總覽", icon: LayoutDashboard, permissionKey: "operations-dashboard" },
     { href: "/operations/analysis", label: "績效分析", icon: BarChart3, permissionKey: "operations-dashboard" },
     { href: "/operations/work-hours", label: "人員工時", icon: Clock, permissionKey: "operations-dashboard" },
-    {
-      href: "/operations/supervision/shift-calendar",
-      label: "人員排班月曆",
-      icon: CalendarDays,
-      permissionKey: "operations-dashboard",
-      supervision: true,
-    },
     {
       href: "/operations/supervision/support-calendar",
       label: "人力支援管理",
@@ -68,13 +58,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
     { href: "/operations/dashboard", label: "營運總覽", icon: LayoutDashboard, permissionKey: "operations-dashboard" },
     { href: "/operations/analysis", label: "績效分析", icon: BarChart3, permissionKey: "operations-dashboard" },
     { href: "/operations/work-hours", label: "人員工時", icon: Clock, permissionKey: "operations-dashboard" },
-    {
-      href: "/operations/supervision/shift-calendar",
-      label: "人員排班月曆",
-      icon: CalendarDays,
-      permissionKey: "operations-dashboard",
-      supervision: true,
-    },
     {
       href: "/operations/supervision/support-calendar",
       label: "人力支援管理",
@@ -114,13 +97,6 @@ export const OPS_NAV_ITEMS_LEGACY: OpsNavItem[] = [
   { href: "/operations/stores", label: "門市管理", icon: Store, permissionKey: "operations-stores" },
   { href: "/operations/store-targets", label: "門市目標", icon: Target, permissionKey: "operations-store-targets" },
   { href: "/operations/work-hours", label: "人員工時", icon: Clock, permissionKey: "operations-dashboard" },
-  {
-    href: "/operations/supervision/shift-calendar",
-    label: "人員排班月曆",
-    icon: CalendarDays,
-    permissionKey: "operations-dashboard",
-    supervision: true,
-  },
   {
     href: "/operations/supervision/support-calendar",
     label: "人力支援管理",

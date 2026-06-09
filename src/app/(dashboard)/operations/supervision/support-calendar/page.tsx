@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { SupervisionTabs } from "@/components/operations/supervision-tabs";
+import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
+import { SUPERVISOR_ZONES } from "@/lib/supervisor-zones";
 import type {
   SupportCalendarDay,
   SupportCalendarDayStatusCounts,
@@ -14,7 +15,6 @@ import {
   SUPPORT_SEVERITY_HINTS,
   SUPPORT_SEVERITY_LABELS,
 } from "@/modules/supervisor/types/support-requests";
-import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 
 function currentYearMonth() {
   const now = new Date();
@@ -102,7 +102,7 @@ export default function SupervisorSupportCalendarPage() {
   const [year, setYear] = useState(init.year);
   const [month, setMonth] = useState(init.month);
   const [storeId, setStoreId] = useState("");
-  const [region, setRegion] = useState<string>("");
+  const [areaFilter, setAreaFilter] = useState("");
   const [layer, setLayer] = useState<SupportLayer>("planned");
 
   const [data, setData] = useState<SupportRequestsMonthResponse | null>(null);
@@ -116,7 +116,11 @@ export default function SupervisorSupportCalendarPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ month: monthKey, store: storeId || "all" });
-      if (region) params.set("region", region);
+      if (areaFilter.startsWith("region:")) {
+        params.set("region", areaFilter.slice("region:".length));
+      } else if (areaFilter.startsWith("zone:")) {
+        params.set("supervisorZone", areaFilter.slice("zone:".length));
+      }
       const res = await fetch(`/api/support-requests?${params.toString()}`);
       if (res.ok) {
         const json = (await res.json()) as SupportRequestsMonthResponse;
@@ -138,7 +142,7 @@ export default function SupervisorSupportCalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [monthKey, storeId, region, selectedDate]);
+  }, [monthKey, storeId, areaFilter, selectedDate]);
 
   useEffect(() => {
     void load();
@@ -152,20 +156,10 @@ export default function SupervisorSupportCalendarPage() {
 
   const selectedStores = selectedDate ? dateMap.get(selectedDate) ?? [] : [];
 
-  const regionOptions = useMemo(() => {
-    const opsRegions = DUAL_OPS_REGIONS as readonly string[];
-    const set = new Set<string>();
-    for (const s of data?.meta.stores ?? []) {
-      if (s.region && opsRegions.includes(s.region)) set.add(s.region);
-    }
-    const list = [...set];
-    list.sort((a, b) => a.localeCompare(b));
-    return list;
-  }, [data?.meta.stores]);
+  const storeOptions = useMemo(() => data?.meta.stores ?? [], [data?.meta.stores]);
 
   return (
     <div className="p-6 space-y-5 max-w-7xl">
-      <SupervisionTabs />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">人力支援管理</h1>
@@ -196,16 +190,28 @@ export default function SupervisorSupportCalendarPage() {
             ))}
           </select>
           <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="min-w-[120px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+            value={areaFilter}
+            onChange={(e) => {
+              setAreaFilter(e.target.value);
+              setStoreId("");
+            }}
+            className="min-w-[140px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">全部區域</option>
-            {regionOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
+            <optgroup label="行政區">
+              {DUAL_OPS_REGIONS.map((r) => (
+                <option key={r} value={`region:${r}`}>
+                  {r}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="督導轄區">
+              {SUPERVISOR_ZONES.map((z) => (
+                <option key={z.key} value={`zone:${z.key}`}>
+                  {z.label}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <select
             value={storeId}
@@ -213,7 +219,7 @@ export default function SupervisorSupportCalendarPage() {
             className="min-w-[140px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">全部門市</option>
-            {(data?.meta.stores ?? []).map((s) => (
+            {storeOptions.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.storeName}
               </option>

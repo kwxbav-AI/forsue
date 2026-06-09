@@ -11,6 +11,7 @@ import {
   parseMonthParam,
 } from "@/lib/month-working-calendar";
 import { DUAL_OPS_REGIONS, inferRetailRegion } from "@/lib/operations-dashboard";
+import { storeMatchesSupervisorZone } from "@/lib/supervisor-zones";
 import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
 import type {
@@ -171,6 +172,7 @@ export async function buildSupportRequestsMonth(input: {
   month: string; // YYYY-MM
   storeId?: string | null;
   region?: string | null;
+  supervisorZone?: string | null;
 }): Promise<SupportRequestsMonthResponse> {
   const parsed = parseMonthParam(input.month);
   if (!parsed) {
@@ -199,7 +201,12 @@ export async function buildSupportRequestsMonth(input: {
       region: inferRetailRegion(s.name, s.department),
     }))
     .filter((s) => s.region != null && opsRegions.includes(s.region))
-    .filter((s) => (input.region ? s.region === input.region : true));
+    .filter((s) => (input.region ? s.region === input.region : true))
+    .filter((s) =>
+      input.supervisorZone ?
+        storeMatchesSupervisorZone(s.storeName, input.supervisorZone)
+      : true
+    );
 
   const storeIds = storesWithRegion.map((s) => s.id);
   const storeNameById = new Map(storesWithRegion.map((s) => [s.id, s.storeName] as const));
