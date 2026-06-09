@@ -104,7 +104,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   const endDate = parseDateOnlyUTC(`${yearMonth}-${String(lastDay).padStart(2, "0")}`);
 
   // 取得所有資料
-  const [attendances, dispatches, performanceDailies, employees, newStoreSettings, multiplierRows, existingResults] =
+  const [attendances, dispatches, performanceDailies, employees, newStoreSettings, multiplierRows, existingResults, allStores] =
     await Promise.all([
       prisma.attendanceRecord.findMany({
         where: { workDate: { gte: startDate, lte: endDate } },
@@ -128,6 +128,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         where: { yearMonth },
         select: { employeeId: true, accountabilityRatio: true },
       }),
+      prisma.store.findMany({ select: { id: true, hideInReports: true } }),
     ]);
 
   // 建立查找索引
@@ -142,6 +143,9 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   );
 
   const employeeMap = new Map(employees.map((e) => [e.id, e]));
+
+  // 報表隱藏門市（後勤/非門市部門）：這些門市的員工不計算達標獎金
+  const hiddenStoreIds = new Set<string>(allStores.filter((s) => s.hideInReports).map((s) => s.id));
 
   // 新店查找：storeId → 是否在本月保障期內
   const newStoreIds = new Set<string>();
@@ -233,13 +237,15 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       let baseBonus = 0;
 
       if (!hasDispatch) {
-        // 無調度：直接看原門市績效
+        // 無調度：直接看原門市績效（後勤/報表隱藏門市不計算達標獎金）
         const perf = perfMap.get(`${dateStr}_${storeId}`);
-        if (perf) {
+        if (perf && !hiddenStoreIds.has(storeId)) {
           storeName = perf.store.name;
           effRatio = Number(perf.efficiencyRatio);
           isTargetMet = perf.isTargetMet;
           isExceeded = weekday >= 1 && weekday <= 5 && effRatio >= EXCEED_THRESHOLD;
+        } else if (perf) {
+          storeName = perf.store.name;
         }
       } else {
         // 有調度：檢查原店及支援店
@@ -403,6 +409,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   for (const employeeId of allEmployeeIds) {
     const emp = employeeMap.get(employeeId);
     if (!emp) continue;
+    // A/B 開頭員工編號不計算獎金（後台管理人員）
+    if (/^[ABab]/.test(emp.employeeCode)) continue;
 
     const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
