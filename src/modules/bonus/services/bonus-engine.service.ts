@@ -222,7 +222,6 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       const originalStoreId = attList[0].originalStoreId;
 
       const calcH = calcBonusHours(totalActual, scheduledHours);
-      dailyCalcHoursMap.set(employeeId, calcH);
 
       // 判斷門市達標狀態
       const dispList = dispByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
@@ -314,6 +313,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         };
         if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
         dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
+        // 後勤門市員工（未調度）不參與 ops 池
+        if (!hiddenStoreIds.has(storeId) || hasDispatch) {
+          dailyCalcHoursMap.set(employeeId, calcH);
+        }
         continue;
       }
 
@@ -358,6 +361,12 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       };
       if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
       dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
+
+      // 計入 ops 池工時：後勤門市員工（未調度）不參與池子分配
+      const effectiveStoreForPool = storeId;
+      if (!hiddenStoreIds.has(effectiveStoreForPool) || hasDispatch) {
+        dailyCalcHoursMap.set(employeeId, calcH);
+      }
     }
 
     // 計算今日營運成果獎金池
@@ -434,6 +443,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       }
       homeStoreId = Array.from(storeIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
     }
+
+    // 主力門市為後勤（hideInReports）且完全沒有達標獎金（從未調度到正式門市）→ 跳過
+    if (hiddenStoreIds.has(homeStoreId) && targetBonus === 0) continue;
+
     const isNewStore = newStoreIds.has(homeStoreId);
     let guaranteeAmount: Decimal | null = null;
     let isNewStoreGuarantee = false;
