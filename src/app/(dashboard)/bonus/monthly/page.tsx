@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 // ─── 型別 ──────────────────────────────────────────────────────────────────────
 interface DailyDetail {
@@ -221,9 +221,8 @@ export default function BonusMonthlyPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {results.map((r) => (
-                <>
+                <React.Fragment key={r.id}>
                   <tr
-                    key={r.id}
                     className={`hover:bg-slate-50 ${expandedId === r.id ? "bg-sky-50" : ""}`}
                   >
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">{r.employeeCode}</td>
@@ -315,13 +314,13 @@ export default function BonusMonthlyPage() {
                     </td>
                   </tr>
                   {expandedId === r.id && (
-                    <tr key={`${r.id}-detail`}>
+                    <tr>
                       <td colSpan={14} className="bg-slate-50 px-4 py-3">
                         <DailyDetailTable details={r.dailyDetails} />
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
