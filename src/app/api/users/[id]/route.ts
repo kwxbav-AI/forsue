@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionFromRequest } from "@/lib/auth-request";
@@ -12,6 +12,7 @@ const patchSchema = z.object({
   password: z.string().min(6).max(128).optional(),
   roleId: z.string().min(1).optional(),
   retailStoreId: z.string().min(1).nullable().optional(),
+  supervisorStoreIds: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -77,19 +78,48 @@ export async function PATCH(
     data.retailStoreId = parsed.data.retailStoreId;
   }
 
-  const user = await prisma.appUser.update({
-    where: { id },
-    data,
-    select: {
-      id: true,
-      username: true,
-      roleId: true,
-      role: { select: { key: true, name: true } },
-      legacyRole: true,
-      retailStoreId: true,
-      isActive: true,
-    },
-  });
+  const { supervisorStoreIds } = parsed.data;
+
+  let user;
+  if (supervisorStoreIds !== undefined) {
+    user = await prisma.$transaction(async (tx) => {
+      await tx.supervisorStore.deleteMany({ where: { supervisorId: id } });
+      if (supervisorStoreIds.length > 0) {
+        await tx.supervisorStore.createMany({
+          data: supervisorStoreIds.map((storeId) => ({ supervisorId: id, storeId })),
+        });
+      }
+      return tx.appUser.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          username: true,
+          roleId: true,
+          role: { select: { key: true, name: true } },
+          legacyRole: true,
+          retailStoreId: true,
+          supervisorStores: { select: { store: { select: { id: true, storeName: true, region: true } } } },
+          isActive: true,
+        },
+      });
+    });
+  } else {
+    user = await prisma.appUser.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        username: true,
+        roleId: true,
+        role: { select: { key: true, name: true } },
+        legacyRole: true,
+        retailStoreId: true,
+        supervisorStores: { select: { store: { select: { id: true, storeName: true, region: true } } } },
+        isActive: true,
+      },
+    });
+  }
 
   return NextResponse.json({
     user: {
@@ -103,6 +133,11 @@ export async function PATCH(
         DEFAULT_ROLE_LABELS[user.role?.key ?? String(user.legacyRole)] ??
         (user.role?.key ?? String(user.legacyRole)),
       retailStoreId: user.retailStoreId,
+      supervisorStores: user.supervisorStores.map((ss) => ({
+        storeId: ss.store.id,
+        storeName: ss.store.storeName,
+        region: ss.store.region,
+      })),
       isActive: user.isActive,
     },
   });

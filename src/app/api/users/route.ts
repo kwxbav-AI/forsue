@@ -22,6 +22,12 @@ export async function GET(req: NextRequest) {
       role: { select: { id: true, key: true, name: true, isActive: true } },
       legacyRole: true,
       retailStoreId: true,
+      retailStore: { select: { id: true, storeName: true } },
+      supervisorStores: {
+        select: {
+          store: { select: { id: true, storeName: true, region: true } },
+        },
+      },
       isActive: true,
       createdAt: true,
       updatedAt: true,
@@ -37,6 +43,12 @@ export async function GET(req: NextRequest) {
       roleName: u.role?.name ?? null,
       roleLabel: u.role?.name ?? DEFAULT_ROLE_LABELS[u.role?.key ?? String(u.legacyRole)] ?? (u.role?.key ?? String(u.legacyRole)),
       retailStoreId: u.retailStoreId,
+      retailStore: u.retailStore ?? null,
+      supervisorStores: u.supervisorStores.map((ss) => ({
+        storeId: ss.store.id,
+        storeName: ss.store.storeName,
+        region: ss.store.region,
+      })),
       isActive: u.isActive,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt,
@@ -48,6 +60,8 @@ const createSchema = z.object({
   username: z.string().min(2).max(64),
   password: z.string().min(6).max(128),
   roleId: z.string().min(1),
+  retailStoreId: z.string().optional().nullable(),
+  supervisorStoreIds: z.array(z.string()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -70,7 +84,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { username, password, roleId } = parsed.data;
+  const { username, password, roleId, retailStoreId, supervisorStoreIds } = parsed.data;
   const role = await prisma.role.findUnique({ where: { id: roleId }, select: { id: true, key: true, name: true } });
   if (!role) return NextResponse.json({ error: "角色不存在" }, { status: 400 });
   const exists = await prisma.appUser.findUnique({
@@ -87,6 +101,14 @@ export async function POST(req: NextRequest) {
       passwordHash,
       roleId: role.id,
       legacyRole: "EDITOR" as any,
+      ...(retailStoreId ? { retailStoreId } : {}),
+      ...(supervisorStoreIds?.length
+        ? {
+            supervisorStores: {
+              create: supervisorStoreIds.map((storeId) => ({ storeId })),
+            },
+          }
+        : {}),
     },
     select: {
       id: true,
