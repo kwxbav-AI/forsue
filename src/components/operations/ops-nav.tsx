@@ -52,7 +52,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
     { href: "/operations/stores", label: "門市管理", icon: Store, permissionKey: "operations-stores" },
     { href: "/operations/store-targets", label: "門市目標", icon: Target, permissionKey: "operations-store-targets" },
     { href: "/operations/permissions", label: "權限設定", icon: Shield, permissionKey: "operations-admin" },
-    { href: "/operations/supervisors", label: "督導設定", icon: Users, permissionKey: "operations-admin" },
   ],
   SUPERVISOR: [
     { href: "/operations/dashboard", label: "營運總覽", icon: LayoutDashboard, permissionKey: "operations-dashboard" },

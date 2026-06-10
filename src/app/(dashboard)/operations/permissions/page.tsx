@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -92,8 +92,8 @@ export default function OperationsPermissionsPage() {
       : null}
       <p className="mb-4 text-sm" style={{ color: OPS_COLORS.achievement.label }}>
         督導門市綁定請至{" "}
-        <Link href="/operations/supervisors" className="hover:underline" style={{ color: OPS_COLORS.revenue.label }}>
-          督導設定
+        <Link href="/settings/users" className="hover:underline" style={{ color: OPS_COLORS.revenue.label }}>
+          帳號與權限
         </Link>
         。
       </p>
