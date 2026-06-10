@@ -103,7 +103,7 @@ export default function SupervisorSupportCalendarPage() {
   const [month, setMonth] = useState(init.month);
   const [storeId, setStoreId] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
-  const [layer, setLayer] = useState<SupportLayer>("planned");
+  const layer: SupportLayer = "planned";
 
   const [data, setData] = useState<SupportRequestsMonthResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,7 +125,6 @@ export default function SupervisorSupportCalendarPage() {
       if (res.ok) {
         const json = (await res.json()) as SupportRequestsMonthResponse;
         setData(json);
-        setLayer(json.meta?.layerDefault ?? "planned");
         // 初始化展開狀態：當日全部展開、第二層預設展開（這裡用 store 展開代表）
         const ids = new Set<string>();
         for (const d of json.dates) {
@@ -271,23 +270,7 @@ export default function SupervisorSupportCalendarPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => setLayer("actual")}
-            className={`rounded-md px-3 py-1.5 ${layer === "actual" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            實際（已確認）
-          </button>
-          <button
-            type="button"
-            onClick={() => setLayer("planned")}
-            className={`rounded-md px-3 py-1.5 ${layer === "planned" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-          >
-            計畫（含待確認）
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <p className="text-xs text-slate-500">
           月曆：綠=完整人力、黃=已補齊（支援後）、紅=仍缺人 · 今日起依排班表預測
         </p>
@@ -322,7 +305,7 @@ export default function SupervisorSupportCalendarPage() {
 
         <div className="grid grid-cols-7 gap-2">
           {(data?.calendarDays ?? []).map((d) => {
-            const sev = layer === "actual" ? d.severityActual : d.severityPlanned;
+            const sev = d.severityPlanned;
             const counts = calendarCountsByLayer(d, layer);
             const statusSummary = formatCalendarStatusSummary(counts);
             const selected = selectedDate === d.date;
@@ -413,16 +396,14 @@ export default function SupervisorSupportCalendarPage() {
               {selectedStores.map((s) => {
                 const isOpen = openStoreIds.has(s.storeId);
                 const isForecast = s.dataSource === "forecast";
-                const status = layer === "actual" ? s.statusActual : s.statusPlanned;
+                const status = s.statusPlanned;
                 const target = s.targetHours != null ? s.targetHours.toFixed(1) : "—";
                 const laborLabel = isForecast ? "排班" : "實際";
                 const laborHours = isForecast
                   ? (s.scheduledHours ?? s.actualHoursConfirmed).toFixed(1)
                   : s.actualHoursConfirmed.toFixed(1);
-                const supportEffective =
-                  layer === "actual" ? s.supportInConfirmedHours : s.supportInConfirmedHours + s.supportInPlannedHours;
-                const gap =
-                  layer === "actual" ? s.gapConfirmed : s.gapPlanned;
+                const supportEffective = s.supportInConfirmedHours + s.supportInPlannedHours;
+                const gap = s.gapPlanned;
                 const gapText = gap == null ? "—" : gap.toFixed(1);
 
                 return (
