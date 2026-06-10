@@ -118,7 +118,7 @@ async function computeEngineRangeRows(
   const attendanceStartYmd = formatDateOnly(await getAttendanceDataStartDate());
 
   const stores = await prisma.store.findMany({
-    where: { isActive: true, hideInReports: false },
+    where: { hideInReports: false },
     select: { id: true, name: true },
   });
 

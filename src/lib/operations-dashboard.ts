@@ -70,11 +70,45 @@ export const OPS_REGION_CATALOG: ReadonlyArray<{
 
       "東勇",
 
+      /** 桃園區營收報表有計入、但非現行 10 間主力店；閉店後歷史營收仍須納入 Dashboard */
+
+      "大業",
+
+      "八德",
+
     ],
 
   },
 
 ] as const;
+
+
+
+/** 門市是否屬桃園＋宜蘭營收統計範圍（與營收報表桃園／宜蘭門市一致，含已閉店） */
+
+export function storeInDualOpsRevenueScope(
+
+  name: string,
+
+  department: string | null | undefined
+
+): boolean {
+
+  const dept = department?.trim();
+
+  if (dept) {
+
+    if (dept.includes("桃園區") || dept.startsWith("桃園")) return true;
+
+    if (dept.includes("宜蘭區") || dept.startsWith("宜蘭")) return true;
+
+  }
+
+  const region = inferRetailRegion(name, department);
+
+  return region != null && (DUAL_OPS_REGIONS as readonly string[]).includes(region);
+
+}
 
 
 

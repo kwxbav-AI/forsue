@@ -5,6 +5,7 @@ import {
   OPS_REGION_CATALOG,
   inferRetailRegion,
   normalizeStoreKey,
+  storeInDualOpsRevenueScope,
   storeNameMatchesCatalogKey,
   storeNamesEquivalent,
   formatOpsStoreLabel,
@@ -185,6 +186,9 @@ export function rowMatchesCatalogRegions(
   for (const catalogKey of allowed) {
     if (storeNameMatchesCatalogKey(row.storeName, catalogKey)) return true;
   }
+  if ((regions as readonly string[]).some((r) => (DUAL_OPS_REGIONS as readonly string[]).includes(r))) {
+    return storeInDualOpsRevenueScope(row.storeName, null);
+  }
   return false;
 }
 
@@ -213,22 +217,14 @@ export async function fetchDualRegionChartTotals(
   return sumChartRows(rows);
 }
 
-/** 桃園＋宜蘭 catalog 門市 ID（含已停用，不含 hideInReports） */
+/** 桃園＋宜蘭營收範圍門市 ID（含已閉店如大業；不含 hideInReports） */
 export async function listDualRegionStoreIdsForRevenue(): Promise<string[]> {
-  const allowedKeys = getCatalogKeysForRegions(DUAL_OPS_REGIONS);
   const stores = await prisma.store.findMany({
     where: { hideInReports: false },
-    select: { id: true, name: true },
+    select: { id: true, name: true, department: true },
   });
   return stores
-    .filter((s) => {
-      const key = normalizeStoreKey(s.name);
-      if (allowedKeys.has(key)) return true;
-      for (const catalogKey of allowedKeys) {
-        if (storeNameMatchesCatalogKey(s.name, catalogKey)) return true;
-      }
-      return false;
-    })
+    .filter((s) => storeInDualOpsRevenueScope(s.name, s.department))
     .map((s) => s.id);
 }
 
