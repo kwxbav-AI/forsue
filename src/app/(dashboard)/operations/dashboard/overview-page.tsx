@@ -445,7 +445,8 @@ export default function OperationsOverviewPage() {
 
       {overview ?
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 第一層：全公司（桃園+宜蘭），依篩選日期區間 */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <KpiCard
               title="全公司營收目標值"
               value={formatMoney(kpi?.totalTarget ?? overview.summary.totalTarget)}
@@ -461,6 +462,13 @@ export default function OperationsOverviewPage() {
               theme={OPS_COLORS.revenue}
             />
             <KpiCard
+              title="區間達成率"
+              value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
+              sub="營收達成值 ÷ 營收目標值 · 桃園+宜蘭"
+              icon={<Target className="h-5 w-5" />}
+              theme={OPS_COLORS.achievement}
+            />
+            <KpiCard
               title="區間營收成長率"
               value={
                 kpi?.yoyGrowthRate != null ?
@@ -472,38 +480,54 @@ export default function OperationsOverviewPage() {
               icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard
-              title="區間達成率"
-              value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
-              sub="營收達成值 ÷ 營收目標值 · 桃園+宜蘭"
-              icon={<Target className="h-5 w-5" />}
-              theme={OPS_COLORS.achievement}
+              title="全公司工效比"
+              value={
+                kpi?.efficiencyRatio != null ?
+                  Math.round(kpi.efficiencyRatio).toLocaleString("zh-TW")
+                : "—"
+              }
+              sub="元 / hr · 桃園+宜蘭"
+              icon={<Activity className="h-5 w-5" />}
+              theme={OPS_COLORS.hours}
             />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {/* 第二層：依篩選區域，依篩選日期區間 */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
             <KpiCard
-              title="區間營業額"
+              title="營收目標值"
+              value={formatMoney(overview.summary.totalTarget)}
+              sub={`${overview.startDate} ~ ${overview.endDate} · ${regionLabel}`}
+              icon={<Target className="h-5 w-5" />}
+              theme={OPS_COLORS.achievement}
+            />
+            <KpiCard
+              title="營收達成值"
               value={formatMoney(overview.summary.totalRevenue)}
               sub={`${overview.startDate} ~ ${overview.endDate} · ${regionLabel}`}
               icon={<Store className="h-5 w-5" />}
               theme={OPS_COLORS.revenue}
             />
             <KpiCard
-              title="營收達成率"
+              title="達成率"
               value={formatPctOne(overview.summary.revenueAchievementRate)}
               sub={`月業績目標 · 達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
               icon={<Target className="h-5 w-5" />}
               theme={OPS_COLORS.achievement}
             />
             <KpiCard
-              title="總工時"
-              value={overview.summary.totalLaborHours.toFixed(1)}
-              sub="hr"
-              icon={<Clock className="h-5 w-5" />}
-              theme={OPS_COLORS.hours}
+              title="成長率"
+              value={
+                kpi?.yoyGrowthRate != null ?
+                  `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
+                : "—"
+              }
+              valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
+              sub="較去年同期 · 全公司桃園+宜蘭"
+              icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard
-              title="區間工效比"
+              title="工效比"
               value={
                 overview.summary.efficiencyRatio != null ?
                   Math.round(overview.summary.efficiencyRatio).toLocaleString("zh-TW")

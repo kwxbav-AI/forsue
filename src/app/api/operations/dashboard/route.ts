@@ -17,6 +17,7 @@ import {
 import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { parseApiPagination, paginateArray } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
+import { aggregateCustomerMetricsForRetailIds } from "@/modules/operations/services/operations-customer-metrics.service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -63,12 +64,23 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate
     );
-    const [perStore, priorPerStore] = await Promise.all([
+    const filteredStoreIds = storeId
+      ? [storeId]
+      : filterStores
+          .filter((s) => !region || s.region === region)
+          .map((s) => s.id);
+
+    const [perStore, priorPerStore, filteredCustomerMetrics] = await Promise.all([
       fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
       fetchPriorYearChartsForFilter(
         effectiveRange.startDate,
         effectiveRange.endDate,
         (ymd, delta) => shiftYear(ymd, delta)
+      ),
+      aggregateCustomerMetricsForRetailIds(
+        filteredStoreIds,
+        effectiveRange.startDate,
+        effectiveRange.endDate
       ),
     ]);
 
@@ -171,6 +183,9 @@ export async function GET(request: NextRequest) {
         workingDaysInRange: filteredResult.workingDaysInRange,
         dailyTrend: filteredResult.dailyTrend,
         stores: storesPaged.items,
+        customerCount: filteredCustomerMetrics.totalCustomerCount,
+        avgOrderValue: filteredCustomerMetrics.avgOrderValue,
+        customerDaysWithData: filteredCustomerMetrics.daysWithData,
       },
       storesPagination: storesPaged.pagination,
     });

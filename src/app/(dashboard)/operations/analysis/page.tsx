@@ -64,6 +64,9 @@ type FilteredMetrics = {
   defaultLaborHours?: number | null;
   laborHoursDifference?: number | null;
   dailyTrend?: DailyTrendPoint[];
+  customerCount?: number;
+  avgOrderValue?: number | null;
+  customerDaysWithData?: number;
 };
 
 type KpiMetrics = {
@@ -622,6 +625,73 @@ export default function OperationsAnalysisPage() {
         onRefresh={() => void handleRefresh()}
       />
 
+      {/* 第一層：依篩選區域/門市 + 日期區間 */}
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        <KpiCard
+          label="營收目標值"
+          theme={OPS_COLORS.achievement}
+          value={queried && m && !loading ? formatMoney(m.revenueForecast ?? 0) : "—"}
+          sub={queried && m ? m.filterLabel : "查詢後顯示"}
+        />
+        <KpiCard
+          label="營收達成值"
+          theme={OPS_COLORS.revenue}
+          value={queried && m && !loading ? formatMoney(m.revenueAchievement ?? m.totalRevenue) : "—"}
+          sub={queried && m ? m.filterLabel : "查詢後顯示"}
+        />
+        <KpiCard
+          label="達成率"
+          theme={OPS_COLORS.achievement}
+          value={
+            queried && m && !loading ?
+              (m.revenueAchievementRate != null ? `${Number(m.revenueAchievementRate).toFixed(1)}%` : "—")
+            : "—"
+          }
+          sub="營收達成值 ÷ 目標值"
+        />
+        <KpiCard
+          label="成長率"
+          value={queried && m && !loading ? formatYoy(m.yoyGrowthRate ?? null) : "—"}
+          valueColor={
+            queried && m && !loading ?
+              getYoyColor(m.yoyGrowthRate ?? null)
+            : OPS_COLORS.yoy.neutral
+          }
+          sub="較去年同期"
+        />
+        <KpiCard
+          label="工效比"
+          theme={OPS_COLORS.hours}
+          value={queried && m && !loading ? formatRatio(m.efficiencyRatio) : "—"}
+          sub="元 / hr"
+        />
+        <KpiCard
+          label="來客數"
+          theme={OPS_COLORS.customer}
+          value={
+            queried && m && !loading && (m.customerCount ?? 0) > 0 ?
+              (m.customerCount ?? 0).toLocaleString("zh-TW")
+            : "—"
+          }
+          sub={
+            queried && m && !loading ?
+              (m.customerDaysWithData ? `區間 ${m.customerDaysWithData} 天有資料` : "請上傳來客數資料")
+            : "查詢後顯示"
+          }
+        />
+        <KpiCard
+          label="平均客單價"
+          theme={OPS_COLORS.customer}
+          value={
+            queried && m && !loading && m.avgOrderValue != null ?
+              `${formatMoney(m.avgOrderValue)} 元`
+            : "—"
+          }
+          sub="銷售總額 ÷ 來客數"
+        />
+      </div>
+
+      {/* 全公司 KPI（桃園+宜蘭） */}
       <div className="grid gap-3 md:grid-cols-3">
         <KpiCard
           label="全公司營收達成值"
