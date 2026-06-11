@@ -740,10 +740,21 @@ export async function buildWorkHoursCalendar(input: {
   const workDates = days.map((ymd) => parseDateOnlyUTC(ymd));
 
   // Map HR Store → RetailStore via name matching
-  const [hrStore, allRetailStores] = await Promise.all([
+  const [hrStore, allRetailStores, holidays] = await Promise.all([
     prisma.store.findUnique({ where: { id: input.storeId }, select: { name: true } }),
     prisma.retailStore.findMany({ where: { isActive: true }, select: { id: true, storeName: true, region: true } }),
+    prisma.holiday.findMany({
+      where: {
+        isActive: true,
+        date: { gte: parseDateOnlyUTC(startYmd), lte: parseDateOnlyUTC(endYmd) },
+      },
+      select: { date: true, name: true },
+    }),
   ]);
+  const holidayMap = new Map<string, string>();
+  for (const h of holidays) {
+    holidayMap.set(formatDateOnly(h.date), h.name);
+  }
   if (!hrStore) throw new Error(`Store ${input.storeId} not found`);
 
   const retailStore = resolveRetailStore(normalizeStoreKey(hrStore.name), hrStore.name, allRetailStores);
@@ -752,6 +763,7 @@ export async function buildWorkHoursCalendar(input: {
   const emptyDays = days.map((date) => ({
     date,
     weekday: parseDateOnlyUTC(date).getUTCDay(),
+    holiday: holidayMap.get(date) ?? null,
     staff: [] as { name: string; workHours: number; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean }[],
     efficiencyRatio: null as number | null,
     isAchieved: false,
@@ -869,6 +881,7 @@ export async function buildWorkHoursCalendar(input: {
     return {
       date: ymd,
       weekday: dow,
+      holiday: holidayMap.get(ymd) ?? null,
       staff: [...homeStaff, ...supportStaff],
       efficiencyRatio: eff.ratio,
       isAchieved: eff.isAchieved,

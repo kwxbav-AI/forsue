@@ -96,6 +96,7 @@ type CalendarStaff = {
 type CalendarDay = {
   date: string;
   weekday: number;
+  holiday: string | null;
   staff: CalendarStaff[];
   efficiencyRatio: number | null;
   isAchieved: boolean;
@@ -480,15 +481,20 @@ function CalendarTab({
             const dom = parseInt(day.date.slice(8), 10);
             const isSun = day.weekday === 0;
             const isSat = day.weekday === 6;
+            const isHoliday = !!day.holiday;
             return (
               <div
                 key={day.date}
-                className="border border-slate-200 rounded-lg p-1.5 min-h-[90px] text-xs"
+                className={`border rounded-lg p-1.5 min-h-[90px] text-xs ${
+                  isHoliday
+                    ? "border-orange-200 bg-orange-50"
+                    : "border-slate-200 bg-white"
+                }`}
               >
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-0.5">
                   <span
                     className={`font-semibold ${
-                      isSun ? "text-red-500" : isSat ? "text-blue-500" : "text-slate-700"
+                      isSun || isHoliday ? "text-red-500" : isSat ? "text-blue-500" : "text-slate-700"
                     }`}
                   >
                     {dom}
@@ -503,6 +509,11 @@ function CalendarTab({
                       </span>
                   : null}
                 </div>
+                {day.holiday ?
+                  <div className="text-[10px] text-orange-600 font-medium mb-1 truncate">
+                    {day.holiday}
+                  </div>
+                : null}
                 {day.staff.map((s, si) => (
                   <div key={si} className="flex items-center gap-1 mb-0.5">
                     <span
