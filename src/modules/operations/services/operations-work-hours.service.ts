@@ -812,6 +812,54 @@ export async function buildWorkHoursCalendar(input: {
     buildRangeDailyMetricsPrefetch(startYmd, endYmd),
   ]);
 
+  // 扣工時來源：StoreHourDeduction / ContentEntry / WorkhourAdjustment
+  const storeNameNorm = normalizeStoreName(hrStore.name);
+  const [storeDeductions, contentEntries, workhourAdjs] = await Promise.all([
+    prisma.storeHourDeduction.findMany({
+      where: { storeId: input.storeId, workDate: { in: workDates } },
+      select: { workDate: true, reason: true, hours: true, note: true },
+    }),
+    prisma.contentEntry.findMany({
+      where: { workDate: { in: workDates }, deductedMinutes: { gt: 0 } },
+      select: { workDate: true, branch: true, deductedMinutes: true },
+    }),
+    prisma.workhourAdjustment.findMany({
+      where: {
+        workDate: { in: workDates },
+        storeId: input.storeId,
+        adjustmentHours: { lt: 0 },
+      },
+      select: {
+        workDate: true,
+        adjustmentType: true,
+        adjustmentHours: true,
+        note: true,
+        employee: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  // ContentEntry 過濾出屬於本店的（branch 名稱比對）
+  const storeContentEntries = contentEntries.filter(
+    (e) => normalizeStoreName(e.branch) === storeNameNorm
+  );
+
+  const DEDUCTION_REASON_LABEL: Record<string, string> = {
+    EXPIRY: "效期",
+    CLEANING: "清掃",
+    INVENTORY_REGISTRATION: "現貨文登記",
+    OTHER: "其他",
+  };
+  const ADJUSTMENT_TYPE_LABEL: Record<string, string> = {
+    STAFF_SHORTAGE: "人力不足",
+    MEETING_REVIEW: "會議/考核",
+    RESERVE_STAFF: "儲備人力",
+    TRIAL: "試作",
+    MANAGER_MEETING: "店長會議",
+    PROMOTION_REVIEW: "晉升考核",
+    OTHER: "其他",
+  };
+
   // 撈跨店支援人員的出勤紀錄（取 department 用於顯示所屬門市名稱）
   const dispatchEmpIds = [...new Set(dispatches.map((d) => d.employee.id))];
   const supportAttMap = new Map<string, Map<string, { department: string | null }>>();
@@ -845,6 +893,37 @@ export async function buildWorkHoursCalendar(input: {
       dateToEff.set(ymd, { ratio, isAchieved: isEfficiencyTargetMet(ymd, ratio) });
     })
   );
+
+  // 建立每日扣工時索引
+  type DeductionItem = { label: string; hours: number; note?: string | null };
+  const deductionsByDate = new Map<string, DeductionItem[]>();
+  const pushDeduction = (ymd: string, item: DeductionItem) => {
+    if (!deductionsByDate.has(ymd)) deductionsByDate.set(ymd, []);
+    deductionsByDate.get(ymd)!.push(item);
+  };
+  for (const d of storeDeductions) {
+    const ymd = workDateYmd(d.workDate);
+    pushDeduction(ymd, {
+      label: DEDUCTION_REASON_LABEL[d.reason] ?? d.reason,
+      hours: Math.round(Number(d.hours) * 100) / 100,
+      note: d.note,
+    });
+  }
+  for (const ce of storeContentEntries) {
+    const ymd = workDateYmd(ce.workDate);
+    const hours = Math.round((Number(ce.deductedMinutes ?? 0) / 60) * 100) / 100;
+    if (hours > 0) {
+      pushDeduction(ymd, { label: "現貨文", hours });
+    }
+  }
+  for (const adj of workhourAdjs) {
+    const ymd = workDateYmd(adj.workDate);
+    pushDeduction(ymd, {
+      label: ADJUSTMENT_TYPE_LABEL[adj.adjustmentType] ?? adj.adjustmentType,
+      hours: Math.abs(Math.round(Number(adj.adjustmentHours) * 100) / 100),
+      note: adj.note ?? (adj.employee ? adj.employee.name : null),
+    });
+  }
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
@@ -883,6 +962,7 @@ export async function buildWorkHoursCalendar(input: {
       weekday: dow,
       holiday: holidayMap.get(ymd) ?? null,
       staff: [...homeStaff, ...supportStaff],
+      deductions: deductionsByDate.get(ymd) ?? [],
       efficiencyRatio: eff.ratio,
       isAchieved: eff.isAchieved,
       hasData: dateToEff.has(ymd),

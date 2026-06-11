@@ -93,11 +93,18 @@ type CalendarStaff = {
   isSupport: boolean;
 };
 
+type CalendarDeduction = {
+  label: string;
+  hours: number;
+  note?: string | null;
+};
+
 type CalendarDay = {
   date: string;
   weekday: number;
   holiday: string | null;
   staff: CalendarStaff[];
+  deductions: CalendarDeduction[];
   efficiencyRatio: number | null;
   isAchieved: boolean;
   hasData: boolean;
@@ -460,6 +467,7 @@ function CalendarTab({
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />跨店支援
         </span>
+        <span className="text-rose-600">-Xh 標籤 = 扣工時項目</span>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm overflow-x-auto">
@@ -532,6 +540,15 @@ function CalendarTab({
                     </span>
                   </div>
                 ))}
+                {day.deductions.length > 0 ?
+                  <div className="mt-1 space-y-0.5">
+                    {day.deductions.map((d, di) => (
+                      <div key={di} className="text-[10px] text-rose-600 truncate" title={d.note ?? undefined}>
+                        -{d.hours}h {d.label}
+                      </div>
+                    ))}
+                  </div>
+                : null}
                 {day.hasData && day.efficiencyRatio != null ?
                   <div className="mt-1 text-[10px] text-slate-400">
                     工效比 {day.efficiencyRatio.toLocaleString()}
