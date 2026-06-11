@@ -186,7 +186,7 @@ export function rowMatchesCatalogRegions(
   for (const catalogKey of allowed) {
     if (storeNameMatchesCatalogKey(row.storeName, catalogKey)) return true;
   }
-  if ((regions as readonly string[]).some((r) => (DUAL_OPS_REGIONS as readonly string[]).includes(r))) {
+  if ((DUAL_OPS_REGIONS as readonly string[]).every((r) => regions.includes(r))) {
     return storeInDualOpsRevenueScope(row.storeName, null);
   }
   return false;
