@@ -742,6 +742,11 @@ function normalizeStoreName(s: string): string {
   return s.trim().replace(/店$/, "");
 }
 
+/** 去掉「XX區-」前綴，保留純門市名稱（如「宜蘭區-中正店」→「中正店」） */
+function stripRegionPrefix(s: string): string {
+  return s.replace(/^[一-鿿][一-鿿]*區-/, "");
+}
+
 export async function buildWorkHoursCalendar(input: {
   storeId: string; // HR Store ID (from listPerformanceStoresForFilter / dashboard meta.stores)
   year: number;
@@ -949,7 +954,7 @@ export async function buildWorkHoursCalendar(input: {
         workHours: Number(a.workHours),
         startTime: a.startTime ?? "",
         endTime: a.endTime ?? "",
-        homeStore: a.department ?? homeStoreName,
+        homeStore: stripRegionPrefix(a.department ?? homeStoreName),
         isSupport: false,
       }));
 
@@ -964,7 +969,7 @@ export async function buildWorkHoursCalendar(input: {
           workHours: Number(d.actualHours ?? d.dispatchHours),
           startTime: d.startTime ?? "",
           endTime: d.endTime ?? "",
-          homeStore: sa?.department ?? null,
+          homeStore: sa?.department ? stripRegionPrefix(sa.department) : null,
           isSupport: true,
         };
       });
