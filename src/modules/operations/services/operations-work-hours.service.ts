@@ -673,7 +673,7 @@ export async function buildOperationsWorkHours(input: {
     .filter((r) => r.hours < 0)
     .reduce((a, r) => a + Math.abs(r.hours), 0);
 
-  let storeTarget: { laborHourTarget: import("@prisma/client").Decimal } | null = null;
+  let storeTarget: { laborHourTarget: { toNumber(): number } } | null = null;
   if (input.storeId) {
     const hrName = filterStores.find((s) => s.id === input.storeId)?.storeName ?? null;
     if (hrName) {
