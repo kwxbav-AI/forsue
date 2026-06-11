@@ -86,7 +86,7 @@ type WorkHoursData = {
 
 type CalendarStaff = {
   name: string;
-  isManager: boolean;
+  workHours: number;
   startTime: string;
   endTime: string;
   homeStore: string | null;
@@ -510,8 +510,11 @@ function CalendarTab({
                         s.isSupport ? "bg-amber-400" : "bg-teal-400"
                       }`}
                     />
-                    <span className={`truncate ${s.isManager ? "font-medium text-slate-700" : "text-slate-600"}`}>
+                    <span className="truncate text-slate-600">
                       {s.name}
+                      {s.workHours > 0 ?
+                        <span className="text-slate-400 ml-0.5">{s.workHours}h</span>
+                      : null}
                       {s.isSupport && s.homeStore ?
                         <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
                       : null}

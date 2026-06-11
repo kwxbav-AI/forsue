@@ -747,7 +747,7 @@ export async function buildWorkHoursCalendar(input: {
   const emptyDays = days.map((date) => ({
     date,
     weekday: parseDateOnlyUTC(date).getUTCDay(),
-    staff: [] as { name: string; isManager: boolean; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean }[],
+    staff: [] as { name: string; workHours: number; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean }[],
     efficiencyRatio: null as number | null,
     isAchieved: false,
     hasData: false,
@@ -757,9 +757,35 @@ export async function buildWorkHoursCalendar(input: {
     return { storeId: input.storeId, storeName, year: input.year, month: input.month, startDate: startYmd, endDate: endYmd, days: emptyDays, employeeAchievement: [] };
   }
 
-  const [schedules, performances] = await Promise.all([
-    prisma.staffSchedule.findMany({
-      where: { storeId: retailStore.id, workDate: { in: workDates } },
+  // 本店出勤：employee.defaultStoreId = input.storeId (HR Store ID)
+  // 跨店支援：DispatchRecord.toStoreId = input.storeId，再撈其 AttendanceRecord
+  const [homeAtts, dispatches, performances] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: {
+        workDate: { in: workDates },
+        employee: { defaultStoreId: input.storeId },
+        workHours: { gt: 0 },
+      },
+      select: {
+        workDate: true,
+        workHours: true,
+        startTime: true,
+        endTime: true,
+        department: true,
+        employee: { select: { name: true, defaultStoreId: true } },
+      },
+      orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.dispatchRecord.findMany({
+      where: { toStoreId: input.storeId, workDate: { in: workDates } },
+      select: {
+        workDate: true,
+        startTime: true,
+        endTime: true,
+        actualHours: true,
+        dispatchHours: true,
+        employee: { select: { id: true, name: true, defaultStoreId: true } },
+      },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
     prisma.dailyStorePerformance.findMany({
@@ -768,30 +794,23 @@ export async function buildWorkHoursCalendar(input: {
     }),
   ]);
 
-  const staffNames = [...new Set(schedules.map((s) => s.staffName))];
-
-  const nameToDept = new Map<string, string | null>();
-  if (staffNames.length > 0) {
-    const atts = await prisma.attendanceRecord.findMany({
-      where: {
-        workDate: { in: workDates },
-        employee: { name: { in: staffNames } },
-      },
-      select: { department: true, employee: { select: { name: true } } },
+  // 撈跨店支援人員的出勤紀錄（取 department 用於顯示所屬門市名稱）
+  const dispatchEmpIds = [...new Set(dispatches.map((d) => d.employee.id))];
+  const supportAttMap = new Map<string, Map<string, { department: string | null }>>();
+  if (dispatchEmpIds.length > 0) {
+    const suppAtts = await prisma.attendanceRecord.findMany({
+      where: { employeeId: { in: dispatchEmpIds }, workDate: { in: workDates } },
+      select: { workDate: true, department: true, employeeId: true },
     });
-    for (const att of atts) {
-      const n = att.employee.name;
-      if (!nameToDept.has(n) && att.department) {
-        nameToDept.set(n, att.department);
-      }
+    for (const sa of suppAtts) {
+      const ymd = workDateYmd(sa.workDate);
+      if (!supportAttMap.has(sa.employeeId)) supportAttMap.set(sa.employeeId, new Map());
+      supportAttMap.get(sa.employeeId)!.set(ymd, { department: sa.department ?? null });
     }
   }
 
-  const storeNorm = normalizeStoreName(retailStore.storeName);
-  function isHomeStore(dept: string | null | undefined): boolean {
-    if (!dept) return true;
-    return normalizeStoreName(dept) === storeNorm;
-  }
+  // 取得 HR Store 名稱，作為判斷跨店的基準
+  const homeStoreName = hrStore.name;
 
   type DayEff = { ratio: number | null; isAchieved: boolean };
   const dateToEff = new Map<string, DayEff>();
@@ -806,22 +825,40 @@ export async function buildWorkHoursCalendar(input: {
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
-    const daySchedules = schedules.filter((s) => workDateYmd(s.workDate) === ymd);
     const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false };
+
+    // 本店人員
+    const homeStaff = homeAtts
+      .filter((a) => workDateYmd(a.workDate) === ymd)
+      .map((a) => ({
+        name: a.employee.name,
+        workHours: Number(a.workHours),
+        startTime: a.startTime ?? "",
+        endTime: a.endTime ?? "",
+        homeStore: a.department ?? homeStoreName,
+        isSupport: false,
+      }));
+
+    // 跨店支援（過濾掉本店人員已包含的）
+    const homeNames = new Set(homeStaff.map((s) => s.name));
+    const supportStaff = dispatches
+      .filter((d) => workDateYmd(d.workDate) === ymd && !homeNames.has(d.employee.name))
+      .map((d) => {
+        const sa = supportAttMap.get(d.employee.id)?.get(ymd);
+        return {
+          name: d.employee.name,
+          workHours: Number(d.actualHours ?? d.dispatchHours),
+          startTime: d.startTime ?? "",
+          endTime: d.endTime ?? "",
+          homeStore: sa?.department ?? null,
+          isSupport: true,
+        };
+      });
+
     return {
       date: ymd,
       weekday: dow,
-      staff: daySchedules.map((s) => {
-        const dept = nameToDept.get(s.staffName) ?? null;
-        return {
-          name: s.staffName,
-          isManager: s.isManager,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          homeStore: dept,
-          isSupport: !isHomeStore(dept),
-        };
-      }),
+      staff: [...homeStaff, ...supportStaff],
       efficiencyRatio: eff.ratio,
       isAchieved: eff.isAchieved,
       hasData: dateToEff.has(ymd),
