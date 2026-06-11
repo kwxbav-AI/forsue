@@ -33,6 +33,9 @@ export type DashboardFilterStoreRow = {
   yoyGrowthRate: number | null;
   priorYearRevenue: number;
   actualAttendanceHours: number;
+  /** 表訂工時：出勤紀錄 F 欄（scheduledWorkHours）加總 */
+  scheduledHours: number | null;
+  /** 加班工時：實際打卡超出表訂的部分（逐人逐日 max(0, actual-scheduled)）*/
   overtimeHours: number | null;
   overtimeRatio: number | null;
   /** 平日營業時長（週一～五） */
@@ -354,6 +357,46 @@ function computeOvertimeHours(
   return actualHours - periodDefault;
 }
 
+/** 從出勤紀錄計算各 HR 門市的表訂工時與加班工時 */
+async function fetchScheduledAndOvertimeByStore(
+  hrStoreIds: string[],
+  startYmd: string,
+  endYmd: string
+): Promise<Map<string, { scheduledHours: number; overtimeHours: number }>> {
+  if (hrStoreIds.length === 0) return new Map();
+  const hrSet = new Set(hrStoreIds);
+  const workDates = listDateStrings(startYmd, endYmd).map(parseDateOnlyUTC);
+  const records = await prisma.attendanceRecord.findMany({
+    where: {
+      workDate: { in: workDates },
+      workHours: { gt: 0 },
+      OR: [
+        { employee: { defaultStoreId: { in: hrStoreIds } } },
+        { originalStoreId: { in: hrStoreIds } },
+      ],
+    },
+    select: {
+      workHours: true,
+      scheduledWorkHours: true,
+      originalStoreId: true,
+      employee: { select: { defaultStoreId: true } },
+    },
+  });
+  const result = new Map<string, { scheduledHours: number; overtimeHours: number }>();
+  for (const r of records) {
+    const sid = r.employee.defaultStoreId ?? r.originalStoreId;
+    if (!sid || !hrSet.has(sid)) continue;
+    const wh = Number(r.workHours);
+    const sh = r.scheduledWorkHours != null ? Number(r.scheduledWorkHours) : 0;
+    const ot = sh > 0 ? Math.max(0, wh - sh) : 0;
+    const cur = result.get(sid) ?? { scheduledHours: 0, overtimeHours: 0 };
+    cur.scheduledHours += sh;
+    cur.overtimeHours += ot;
+    result.set(sid, cur);
+  }
+  return result;
+}
+
 function buildStoreRow(
   chart: ChartsPerStoreRow,
   ctx: StoreMetricsContext,
@@ -371,6 +414,7 @@ function buildStoreRow(
     revenue,
     laborHours,
     efficiencyRatio: chart.efficiencyRatio,
+    scheduledHours: null,
     revenueForecast:
       ctx.monthlySalesTarget > 0 ? ctx.monthlySalesTarget : null,
     monthlyLaborHourTarget:
@@ -414,6 +458,7 @@ function aggregateSummaryRows(
       yoyGrowthRate: null,
       priorYearRevenue: 0,
       actualAttendanceHours: 0,
+      scheduledHours: null,
       overtimeHours: null,
       overtimeRatio: null,
       weekdayBusinessHours: null,
@@ -431,9 +476,12 @@ function aggregateSummaryRows(
   let monthlySalesTarget = 0;
   let monthlyLaborHourTarget = 0;
   let periodLaborTarget = 0;
+  let scheduledHoursTotal = 0;
+  let overtimeHoursTotal = 0;
   let hasDefaultLabor = false;
   let hasSalesTarget = false;
   let hasMonthlyLabor = false;
+  let hasAttendanceData = false;
 
   for (const r of rows) {
     revenue += r.revenue;
@@ -450,12 +498,21 @@ function aggregateSummaryRows(
       periodLaborTarget += r.defaultLaborHours;
       hasDefaultLabor = true;
     }
+    if (r.scheduledHours != null) {
+      scheduledHoursTotal += r.scheduledHours;
+      hasAttendanceData = true;
+    }
+    if (r.overtimeHours != null) {
+      overtimeHoursTotal += r.overtimeHours;
+    }
   }
 
-  const overtimeRaw = hasDefaultLabor ?
-    computeOvertimeHours(laborHours, periodLaborTarget)
-  : null;
-  const overtimeHours = overtimeRaw != null ? Math.abs(overtimeRaw) : null;
+  const scheduledHours = hasAttendanceData ? Math.round(scheduledHoursTotal * 10) / 10 : null;
+  const overtimeHours = hasAttendanceData
+    ? Math.round(overtimeHoursTotal * 10) / 10
+    : hasDefaultLabor
+    ? (() => { const r = computeOvertimeHours(laborHours, periodLaborTarget); return r != null ? Math.abs(r) : null; })()
+    : null;
   const priorYearRevenue =
     priorTotalRevenue ??
     rows.reduce((a, r) => a + r.priorYearRevenue, 0);
@@ -474,9 +531,12 @@ function aggregateSummaryRows(
     yoyGrowthRate: yoyRate(revenue, priorYearRevenue),
     priorYearRevenue,
     actualAttendanceHours: laborHours,
+    scheduledHours,
     overtimeHours,
     overtimeRatio:
-      overtimeHours != null && laborHours > 0 ?
+      overtimeHours != null && scheduledHoursTotal > 0 ?
+        pctRateOneDecimal(overtimeHours, scheduledHoursTotal)
+      : overtimeHours != null && laborHours > 0 ?
         pctRateOneDecimal(overtimeHours, laborHours)
       : null,
     weekdayBusinessHours: null,
@@ -698,6 +758,25 @@ export async function buildDashboardFilterResult(input: {
       priorByStoreId.get(chart.storeId) ?? 0
     );
   });
+
+  // 從出勤紀錄計算表訂工時與加班工時（覆寫 buildStoreRow 中舊的估算值）
+  const hrStoreIds = filteredCharts.map((c) => c.storeId);
+  const attendanceByStore = await fetchScheduledAndOvertimeByStore(
+    hrStoreIds,
+    input.startYmd,
+    input.endYmd
+  );
+  for (const row of storeRows) {
+    const att = attendanceByStore.get(row.storeId);
+    if (att) {
+      row.scheduledHours = Math.round(att.scheduledHours * 10) / 10;
+      row.overtimeHours = Math.round(att.overtimeHours * 10) / 10;
+      row.overtimeRatio =
+        att.scheduledHours > 0 ?
+          pctRateOneDecimal(att.overtimeHours, att.scheduledHours)
+        : null;
+    }
+  }
 
   const priorYearRevenueTotal = priorCharts.reduce((a, r) => a + r.revenueSum, 0);
   const summary = aggregateSummaryRows(storeRows, priorYearRevenueTotal);

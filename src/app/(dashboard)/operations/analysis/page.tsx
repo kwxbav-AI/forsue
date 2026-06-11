@@ -55,6 +55,7 @@ type FilteredMetrics = {
   revenueAchievementRate?: number | null;
   yoyGrowthRate?: number | null;
   actualAttendanceHours?: number;
+  scheduledHours?: number | null;
   overtimeHours?: number | null;
   overtimeRatio?: number | null;
   weekdayBusinessHours?: number | null;
@@ -893,65 +894,97 @@ export default function OperationsAnalysisPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <PanelCard title="工時明細">
-                <div className="space-y-3">
-                  <MiniStat label="實際出勤總工時" value={formatHours(m.actualAttendanceHours ?? m.totalLaborHours)} unit="hr" icon="👥" theme={OPS_COLORS.hours} />
-                  <MiniStat
-                    label="加班工時"
-                    value={dashHours(m.overtimeHours)}
-                    unit="hr"
-                    icon="⏰"
-                    theme={{ ...OPS_COLORS.hours, value: OPS_COLORS.hours.chartDeep, icon: OPS_COLORS.hours.chartDeep }}
-                  />
-                  <MiniStat label="加班時數佔比" value={formatPctValue(m.overtimeRatio ?? null)} unit="%" icon="◐" theme={OPS_COLORS.achievement} />
+            {/* 工時四指標卡 */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {(
+                [
+                  { label: "表訂工時", value: m.scheduledHours, sub: "出勤紀錄 F 欄加總", color: "bg-slate-50 border-slate-200" },
+                  { label: "實際出勤工時", value: m.actualAttendanceHours ?? m.totalLaborHours, sub: "G─H 欄打卡工時", color: "bg-slate-50 border-slate-200" },
+                  { label: "加班工時", value: m.overtimeHours, sub: "實際超出表訂累積", color: "bg-amber-50 border-amber-200", textColor: "text-amber-900", subColor: "text-amber-700" },
+                  { label: "目標工時（人力）", value: m.defaultLaborHours, sub: "門市人力規劃設定", color: "bg-blue-50 border-blue-200", textColor: "text-blue-900", subColor: "text-blue-700" },
+                ] as { label: string; value: number | null | undefined; sub: string; color: string; textColor?: string; subColor?: string }[]
+              ).map((card) => (
+                <div key={card.label} className={`rounded-xl border p-3 ${card.color}`}>
+                  <p className={`text-xs ${card.subColor ?? "text-slate-500"}`}>{card.label}</p>
+                  <p className={`mt-1 text-xl font-bold ${card.textColor ?? "text-slate-800"}`}>
+                    {card.value != null ? `${Math.round(card.value * 10) / 10}` : "—"}
+                    <span className="ml-1 text-xs font-normal opacity-70">hr</span>
+                  </p>
+                  <p className={`mt-0.5 text-[11px] ${card.subColor ?? "text-slate-400"}`}>{card.sub}</p>
                 </div>
+              ))}
+            </div>
+
+            {/* 三條基準線對比 + 差距分析 */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <PanelCard title="三條基準線對比">
+                {(() => {
+                  const target = m.defaultLaborHours ?? 0;
+                  const actual = m.actualAttendanceHours ?? m.totalLaborHours ?? 0;
+                  const scheduled = m.scheduledHours ?? 0;
+                  const max = Math.max(target, actual, scheduled, 1);
+                  const rows = [
+                    { label: "目標工時", val: target, pct: target / max, color: "#3b82f6", tag: "人力規劃", tagCls: "bg-blue-100 text-blue-800" },
+                    { label: "實際出勤", val: actual, pct: actual / max, color: "#6b7280", tag: target > 0 ? `${actual > target ? "+" : ""}${Math.round((actual - target) * 10) / 10}h vs 目標` : null, tagCls: "bg-slate-100 text-slate-600" },
+                    { label: "表訂工時", val: scheduled, pct: scheduled / max, color: "#10b981", tag: scheduled > 0 && actual > scheduled ? `+${Math.round((actual - scheduled) * 10) / 10}h 加班補` : scheduled > 0 && actual < scheduled ? `-${Math.round((scheduled - actual) * 10) / 10}h 未滿排` : null, tagCls: "bg-amber-100 text-amber-800" },
+                  ];
+                  return (
+                    <div className="space-y-3">
+                      {rows.map((r) => (
+                        <div key={r.label} className="flex items-center gap-2">
+                          <span className="w-16 flex-shrink-0 text-xs text-slate-500">{r.label}</span>
+                          <div className="flex-1 overflow-hidden rounded-full bg-slate-100" style={{ height: 8 }}>
+                            <div className="h-full rounded-full" style={{ width: `${Math.round(r.pct * 100)}%`, background: r.color }} />
+                          </div>
+                          <span className="w-12 flex-shrink-0 text-right text-xs font-medium text-slate-700">{Math.round(r.val)}</span>
+                          {r.tag ?
+                            <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] ${r.tagCls}`}>{r.tag}</span>
+                          : <span className="w-20 flex-shrink-0" />}
+                        </div>
+                      ))}
+                      {!hasLaborTarget ?
+                        <div className="rounded-lg border p-2 text-[11px]" style={{ backgroundColor: OPS_COLORS.achievement.bg, borderColor: OPS_COLORS.achievement.border, color: OPS_COLORS.achievement.value }}>
+                          請至「門市目標設定」設定人力工時目標
+                          <Link href="/operations/store-targets" className="ml-2 underline">前往設定</Link>
+                        </div>
+                      : null}
+                    </div>
+                  );
+                })()}
               </PanelCard>
 
-              <PanelCard title="預設工時比較">
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <p className="text-xs text-slate-500">單月目標總工時</p>
-                    <p className="text-lg font-bold text-slate-800">
-                      {dashHours(m.monthlyLaborHourTarget)}
-                      <span className="ml-1 text-xs font-normal text-slate-500">hr</span>
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <p className="text-xs text-slate-500">區間目標工時合計</p>
-                    <p className="text-lg font-bold text-slate-800">
-                      {dashHours(m.defaultLaborHours)}
-                      <span className="ml-1 text-xs font-normal text-slate-500">hr</span>
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <p className="text-xs text-slate-500">工時差異</p>
-                    <p className="text-lg font-bold text-slate-800">
-                      {dashHours(m.laborHoursDifference)}
-                      <span className="ml-1 text-xs font-normal text-slate-500">hr</span>
-                    </p>
-                  </div>
-                  {!hasLaborTarget ?
-                    <div
-                      className="rounded-lg border p-3"
-                      style={{
-                        backgroundColor: OPS_COLORS.achievement.bg,
-                        borderColor: OPS_COLORS.achievement.border,
-                      }}
-                    >
-                      <p className="text-xs" style={{ color: OPS_COLORS.achievement.value }}>
-                        請至「門市目標設定」匯入月業績目標與依人力計算工時；營業時長請至「營運門市管理」設定
-                      </p>
-                      <Link
-                        href="/operations/store-targets"
-                        className="mt-2 inline-block rounded-md px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-                        style={{ backgroundColor: OPS_COLORS.achievement.chartDeep }}
-                      >
-                        前往門市目標設定
-                      </Link>
+              <PanelCard title="工時差距分析">
+                {(() => {
+                  const target = m.defaultLaborHours;
+                  const actual = m.actualAttendanceHours ?? m.totalLaborHours ?? 0;
+                  const scheduled = m.scheduledHours;
+                  const diffActualScheduled = scheduled != null ? Math.round((actual - scheduled) * 10) / 10 : null;
+                  const diffActualTarget = target != null ? Math.round((actual - target) * 10) / 10 : null;
+                  const diffScheduledTarget = scheduled != null && target != null ? Math.round((scheduled - target) * 10) / 10 : null;
+                  const gap = (label: string, diff: number | null, positiveLabel: string, negativeLabel: string) => (
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="text-xs text-slate-500">{label}</span>
+                      {diff != null ?
+                        <span className={`text-xs font-medium ${diff > 0 ? "text-red-700" : diff < 0 ? "text-emerald-700" : "text-slate-600"}`}>
+                          {diff > 0 ? `+${diff}h` : `${diff}h`}
+                          <span className="ml-1 font-normal opacity-70">（{diff > 0 ? positiveLabel : diff < 0 ? negativeLabel : "持平"}）</span>
+                        </span>
+                      : <span className="text-xs text-slate-400">—</span>}
                     </div>
-                  : null}
-                </div>
+                  );
+                  return (
+                    <div className="space-y-2">
+                      {gap("實際 vs 表訂", diffActualScheduled, "超排→加班", "未滿排")}
+                      {gap("實際 vs 目標", diffActualTarget, "超出人力目標", "人力不足")}
+                      {gap("表訂 vs 目標", diffScheduledTarget, "超出目標排班", "排班規劃缺口")}
+                      {diffActualScheduled != null && diffActualTarget != null && diffScheduledTarget != null ?
+                        <p className="pt-1 text-[11px] text-slate-400">
+                          排班缺口 {Math.abs(diffScheduledTarget)}h → 加班補 {Math.max(0, diffActualScheduled)}h → 仍{diffActualTarget < 0 ? `缺 ${Math.abs(diffActualTarget)}h` : `超出 ${diffActualTarget}h`}
+                        </p>
+                      : null}
+                    </div>
+                  );
+                })()}
               </PanelCard>
             </div>
 

@@ -171,6 +171,7 @@ export async function GET(request: NextRequest) {
         yoyGrowthRate: filteredResult.summary.yoyGrowthRate,
         priorYearRevenue: filteredResult.summary.priorYearRevenue,
         actualAttendanceHours: filteredResult.summary.actualAttendanceHours,
+        scheduledHours: filteredResult.summary.scheduledHours,
         overtimeHours: filteredResult.summary.overtimeHours,
         overtimeRatio: filteredResult.summary.overtimeRatio,
         weekdayBusinessHours: filteredResult.summary.weekdayBusinessHours,
