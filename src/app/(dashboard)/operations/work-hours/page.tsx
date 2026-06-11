@@ -535,18 +535,18 @@ function CalendarTab({
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="font-semibold text-slate-800 mb-1">員工達標次數</h2>
         <p className="text-xs text-slate-500 mb-3">
-          出勤日中，本門市工效比達標的次數（達標條件：平日 ≥ 4,000、週六 ≥ 5,500 元/hr）
+          出勤日中，本門市工效比達標的次數（達標條件與每日工效比報表相同）
         </p>
         {data.employeeAchievement.length ?
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-slate-500">
-                  <th className="py-2 pr-4">員工</th>
-                  <th className="py-2 pr-4">所屬門市</th>
-                  <th className="py-2 pr-4 text-right">出勤天數</th>
-                  <th className="py-2 pr-4 text-right">達標次數</th>
-                  <th className="py-2 text-right">達標率</th>
+                <tr className="border-b text-left text-slate-500 font-normal">
+                  <th className="py-2 pr-4 font-normal">員工</th>
+                  <th className="py-2 pr-4 font-normal">類別</th>
+                  <th className="py-2 pr-4 text-right font-normal">出勤工作日</th>
+                  <th className="py-2 pr-4 text-right font-normal">達標次數</th>
+                  <th className="py-2 text-right font-normal">達標率</th>
                 </tr>
               </thead>
               <tbody>
@@ -555,29 +555,29 @@ function CalendarTab({
                     <td className="py-2 pr-4 font-medium text-slate-800">{e.name}</td>
                     <td className="py-2 pr-4">
                       {e.isSupport ?
-                        <span className="inline-flex items-center gap-1">
-                          <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
-                          <span className="text-amber-700">{e.homeStore ?? "其他門市"}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          {e.homeStore ?? "跨店支援"}
                         </span>
-                      : <span className="inline-flex items-center gap-1">
-                          <span className="inline-block h-2 w-2 rounded-full bg-teal-400" />
-                          <span className="text-slate-600">本店</span>
+                      : <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-800">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+                          本店
                         </span>
                       }
                     </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{e.attendanceDays}</td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-slate-700">{e.attendanceDays} 天</td>
                     <td className="py-2 pr-4 text-right tabular-nums">
-                      <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                        {e.achievedDays}
+                      <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                        {e.achievedDays} 次
                       </span>
                     </td>
-                    <td className="py-2 text-right tabular-nums">{e.achieveRate}%</td>
+                    <td className="py-2 text-right tabular-nums text-slate-500">{e.achieveRate}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        : <EmptyState text="本月尚無出勤排班紀錄" />}
+        : <EmptyState text="本月尚無出勤紀錄" />}
       </div>
     </div>
   );

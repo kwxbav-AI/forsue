@@ -769,8 +769,11 @@ export async function buildWorkHoursCalendar(input: {
     prisma.attendanceRecord.findMany({
       where: {
         workDate: { in: workDates },
-        employee: { defaultStoreId: input.storeId },
         workHours: { gt: 0 },
+        OR: [
+          { employee: { defaultStoreId: input.storeId } },
+          { originalStoreId: input.storeId },
+        ],
       },
       select: {
         workDate: true,
