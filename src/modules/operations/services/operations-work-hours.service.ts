@@ -17,7 +17,7 @@ import {
   buildRangeDailyMetricsPrefetch,
   computeDailyMetricsByStoreResilientWithPrefetch,
 } from "@/modules/performance/services/range-daily-metrics-prefetch.service";
-import { getEffectiveTarget } from "@/modules/performance/services/target-setting.service";
+import { isEfficiencyTargetMet } from "@/lib/operations-efficiency";
 
 const DAY_CONCURRENCY = 12;
 
@@ -819,21 +819,18 @@ export async function buildWorkHoursCalendar(input: {
   const homeStoreName = hrStore.name;
 
   // 與每日工效比報表相同公式：逐日計算工效比與達標狀態
+  // 門檻：平日(一~五) ≥ 4,000、週六 ≥ 5,500（與 isEfficiencyTargetMet 一致）
   type DayEff = { ratio: number | null; isAchieved: boolean };
   const dateToEff = new Map<string, DayEff>();
   await Promise.all(
     days.map(async (ymd) => {
       const workDate = parseDateOnlyUTC(ymd);
-      const [metrics, target] = await Promise.all([
-        computeDailyMetricsByStoreResilientWithPrefetch(workDate, prefetch),
-        getEffectiveTarget(workDate),
-      ]);
+      const metrics = await computeDailyMetricsByStoreResilientWithPrefetch(workDate, prefetch);
       const m = metrics.get(input.storeId);
       const laborH = m?.laborHours ?? 0;
       const revenue = m?.revenue ?? 0;
       const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
-      const threshold = target ?? 4000;
-      dateToEff.set(ymd, { ratio, isAchieved: ratio !== null && ratio >= threshold });
+      dateToEff.set(ymd, { ratio, isAchieved: isEfficiencyTargetMet(ymd, ratio) });
     })
   );
 
