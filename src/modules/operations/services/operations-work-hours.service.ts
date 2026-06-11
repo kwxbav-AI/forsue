@@ -13,6 +13,11 @@ import { listPerformanceStoresForFilter } from "@/modules/operations/services/op
 import { DUAL_OPS_REGIONS, normalizeStoreKey } from "@/lib/operations-dashboard";
 import { addCalendarDaysUTC } from "@/lib/date";
 import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
+import {
+  buildRangeDailyMetricsPrefetch,
+  computeDailyMetricsByStoreResilientWithPrefetch,
+} from "@/modules/performance/services/range-daily-metrics-prefetch.service";
+import { getEffectiveTarget } from "@/modules/performance/services/target-setting.service";
 
 const DAY_CONCURRENCY = 12;
 
@@ -759,7 +764,8 @@ export async function buildWorkHoursCalendar(input: {
 
   // 本店出勤：employee.defaultStoreId = input.storeId (HR Store ID)
   // 跨店支援：DispatchRecord.toStoreId = input.storeId，再撈其 AttendanceRecord
-  const [homeAtts, dispatches, performances] = await Promise.all([
+  // 工效比：與每日工效比報表相同公式（prefetch 預載整月）
+  const [homeAtts, dispatches, prefetch] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         workDate: { in: workDates },
@@ -788,10 +794,7 @@ export async function buildWorkHoursCalendar(input: {
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
-    prisma.dailyStorePerformance.findMany({
-      where: { storeId: retailStore.id, date: { in: workDates } },
-      select: { date: true, salesAmount: true, totalLaborHours: true },
-    }),
+    buildRangeDailyMetricsPrefetch(startYmd, endYmd),
   ]);
 
   // 撈跨店支援人員的出勤紀錄（取 department 用於顯示所屬門市名稱）
@@ -812,16 +815,24 @@ export async function buildWorkHoursCalendar(input: {
   // 取得 HR Store 名稱，作為判斷跨店的基準
   const homeStoreName = hrStore.name;
 
+  // 與每日工效比報表相同公式：逐日計算工效比與達標狀態
   type DayEff = { ratio: number | null; isAchieved: boolean };
   const dateToEff = new Map<string, DayEff>();
-  for (const p of performances) {
-    const ymd = formatDateOnlyTaipei(p.date);
-    const laborH = Number(p.totalLaborHours);
-    const ratio = laborH > 0 ? Math.round(Number(p.salesAmount) / laborH) : null;
-    const dow = parseDateOnlyUTC(ymd).getUTCDay();
-    const threshold = dow === 6 ? 5500 : 4000;
-    dateToEff.set(ymd, { ratio, isAchieved: ratio !== null && ratio >= threshold });
-  }
+  await Promise.all(
+    days.map(async (ymd) => {
+      const workDate = parseDateOnlyUTC(ymd);
+      const [metrics, target] = await Promise.all([
+        computeDailyMetricsByStoreResilientWithPrefetch(workDate, prefetch),
+        getEffectiveTarget(workDate),
+      ]);
+      const m = metrics.get(input.storeId);
+      const laborH = m?.laborHours ?? 0;
+      const revenue = m?.revenue ?? 0;
+      const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
+      const threshold = target ?? 4000;
+      dateToEff.set(ymd, { ratio, isAchieved: ratio !== null && ratio >= threshold });
+    })
+  );
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
