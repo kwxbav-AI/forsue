@@ -298,7 +298,7 @@ export default function OperationsWorkHoursPage() {
         })}
       </div>
 
-      {loading && !data ?
+      {tab === "overview" && loading && !data ?
         <p className="text-center text-slate-500 py-16">載入中…</p>
       : null}
 
@@ -395,13 +395,26 @@ export default function OperationsWorkHoursPage() {
         />
       : null}
 
-      {tab === "issues" && data ?
-        <IssuesTab
-          anomalies={a}
-          adjustments={adj}
-          anomalyFilter={anomalyFilter}
-          onAnomalyFilterChange={setAnomalyFilter}
-        />
+      {tab === "issues" ?
+        data ?
+          <IssuesTab
+            anomalies={a}
+            adjustments={adj}
+            anomalyFilter={anomalyFilter}
+            onAnomalyFilterChange={setAnomalyFilter}
+          />
+        : loading ?
+          <p className="text-center text-slate-500 py-16">載入中…</p>
+        : <div className="text-center py-16">
+            <p className="text-sm text-slate-500 mb-3">資料載入失敗，請重新整理</p>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              重新整理
+            </button>
+          </div>
       : null}
 
       {detailModal && data ?
