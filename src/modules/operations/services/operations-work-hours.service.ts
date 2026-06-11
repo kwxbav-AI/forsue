@@ -10,8 +10,9 @@ import {
   computeTotalWorkHoursByStore,
 } from "@/modules/performance/services/attendance-allocation.service";
 import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
-import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
+import { DUAL_OPS_REGIONS, normalizeStoreKey } from "@/lib/operations-dashboard";
 import { addCalendarDaysUTC } from "@/lib/date";
+import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 
 const DAY_CONCURRENCY = 12;
 
@@ -672,12 +673,23 @@ export async function buildOperationsWorkHours(input: {
     .filter((r) => r.hours < 0)
     .reduce((a, r) => a + Math.abs(r.hours), 0);
 
-  const storeTarget = input.storeId
-    ? await prisma.storeTarget.findUnique({
-        where: { storeId_year_month: { storeId: input.storeId, year: input.year, month: input.month } },
-        select: { laborHourTarget: true },
-      })
-    : null;
+  let storeTarget: { laborHourTarget: import("@prisma/client").Decimal } | null = null;
+  if (input.storeId) {
+    const hrName = filterStores.find((s) => s.id === input.storeId)?.storeName ?? null;
+    if (hrName) {
+      const allRetail = await prisma.retailStore.findMany({
+        where: { isActive: true },
+        select: { id: true, storeName: true, region: true },
+      });
+      const matched = resolveRetailStore(normalizeStoreKey(hrName), hrName, allRetail);
+      if (matched) {
+        storeTarget = await prisma.storeTarget.findUnique({
+          where: { storeId_year_month: { storeId: matched.id, year: input.year, month: input.month } },
+          select: { laborHourTarget: true },
+        });
+      }
+    }
+  }
 
   return {
     year: input.year,
@@ -714,7 +726,7 @@ function normalizeStoreName(s: string): string {
 }
 
 export async function buildWorkHoursCalendar(input: {
-  storeId: string;
+  storeId: string; // HR Store ID (from listPerformanceStoresForFilter / dashboard meta.stores)
   year: number;
   month: number;
 }) {
@@ -722,19 +734,36 @@ export async function buildWorkHoursCalendar(input: {
   const days = listDaysInRange(startYmd, endYmd);
   const workDates = days.map((ymd) => parseDateOnlyUTC(ymd));
 
-  const retailStore = await prisma.retailStore.findUnique({
-    where: { id: input.storeId },
-    select: { id: true, storeName: true },
-  });
-  if (!retailStore) throw new Error(`RetailStore ${input.storeId} not found`);
+  // Map HR Store → RetailStore via name matching
+  const [hrStore, allRetailStores] = await Promise.all([
+    prisma.store.findUnique({ where: { id: input.storeId }, select: { name: true } }),
+    prisma.retailStore.findMany({ where: { isActive: true }, select: { id: true, storeName: true, region: true } }),
+  ]);
+  if (!hrStore) throw new Error(`Store ${input.storeId} not found`);
+
+  const retailStore = resolveRetailStore(normalizeStoreKey(hrStore.name), hrStore.name, allRetailStores);
+  const storeName = hrStore.name;
+
+  const emptyDays = days.map((date) => ({
+    date,
+    weekday: parseDateOnlyUTC(date).getUTCDay(),
+    staff: [] as { name: string; isManager: boolean; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean }[],
+    efficiencyRatio: null as number | null,
+    isAchieved: false,
+    hasData: false,
+  }));
+
+  if (!retailStore) {
+    return { storeId: input.storeId, storeName, year: input.year, month: input.month, startDate: startYmd, endDate: endYmd, days: emptyDays, employeeAchievement: [] };
+  }
 
   const [schedules, performances] = await Promise.all([
     prisma.staffSchedule.findMany({
-      where: { storeId: input.storeId, workDate: { in: workDates } },
+      where: { storeId: retailStore.id, workDate: { in: workDates } },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
     prisma.dailyStorePerformance.findMany({
-      where: { storeId: input.storeId, date: { in: workDates } },
+      where: { storeId: retailStore.id, date: { in: workDates } },
       select: { date: true, salesAmount: true, totalLaborHours: true },
     }),
   ]);
