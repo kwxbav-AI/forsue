@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
+  CalendarDays,
   Clock,
   RefreshCw,
   TrendingUp,
@@ -15,6 +16,7 @@ type StoreOption = { id: string; storeName: string; region: string };
 type WorkHoursData = {
   startDate: string;
   endDate: string;
+  laborHourTarget: number | null;
   overview: {
     totalRegularHours: number;
     totalOvertimeHours: number;
@@ -82,8 +84,40 @@ type WorkHoursData = {
   };
 };
 
+type CalendarStaff = {
+  name: string;
+  isManager: boolean;
+  startTime: string;
+  endTime: string;
+  homeStore: string | null;
+  isSupport: boolean;
+};
+
+type CalendarDay = {
+  date: string;
+  weekday: number;
+  staff: CalendarStaff[];
+  efficiencyRatio: number | null;
+  isAchieved: boolean;
+  hasData: boolean;
+};
+
+type CalendarData = {
+  storeName: string;
+  days: CalendarDay[];
+  employeeAchievement: {
+    name: string;
+    homeStore: string | null;
+    isSupport: boolean;
+    attendanceDays: number;
+    achievedDays: number;
+    achieveRate: number;
+  }[];
+};
+
 const TABS = [
   { id: "overview", label: "工時概況", icon: BarChart3 },
+  { id: "calendar", label: "門市日曆", icon: CalendarDays },
   { id: "issues", label: "異常與調整", icon: AlertTriangle },
 ] as const;
 
@@ -117,6 +151,8 @@ function currentYearMonth() {
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
+const CAL_DOW_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
 export default function OperationsWorkHoursPage() {
   const init = currentYearMonth();
   const [year, setYear] = useState(init.year);
@@ -126,7 +162,9 @@ export default function OperationsWorkHoursPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilterId>("all");
   const [data, setData] = useState<WorkHoursData | null>(null);
+  const [calData, setCalData] = useState<CalendarData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [calLoading, setCalLoading] = useState(false);
   const [detailModal, setDetailModal] = useState<DetailModalState>(null);
 
   useEffect(() => {
@@ -142,10 +180,7 @@ export default function OperationsWorkHoursPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        year: String(year),
-        month: String(month),
-      });
+      const params = new URLSearchParams({ year: String(year), month: String(month) });
       if (storeId) params.set("storeId", storeId);
       const res = await fetch(`/api/operations/work-hours?${params}`);
       if (res.ok) setData(await res.json());
@@ -155,14 +190,33 @@ export default function OperationsWorkHoursPage() {
     }
   }, [year, month, storeId]);
 
+  const loadCalendar = useCallback(async () => {
+    if (!storeId) { setCalData(null); return; }
+    setCalLoading(true);
+    try {
+      const params = new URLSearchParams({ storeId, year: String(year), month: String(month) });
+      const res = await fetch(`/api/operations/work-hours/calendar?${params}`);
+      if (res.ok) setCalData(await res.json());
+      else setCalData(null);
+    } finally {
+      setCalLoading(false);
+    }
+  }, [storeId, year, month]);
+
+  useEffect(() => { void load(); }, [load]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (tab === "calendar") void loadCalendar();
+  }, [tab, loadCalendar]);
 
   const o = data?.overview;
   const a = data?.anomalies;
   const adj = data?.adjustments;
   const employees = data?.employeeSummary ?? [];
+
+  const totalHours = (o?.totalRegularHours ?? 0) + (o?.totalOvertimeHours ?? 0);
+  const overtimeRate =
+    totalHours > 0 ? Math.round(((o?.totalOvertimeHours ?? 0) / totalHours) * 1000) / 10 : 0;
 
   return (
     <div className="p-6 space-y-5 max-w-7xl">
@@ -170,7 +224,7 @@ export default function OperationsWorkHoursPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">人員工時管理</h1>
           <p className="text-sm text-slate-500 mt-1">
-            工時概況 · 異常與調整
+            工時概況 · 門市日曆 · 異常與調整
             {data ? ` · ${data.startDate} ~ ${data.endDate}` : ""}
           </p>
         </div>
@@ -190,9 +244,7 @@ export default function OperationsWorkHoursPage() {
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>
-                {m} 月
-              </option>
+              <option key={m} value={m}>{m} 月</option>
             ))}
           </select>
           <select
@@ -202,14 +254,12 @@ export default function OperationsWorkHoursPage() {
           >
             <option value="">全部門市</option>
             {stores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.storeName}
-              </option>
+              <option key={s.id} value={s.id}>{s.storeName}</option>
             ))}
           </select>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => { void load(); if (tab === "calendar") void loadCalendar(); }}
             disabled={loading}
             className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-white disabled:opacity-50"
             title="重新整理"
@@ -228,9 +278,9 @@ export default function OperationsWorkHoursPage() {
               type="button"
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                tab === t.id ?
-                  "border-slate-800 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                tab === t.id
+                  ? "border-slate-800 text-slate-900"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -244,29 +294,33 @@ export default function OperationsWorkHoursPage() {
         <p className="text-center text-slate-500 py-16">載入中…</p>
       : null}
 
-      {data && tab === "overview" ?
+      {tab === "overview" && data ?
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
-              title="總正班工時"
-              value={`${o?.totalRegularHours ?? 0}h`}
+              title="目標工時"
+              value={data.laborHourTarget != null ? `${data.laborHourTarget}h` : "—"}
+              sub={storeId ? "本月門市工時目標" : "請選擇單一門市"}
               icon={<Clock className="h-5 w-5 text-blue-600" />}
               bg="bg-blue-50"
+            />
+            <SummaryCard
+              title="正班工時"
+              value={`${o?.totalRegularHours ?? 0}h`}
+              sub={data.laborHourTarget != null && o?.totalRegularHours != null
+                ? `達成 ${Math.round((o.totalRegularHours / data.laborHourTarget) * 1000) / 10}%`
+                : undefined}
+              icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
+              bg="bg-violet-50"
               onClick={() => setDetailModal({ kind: "regular" })}
             />
             <SummaryCard
-              title="總加班工時"
+              title="加班工時"
               value={`${o?.totalOvertimeHours ?? 0}h`}
-              icon={<TrendingUp className="h-5 w-5 text-violet-600" />}
-              bg="bg-violet-50"
-              onClick={() => setDetailModal({ kind: "overtime" })}
-            />
-            <SummaryCard
-              title="記錄人員數"
-              value={String(o?.employeeCount ?? 0)}
+              sub={`加班率 ${overtimeRate}%`}
               icon={<Users className="h-5 w-5 text-amber-600" />}
               bg="bg-amber-50"
-              onClick={() => setDetailModal({ kind: "employees" })}
+              onClick={() => setDetailModal({ kind: "overtime" })}
             />
             <SummaryCard
               title="工時異常人數"
@@ -300,15 +354,10 @@ export default function OperationsWorkHoursPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setDetailModal({
-                                    kind: "storeAnomaly",
-                                    storeId: s.storeId,
-                                    storeName: s.storeName,
-                                  })
+                                  setDetailModal({ kind: "storeAnomaly", storeId: s.storeId, storeName: s.storeName })
                                 }
                                 className="inline-flex rounded p-0.5 text-amber-500 hover:bg-amber-100 hover:text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
                                 title="查看工時異常明細"
-                                aria-label={`${s.storeName} 工時異常明細`}
                               >
                                 <AlertTriangle className="h-4 w-4 shrink-0" />
                               </button>
@@ -329,7 +378,16 @@ export default function OperationsWorkHoursPage() {
         </>
       : null}
 
-      {data && tab === "issues" ?
+      {tab === "calendar" ?
+        <CalendarTab
+          storeId={storeId}
+          data={calData}
+          loading={calLoading}
+          onLoad={() => void loadCalendar()}
+        />
+      : null}
+
+      {tab === "issues" && data ?
         <IssuesTab
           anomalies={a}
           adjustments={adj}
@@ -346,7 +404,178 @@ export default function OperationsWorkHoursPage() {
           onClose={() => setDetailModal(null)}
         />
       : null}
+    </div>
+  );
+}
 
+function CalendarTab({
+  storeId,
+  data,
+  loading,
+  onLoad,
+}: {
+  storeId: string;
+  data: CalendarData | null;
+  loading: boolean;
+  onLoad: () => void;
+}) {
+  if (!storeId) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">
+        請在上方篩選器選擇單一門市，即可查看該門市的月曆出勤與達標紀錄。
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <p className="text-center text-slate-500 py-16">載入中…</p>;
+  }
+
+  if (!data) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-sm text-slate-500 mb-3">尚未載入日曆資料</p>
+        <button
+          type="button"
+          onClick={onLoad}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+        >
+          載入日曆
+        </button>
+      </div>
+    );
+  }
+
+  const firstDay = data.days[0];
+  const leadingEmpties = firstDay ? firstDay.weekday : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-slate-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 flex flex-wrap gap-4 items-center">
+        <span>達標條件：平日工效比 ≥ 4,000 元/hr、週六 ≥ 5,500 元/hr</span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-teal-400" />本店人員
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />跨店支援
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm overflow-x-auto">
+        <div className="grid grid-cols-7 gap-1 min-w-[560px]">
+          {CAL_DOW_LABELS.map((d, i) => (
+            <div
+              key={d}
+              className={`text-center text-xs font-medium py-1 ${
+                i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-500"
+              }`}
+            >
+              {d}
+            </div>
+          ))}
+          {Array.from({ length: leadingEmpties }).map((_, i) => (
+            <div key={`empty-${i}`} />
+          ))}
+          {data.days.map((day) => {
+            const dom = parseInt(day.date.slice(8), 10);
+            const isSun = day.weekday === 0;
+            const isSat = day.weekday === 6;
+            return (
+              <div
+                key={day.date}
+                className="border border-slate-200 rounded-lg p-1.5 min-h-[90px] text-xs"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className={`font-semibold ${
+                      isSun ? "text-red-500" : isSat ? "text-blue-500" : "text-slate-700"
+                    }`}
+                  >
+                    {dom}
+                  </span>
+                  {day.hasData ?
+                    day.isAchieved ?
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        達標
+                      </span>
+                    : <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">
+                        未達
+                      </span>
+                  : null}
+                </div>
+                {day.staff.map((s, si) => (
+                  <div key={si} className="flex items-center gap-1 mb-0.5">
+                    <span
+                      className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+                        s.isSupport ? "bg-amber-400" : "bg-teal-400"
+                      }`}
+                    />
+                    <span className={`truncate ${s.isManager ? "font-medium text-slate-700" : "text-slate-600"}`}>
+                      {s.name}
+                      {s.isSupport && s.homeStore ?
+                        <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
+                      : null}
+                    </span>
+                  </div>
+                ))}
+                {day.hasData && day.efficiencyRatio != null ?
+                  <div className="mt-1 text-[10px] text-slate-400">
+                    工效比 {day.efficiencyRatio.toLocaleString()}
+                  </div>
+                : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="font-semibold text-slate-800 mb-1">員工達標次數</h2>
+        <p className="text-xs text-slate-500 mb-3">
+          出勤日中，本門市工效比達標的次數（達標條件：平日 ≥ 4,000、週六 ≥ 5,500 元/hr）
+        </p>
+        {data.employeeAchievement.length ?
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-slate-500">
+                  <th className="py-2 pr-4">員工</th>
+                  <th className="py-2 pr-4">所屬門市</th>
+                  <th className="py-2 pr-4 text-right">出勤天數</th>
+                  <th className="py-2 pr-4 text-right">達標次數</th>
+                  <th className="py-2 text-right">達標率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.employeeAchievement.map((e) => (
+                  <tr key={e.name} className="border-b border-slate-100">
+                    <td className="py-2 pr-4 font-medium text-slate-800">{e.name}</td>
+                    <td className="py-2 pr-4">
+                      {e.isSupport ?
+                        <span className="inline-flex items-center gap-1">
+                          <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                          <span className="text-amber-700">{e.homeStore ?? "其他門市"}</span>
+                        </span>
+                      : <span className="inline-flex items-center gap-1">
+                          <span className="inline-block h-2 w-2 rounded-full bg-teal-400" />
+                          <span className="text-slate-600">本店</span>
+                        </span>
+                      }
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums">{e.attendanceDays}</td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                        {e.achievedDays}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{e.achieveRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        : <EmptyState text="本月尚無出勤排班紀錄" />}
+      </div>
     </div>
   );
 }
@@ -397,19 +626,14 @@ function IssuesTab({
                 </thead>
                 <tbody>
                   {monthlyOvertime.map((r) => (
-                    <tr
-                      key={r.employeeId}
-                      className={`border-b border-slate-100 ${overtimeAlertRowClass(r.alertRatioPct)}`}
-                    >
+                    <tr key={r.employeeId} className={`border-b border-slate-100 ${overtimeAlertRowClass(r.alertRatioPct)}`}>
                       <td className="py-2 pr-3 font-medium text-slate-800">{r.storeName}</td>
                       <td className="py-2 pr-3">
                         {r.employeeName}
                         <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums">{r.overtimeHours}h</td>
-                      <td className="py-2 text-right tabular-nums font-medium">
-                        {r.alertRatioPct.toFixed(1)}%
-                      </td>
+                      <td className="py-2 text-right tabular-nums font-medium">{r.alertRatioPct.toFixed(1)}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -422,9 +646,7 @@ function IssuesTab({
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">異常偵測</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            加班過多、缺勤、打卡與工時不足等人員異常
-          </p>
+          <p className="text-xs text-slate-500 mt-0.5">加班過多、缺勤、打卡與工時不足等人員異常</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {ANOMALY_FILTERS.map((f) => (
@@ -433,9 +655,9 @@ function IssuesTab({
               type="button"
               onClick={() => onAnomalyFilterChange(f.id)}
               className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                anomalyFilter === f.id ?
-                  "bg-slate-800 text-white border-slate-800"
-                : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                anomalyFilter === f.id
+                  ? "bg-slate-800 text-white border-slate-800"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
               }`}
             >
               {f.label}
@@ -528,17 +750,12 @@ function IssuesTab({
                           <span className="text-xs text-slate-400 ml-1">{r.employeeCode}</span>
                         : null}
                       </td>
-                      <td
-                        className={`py-2 pr-3 text-right font-medium ${
-                          r.hours > 0 ? "text-sky-700" : r.hours < 0 ? "text-amber-700" : ""
-                        }`}
-                      >
-                        {r.hours > 0 ? "+" : ""}
-                        {r.hours}h
+                      <td className={`py-2 pr-3 text-right font-medium ${
+                        r.hours > 0 ? "text-sky-700" : r.hours < 0 ? "text-amber-700" : ""
+                      }`}>
+                        {r.hours > 0 ? "+" : ""}{r.hours}h
                       </td>
-                      <td className="py-2 text-slate-500 text-xs max-w-[200px] truncate">
-                        {r.note ?? "—"}
-                      </td>
+                      <td className="py-2 text-slate-500 text-xs max-w-[200px] truncate">{r.note ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -554,46 +771,46 @@ function IssuesTab({
 function SummaryCard({
   title,
   value,
+  sub,
   icon,
   bg,
   onClick,
 }: {
   title: string;
   value: string;
+  sub?: string;
   icon: React.ReactNode;
   bg: string;
   onClick?: () => void;
 }) {
   const className = `rounded-xl border border-slate-100 p-4 ${bg} ${
-    onClick ?
-      "cursor-pointer text-left w-full transition-shadow hover:shadow-md hover:ring-2 hover:ring-slate-300/80 focus:outline-none focus:ring-2 focus:ring-slate-400"
-    : ""
+    onClick
+      ? "cursor-pointer text-left w-full transition-shadow hover:shadow-md hover:ring-2 hover:ring-slate-300/80 focus:outline-none focus:ring-2 focus:ring-slate-400"
+      : ""
   }`;
+
+  const inner = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-slate-600">
+          {icon}
+          <span className="text-sm font-medium">{title}</span>
+        </div>
+        {onClick ? <span className="text-xs text-slate-400">明細</span> : null}
+      </div>
+      <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+      {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
+    </>
+  );
 
   if (onClick) {
     return (
       <button type="button" onClick={onClick} className={className} title="點擊查看明細">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-slate-600">
-            {icon}
-            <span className="text-sm font-medium">{title}</span>
-          </div>
-          <span className="text-xs text-slate-400">明細</span>
-        </div>
-        <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+        {inner}
       </button>
     );
   }
-
-  return (
-    <div className={className}>
-      <div className="flex items-center gap-2 text-slate-600">
-        {icon}
-        <span className="text-sm font-medium">{title}</span>
-      </div>
-      <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
-    </div>
-  );
+  return <div className={className}>{inner}</div>;
 }
 
 function WorkHoursDetailModal({
@@ -608,27 +825,20 @@ function WorkHoursDetailModal({
   onClose: () => void;
 }) {
   const storeAnomalyRows =
-    state.kind === "storeAnomaly" && state.storeId ?
-      anomalies.filter((r) => r.storeId === state.storeId)
-    : [];
+    state.kind === "storeAnomaly" && state.storeId
+      ? anomalies.filter((r) => r.storeId === state.storeId)
+      : [];
 
   let title = "";
   if (state.kind === "regular") title = "正班工時明細";
   else if (state.kind === "overtime") title = "加班工時明細";
   else if (state.kind === "employees") title = "記錄人員明細";
   else if (state.kind === "anomalies") title = "工時異常人員明細";
-  else if (state.kind === "storeAnomaly") {
-    title = `${state.storeName ?? "門市"} · 工時異常明細`;
-  }
+  else if (state.kind === "storeAnomaly") title = `${state.storeName ?? "門市"} · 工時異常明細`;
 
-  const regularRows = [...employees]
-    .filter((e) => e.regularHours > 0)
-    .sort((a, b) => b.regularHours - a.regularHours);
-  const overtimeRows = [...employees]
-    .filter((e) => e.overtimeHours > 0)
-    .sort((a, b) => b.overtimeHours - a.overtimeHours);
-  const anomalyRows =
-    state.kind === "storeAnomaly" ? storeAnomalyRows : anomalies;
+  const regularRows = [...employees].filter((e) => e.regularHours > 0).sort((a, b) => b.regularHours - a.regularHours);
+  const overtimeRows = [...employees].filter((e) => e.overtimeHours > 0).sort((a, b) => b.overtimeHours - a.overtimeHours);
+  const anomalyRows = state.kind === "storeAnomaly" ? storeAnomalyRows : anomalies;
 
   return (
     <div
@@ -643,9 +853,7 @@ function WorkHoursDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <h2 id="work-hours-detail-title" className="font-semibold text-slate-900">
-            {title}
-          </h2>
+          <h2 id="work-hours-detail-title" className="font-semibold text-slate-900">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -750,15 +958,7 @@ function EmployeeHoursTable({
   );
 }
 
-function AnomalyCountCard({
-  label,
-  count,
-  bg,
-}: {
-  label: string;
-  count: number;
-  bg: string;
-}) {
+function AnomalyCountCard({ label, count, bg }: { label: string; count: number; bg: string }) {
   return (
     <div className={`rounded-xl border border-slate-100 p-5 text-center ${bg}`}>
       <p className="text-sm font-medium text-slate-700">{label}</p>

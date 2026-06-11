@@ -672,6 +672,13 @@ export async function buildOperationsWorkHours(input: {
     .filter((r) => r.hours < 0)
     .reduce((a, r) => a + Math.abs(r.hours), 0);
 
+  const storeTarget = input.storeId
+    ? await prisma.storeTarget.findUnique({
+        where: { storeId_year_month: { storeId: input.storeId, year: input.year, month: input.month } },
+        select: { laborHourTarget: true },
+      })
+    : null;
+
   return {
     year: input.year,
     month: input.month,
@@ -679,6 +686,7 @@ export async function buildOperationsWorkHours(input: {
     endDate: endYmd,
     storeId: input.storeId ?? null,
     stores: filterStores,
+    laborHourTarget: storeTarget ? Number(storeTarget.laborHourTarget) : null,
     overview: {
       totalRegularHours: Math.round(totalRegular * 10) / 10,
       totalOvertimeHours: Math.round(totalOvertimeAll * 10) / 10,
@@ -698,5 +706,141 @@ export async function buildOperationsWorkHours(input: {
       deductHours: Math.round(deductHours * 10) / 10,
       rows: adjustmentRows,
     },
+  };
+}
+
+function normalizeStoreName(s: string): string {
+  return s.trim().replace(/店$/, "");
+}
+
+export async function buildWorkHoursCalendar(input: {
+  storeId: string;
+  year: number;
+  month: number;
+}) {
+  const { startYmd, endYmd } = resolveMonthRange(input.year, input.month);
+  const days = listDaysInRange(startYmd, endYmd);
+  const workDates = days.map((ymd) => parseDateOnlyUTC(ymd));
+
+  const retailStore = await prisma.retailStore.findUnique({
+    where: { id: input.storeId },
+    select: { id: true, storeName: true },
+  });
+  if (!retailStore) throw new Error(`RetailStore ${input.storeId} not found`);
+
+  const [schedules, performances] = await Promise.all([
+    prisma.staffSchedule.findMany({
+      where: { storeId: input.storeId, workDate: { in: workDates } },
+      orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.dailyStorePerformance.findMany({
+      where: { storeId: input.storeId, date: { in: workDates } },
+      select: { date: true, salesAmount: true, totalLaborHours: true },
+    }),
+  ]);
+
+  const staffNames = [...new Set(schedules.map((s) => s.staffName))];
+
+  const nameToDept = new Map<string, string | null>();
+  if (staffNames.length > 0) {
+    const atts = await prisma.attendanceRecord.findMany({
+      where: {
+        workDate: { in: workDates },
+        employee: { name: { in: staffNames } },
+      },
+      select: { department: true, employee: { select: { name: true } } },
+    });
+    for (const att of atts) {
+      const n = att.employee.name;
+      if (!nameToDept.has(n) && att.department) {
+        nameToDept.set(n, att.department);
+      }
+    }
+  }
+
+  const storeNorm = normalizeStoreName(retailStore.storeName);
+  function isHomeStore(dept: string | null | undefined): boolean {
+    if (!dept) return true;
+    return normalizeStoreName(dept) === storeNorm;
+  }
+
+  type DayEff = { ratio: number | null; isAchieved: boolean };
+  const dateToEff = new Map<string, DayEff>();
+  for (const p of performances) {
+    const ymd = formatDateOnlyTaipei(p.date);
+    const laborH = Number(p.totalLaborHours);
+    const ratio = laborH > 0 ? Math.round(Number(p.salesAmount) / laborH) : null;
+    const dow = parseDateOnlyUTC(ymd).getUTCDay();
+    const threshold = dow === 6 ? 5500 : 4000;
+    dateToEff.set(ymd, { ratio, isAchieved: ratio !== null && ratio >= threshold });
+  }
+
+  const calendarDays = days.map((ymd) => {
+    const dow = parseDateOnlyUTC(ymd).getUTCDay();
+    const daySchedules = schedules.filter((s) => workDateYmd(s.workDate) === ymd);
+    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false };
+    return {
+      date: ymd,
+      weekday: dow,
+      staff: daySchedules.map((s) => {
+        const dept = nameToDept.get(s.staffName) ?? null;
+        return {
+          name: s.staffName,
+          isManager: s.isManager,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          homeStore: dept,
+          isSupport: !isHomeStore(dept),
+        };
+      }),
+      efficiencyRatio: eff.ratio,
+      isAchieved: eff.isAchieved,
+      hasData: dateToEff.has(ymd),
+    };
+  });
+
+  const empAgg = new Map<
+    string,
+    { attendanceDays: number; achievedDays: number; homeStore: string | null; isSupport: boolean }
+  >();
+  for (const day of calendarDays) {
+    for (const s of day.staff) {
+      const cur = empAgg.get(s.name);
+      if (!cur) {
+        empAgg.set(s.name, {
+          attendanceDays: 1,
+          achievedDays: day.isAchieved ? 1 : 0,
+          homeStore: s.homeStore,
+          isSupport: s.isSupport,
+        });
+      } else {
+        cur.attendanceDays += 1;
+        if (day.isAchieved) cur.achievedDays += 1;
+      }
+    }
+  }
+
+  const employeeAchievement = [...empAgg.entries()]
+    .map(([name, agg]) => ({
+      name,
+      homeStore: agg.homeStore,
+      isSupport: agg.isSupport,
+      attendanceDays: agg.attendanceDays,
+      achievedDays: agg.achievedDays,
+      achieveRate: agg.attendanceDays > 0
+        ? Math.round((agg.achievedDays / agg.attendanceDays) * 1000) / 10
+        : 0,
+    }))
+    .sort((a, b) => (a.isSupport ? 1 : -1) - (b.isSupport ? 1 : -1) || b.attendanceDays - a.attendanceDays);
+
+  return {
+    storeId: input.storeId,
+    storeName: retailStore.storeName,
+    year: input.year,
+    month: input.month,
+    startDate: startYmd,
+    endDate: endYmd,
+    days: calendarDays,
+    employeeAchievement,
   };
 }
