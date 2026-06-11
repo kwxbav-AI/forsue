@@ -364,10 +364,22 @@ export async function buildOperationsWorkHours(input: {
 
     const status = String(a.locationMatchStatus ?? "UNKNOWN");
     if (status.startsWith("MISMATCH") || status === "NEED_REVIEW") {
-      const detail = describeClockAnomalyDetail(a, dispatchByEmpDate, storeNameById);
-      const prev = mismatchDetailsByEmployee.get(a.employeeId) ?? [];
-      if (!prev.includes(detail)) {
-        mismatchDetailsByEmployee.set(a.employeeId, [...prev, detail]);
+      // 打卡門市名稱含本店名稱（如「宜蘭區-五結店」vs「五結店」）→ 同店不同文字格式，非真正跨店，跳過
+      const homeStoreName = normalizeStoreName(storeNameById.get(sid) ?? "");
+      const clockText = normalizeStoreName(
+        a.clockInStoreText?.trim() || a.clockOutStoreText?.trim() || ""
+      );
+      const clockId = a.clockInStoreId ?? a.clockOutStoreId;
+      const isSameStore =
+        (clockId != null && clockId === sid) ||
+        (homeStoreName.length >= 2 && clockText.length >= 2 &&
+          (clockText.includes(homeStoreName) || homeStoreName.includes(clockText)));
+      if (!isSameStore) {
+        const detail = describeClockAnomalyDetail(a, dispatchByEmpDate, storeNameById);
+        const prev = mismatchDetailsByEmployee.get(a.employeeId) ?? [];
+        if (!prev.includes(detail)) {
+          mismatchDetailsByEmployee.set(a.employeeId, [...prev, detail]);
+        }
       }
     }
 
