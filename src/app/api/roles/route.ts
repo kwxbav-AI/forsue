@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const roles = await prisma.role.findMany({
-    orderBy: [{ isActive: "desc" }, { key: "asc" }],
+    where: { isActive: true },
+    orderBy: [{ key: "asc" }],
     select: { id: true, key: true, name: true, isActive: true, createdAt: true, updatedAt: true },
   });
   return NextResponse.json({ roles });

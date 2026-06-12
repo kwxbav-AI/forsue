@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { isAuthEnabled } from "@/lib/auth-config";
 import { getServerSession } from "@/lib/auth-server";
-import { canAccessPageDb } from "@/lib/permissions-db";
+import {
+  canAccessPageDb,
+  canAccessReportsSectionDb,
+  canAccessWorkhourRelatedSectionDb,
+} from "@/lib/permissions-db";
 
 export default async function HomePage() {
   const authOn = isAuthEnabled();
@@ -50,12 +54,19 @@ export default async function HomePage() {
     ? cards
     : (
         await Promise.all(
-          cards.map(async (c) => ({
-            c,
-            ok:
-              session != null &&
-              (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, c.href)),
-          }))
+          cards.map(async (c) => {
+            if (!session) return { c, ok: false };
+            const role = { id: session.roleId, key: session.roleKey };
+            let ok = false;
+            if (c.key === "workhour") {
+              ok = await canAccessWorkhourRelatedSectionDb(role);
+            } else if (c.key === "reports") {
+              ok = await canAccessReportsSectionDb(role);
+            } else {
+              ok = await canAccessPageDb(role, c.href);
+            }
+            return { c, ok };
+          })
         )
       )
         .filter((x) => x.ok)

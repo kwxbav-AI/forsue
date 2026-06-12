@@ -7,12 +7,7 @@ import { getServerSession } from "@/lib/auth-server";
 import { ROLE_KEYS, type RoleKey } from "@/lib/roles";
 
 /** 允許 GET 列表不帶 storeId（全區／轄區多店）的角色 */
-const REGIONAL_LIST_ROLES: RoleKey[] = [
-  ROLE_KEYS.ADMIN,
-  ROLE_KEYS.SUPERVISOR,
-  ROLE_KEYS.LOGISTICS,
-  ROLE_KEYS.PURCHASE,
-];
+const REGIONAL_LIST_ROLES: RoleKey[] = [ROLE_KEYS.ADMIN, ROLE_KEYS.SUPERVISOR];
 
 const DEV_AUTH: AuthContext = {
   userId: "__dev__",

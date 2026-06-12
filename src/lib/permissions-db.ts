@@ -1,5 +1,27 @@
 import { prisma } from "@/lib/prisma";
 
+/** 工時異動相關區塊（含入口與子功能） */
+export const WORKHOUR_RELATED_PAGE_PATHS = [
+  "/workhour-related",
+  "/dispatches",
+  "/content-entries",
+  "/store-hour-deductions",
+  "/workhour-adjustments",
+  "/batch-workhour-adjustment",
+] as const;
+
+/** 報表區塊（含入口與子報表） */
+export const REPORTS_SECTION_PAGE_PATHS = [
+  "/reports",
+  "/reports/charts",
+  "/reports/store-target-card",
+  "/reports/revenue-forecast",
+  "/reports/attendance",
+  "/reports/revenue",
+  "/performance/daily",
+  "/performance/target-summary",
+] as const;
+
 /**
  * Node/Server-side 頁面授權：僅依 RolePermission + PAGE patterns，無 legacy fallback。
  */
@@ -49,6 +71,26 @@ export async function canAccessPageDb(
     if (perm.canRead || perm.canWrite) return true;
   }
 
+  return false;
+}
+
+/** 是否可進入工時異動相關（入口或任一子功能有讀權即可顯示導覽） */
+export async function canAccessWorkhourRelatedSectionDb(
+  role: { id: string; key?: string }
+): Promise<boolean> {
+  for (const path of WORKHOUR_RELATED_PAGE_PATHS) {
+    if (await canAccessPageDb(role, path)) return true;
+  }
+  return false;
+}
+
+/** 是否可進入報表區（入口或任一子報表有讀權即可顯示導覽） */
+export async function canAccessReportsSectionDb(
+  role: { id: string; key?: string }
+): Promise<boolean> {
+  for (const path of REPORTS_SECTION_PAGE_PATHS) {
+    if (await canAccessPageDb(role, path)) return true;
+  }
   return false;
 }
 

@@ -5,7 +5,7 @@ export type AuthContext = {
   userId: string;
   username: string;
   roleKey: RoleKey;
-  /** 門市人員：一間；督導：負責門市；ADMIN／總務／採購：null（全部） */
+  /** 門市人員：一間；督導：負責門市；ADMIN：null（全部） */
   allowedStoreIds: string[] | null;
 };
 

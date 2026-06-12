@@ -71,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (action === "ship") {
-    const roleDenied = assertRoles(auth.ctx, ROLE_KEYS.ADMIN, ROLE_KEYS.LOGISTICS);
+    const roleDenied = assertRoles(auth.ctx, ROLE_KEYS.ADMIN);
     if (roleDenied) return roleDenied;
     if (existing.status !== "APPROVED") {
       return NextResponse.json({ error: "僅已核准申請可出貨" }, { status: 400 });

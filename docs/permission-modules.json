@@ -22,7 +22,8 @@
         { "kind": "PAGE", "pathPattern": "/login", "method": null },
         { "kind": "API", "pathPattern": "/api/auth/login", "method": null },
         { "kind": "API", "pathPattern": "/api/auth/logout", "method": null },
-        { "kind": "API", "pathPattern": "/api/auth/me", "method": null }
+        { "kind": "API", "pathPattern": "/api/auth/me", "method": null },
+        { "kind": "API", "pathPattern": "/api/role-permissions/effective", "method": null }
       ]
     },
     {
@@ -384,20 +385,7 @@
       "parentKey": null,
       "patterns": [
         { "kind": "PAGE", "pathPattern": "/settings/users", "method": null },
-        { "kind": "API", "pathPattern": "/api/users", "method": null }
-      ]
-    },
-    {
-      "key": "settings-role-permissions",
-      "label": "角色權限設定",
-      "description": "設定各角色的權限矩陣",
-      "group": "設定",
-      "sortOrder": 630,
-      "parentKey": null,
-      "patterns": [
-        { "kind": "PAGE", "pathPattern": "/settings/role-permissions", "method": null },
-        { "kind": "API", "pathPattern": "/api/role-permissions", "method": null },
-        { "kind": "API", "pathPattern": "/api/role-permissions/effective", "method": null },
+        { "kind": "API", "pathPattern": "/api/users", "method": null },
         { "kind": "API", "pathPattern": "/api/roles", "method": null }
       ]
     },

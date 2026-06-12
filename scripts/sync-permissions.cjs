@@ -1,7 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
-const { ALL_ROLE_SPECS, defaultPerm, legacyRoleForKey } = require("./role-permission-defaults.cjs");
+const {
+  ALL_ROLE_SPECS,
+  RETIRED_ROLE_KEYS,
+  defaultPerm,
+  legacyRoleForKey,
+} = require("./role-permission-defaults.cjs");
 
 function loadModulesSpec() {
   const modulesPath = path.join(__dirname, "..", "docs", "permission-modules.json");
@@ -138,8 +143,17 @@ async function main() {
       }
     }
 
+    let rolesRetired = 0;
+    for (const key of RETIRED_ROLE_KEYS) {
+      const result = await prisma.role.updateMany({
+        where: { key },
+        data: { isActive: false },
+      });
+      rolesRetired += result.count;
+    }
+
     console.log(
-      `Sync permissions done. modulesUpserted=${idByKey.size}, patternsUpserted=${patternUpserts}, rolesUpserted=${roleIdByKey.size}, rolePermissionsUpserted=${permissionUpserts}`
+      `Sync permissions done. modulesUpserted=${idByKey.size}, patternsUpserted=${patternUpserts}, rolesUpserted=${roleIdByKey.size}, rolePermissionsUpserted=${permissionUpserts}, rolesRetired=${rolesRetired}`
     );
   } finally {
     await prisma.$disconnect();

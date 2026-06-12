@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   }
 
-  const roleDenied = assertRoles(auth.ctx, ROLE_KEYS.ADMIN, ROLE_KEYS.PURCHASE);
+  const roleDenied = assertRoles(auth.ctx, ROLE_KEYS.ADMIN);
   if (roleDenied) return roleDenied;
 
   const purchaseReply =

@@ -4,7 +4,11 @@ import { isAuthEnabled } from "@/lib/auth-config";
 export const dynamic = "force-dynamic";
 import { getServerSession } from "@/lib/auth-server";
 import { DEFAULT_ROLE_LABELS } from "@/lib/permissions";
-import { canAccessPageDb } from "@/lib/permissions-db";
+import {
+  canAccessPageDb,
+  canAccessReportsSectionDb,
+  canAccessWorkhourRelatedSectionDb,
+} from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
 
 export default async function DashboardLayout({
@@ -22,14 +26,17 @@ export default async function DashboardLayout({
   const canWorkhourRelated =
     !authOn ||
     (session != null &&
-      (await canAccessPageDb(
-        { id: session.roleId, key: session.roleKey },
-        "/workhour-related"
-      )));
+      (await canAccessWorkhourRelatedSectionDb({
+        id: session.roleId,
+        key: session.roleKey,
+      })));
   const canReports =
     !authOn ||
     (session != null &&
-      (await canAccessPageDb({ id: session.roleId, key: session.roleKey }, "/reports")));
+      (await canAccessReportsSectionDb({
+        id: session.roleId,
+        key: session.roleKey,
+      })));
   const canData =
     !authOn ||
     (session != null &&

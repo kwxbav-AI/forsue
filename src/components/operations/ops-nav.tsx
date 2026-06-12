@@ -4,7 +4,6 @@ import {
   Store,
   Target,
   Clock,
-  Users,
   BarChart3,
   Bell,
   Megaphone,
@@ -13,7 +12,6 @@ import {
   Wrench,
   Package,
   Heart,
-  Map,
   Shield,
   HandHelping,
 } from "lucide-react";
@@ -41,14 +39,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
       permissionKey: "operations-dashboard",
       storeOps: true,
     },
-    { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/bulletin", label: "公佈欄", icon: Megaphone, permissionKey: "store-ops-notify", storeOps: true },
-    { href: "/operations/store-ops/tasks", label: "任務", icon: CheckSquare, permissionKey: "store-ops-task", storeOps: true },
-    { href: "/operations/store-ops/journal", label: "工作日誌", icon: FileText, permissionKey: "store-ops-journal-write", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/repairs", label: "報修", icon: Wrench, permissionKey: "store-ops-repair", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/supply", label: "物資申請", icon: Package, permissionKey: "store-ops-supply-request", storeOps: true },
-    { href: "/operations/store-ops/wishpool", label: "商品許願池", icon: Heart, permissionKey: "store-ops-wishpool", storeOps: true },
-    { href: "/operations/store-ops/heatmap", label: "客流熱力圖", icon: Map, permissionKey: "operations-heatmap" },
     { href: "/operations/stores", label: "門市管理", icon: Store, permissionKey: "operations-stores" },
     { href: "/operations/store-targets", label: "門市目標", icon: Target, permissionKey: "operations-store-targets" },
     { href: "/operations/permissions", label: "權限設定", icon: Shield, permissionKey: "operations-admin" },
@@ -64,11 +54,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
       permissionKey: "operations-dashboard",
       storeOps: true,
     },
-    { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/bulletin", label: "公佈欄", icon: Megaphone, permissionKey: "store-ops-notify", storeOps: true },
-    { href: "/operations/store-ops/journal", label: "工作日誌", icon: FileText, permissionKey: "store-ops-journal-read", storeOps: true },
-    { href: "/operations/store-ops/supply", label: "物資申請", icon: Package, permissionKey: "store-ops-supply-approve", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/heatmap", label: "客流熱力圖", icon: Map, permissionKey: "operations-heatmap" },
   ],
   STORE_STAFF: [
     { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", storeOps: true },
@@ -78,14 +63,6 @@ export const OPS_NAV_ITEMS_BY_ROLE: Record<RoleKey, OpsNavItem[]> = {
     { href: "/operations/store-ops/repairs", label: "報修", icon: Wrench, permissionKey: "store-ops-repair", storeOps: true },
     { href: "/operations/store-ops/supply", label: "物資申請", icon: Package, permissionKey: "store-ops-supply-request", storeOps: true },
     { href: "/operations/store-ops/wishpool", label: "商品許願池", icon: Heart, permissionKey: "store-ops-wishpool", storeOps: true },
-  ],
-  LOGISTICS: [
-    { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", badge: "dynamic", storeOps: true },
-    { href: "/operations/store-ops/supply", label: "物資申請", icon: Package, permissionKey: "store-ops-supply-ship", storeOps: true },
-  ],
-  PURCHASE: [
-    { href: "/operations/store-ops/notify", label: "通知中心", icon: Bell, permissionKey: "store-ops-notify", storeOps: true },
-    { href: "/operations/store-ops/wishpool", label: "商品許願池", icon: Heart, permissionKey: "store-ops-wishpool-reply", storeOps: true },
   ],
 };
 

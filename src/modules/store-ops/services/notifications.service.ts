@@ -49,8 +49,8 @@ export async function buildStoreOpsNotifications(ctx: AuthContext): Promise<Stor
 
   const includeSupervisor =
     role === ROLE_KEYS.ADMIN || role === ROLE_KEYS.SUPERVISOR;
-  const includeLogistics = role === ROLE_KEYS.ADMIN || role === ROLE_KEYS.LOGISTICS;
-  const includePurchase = role === ROLE_KEYS.ADMIN || role === ROLE_KEYS.PURCHASE;
+  const includeLogistics = role === ROLE_KEYS.ADMIN;
+  const includePurchase = role === ROLE_KEYS.ADMIN;
   const includeStaff = role === ROLE_KEYS.ADMIN || role === ROLE_KEYS.STORE_STAFF;
 
   if (includeSupervisor) {
