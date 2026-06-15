@@ -390,6 +390,18 @@
       ]
     },
     {
+      "key": "settings-role-permissions",
+      "label": "角色權限設定",
+      "description": "設定各角色可存取的功能模組",
+      "group": "設定",
+      "sortOrder": 630,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/settings/role-permissions", "method": null },
+        { "kind": "API", "pathPattern": "/api/role-permissions", "method": null }
+      ]
+    },
+    {
       "key": "settings-holidays",
       "label": "假日設定",
       "description": "特殊假日設定（不計入達標總天數）",
