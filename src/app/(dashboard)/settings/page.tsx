@@ -36,6 +36,15 @@ export default async function SettingsHubPage() {
             <p className="mt-1 text-sm text-slate-500">新增帳號、角色（管理員／編輯者／檢視者）</p>
           </Link>
         ) : null}
+        {(await canOpen("/settings/role-permissions")) ? (
+          <Link
+            href="/settings/role-permissions"
+            className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-sky-300 hover:shadow"
+          >
+            <span className="font-medium text-slate-800">角色權限設定</span>
+            <p className="mt-1 text-sm text-slate-500">設定各角色可存取的功能模組（讀取／寫入）</p>
+          </Link>
+        ) : null}
         {(await canOpen("/stores")) ? (
           <Link
             href="/stores"
