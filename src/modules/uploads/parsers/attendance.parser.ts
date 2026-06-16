@@ -29,6 +29,25 @@ function parseWorkHours(value: unknown): Decimal | null {
   return d !== null && !d.lt(0) ? d : null;
 }
 
+/**
+ * 從班別欄位解析排班時段，例如 "PT-12:00-16:00" 或 "FT-09:00-17:00"。
+ * 回傳 { startTime, endTime, scheduledHours } 或 null。
+ */
+function parseShiftTypeTimeRange(shiftType: string | null): {
+  startTime: string;
+  endTime: string;
+  scheduledHours: Decimal;
+} | null {
+  if (!shiftType) return null;
+  const m = shiftType.trim().match(/^[A-Za-z]+[-_](\d{1,2}:\d{2})[-_](\d{1,2}:\d{2})$/);
+  if (!m) return null;
+  const start = m[1];
+  const end = m[2];
+  const hours = computeWorkHoursFromTimes(start, end);
+  if (!hours || hours.lte(0)) return null;
+  return { startTime: start, endTime: end, scheduledHours: hours };
+}
+
 /** 解析「HH:mm」或「HH:mm:ss」，回傳分鐘數 */
 function parseTimeToMinutes(value: string): number | null {
   const s = value.trim();
@@ -176,9 +195,9 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const workHoursStr = getCell(row, headerMap.workHours);
     const scheduledWorkHoursStr =
       headerMap.scheduledWorkHours !== undefined ? getCell(row, headerMap.scheduledWorkHours) : "";
-    const startTimeStr =
+    let startTimeStr =
       headerMap.startTime !== undefined ? getCell(row, headerMap.startTime) || "" : "";
-    const endTimeStr =
+    let endTimeStr =
       headerMap.endTime !== undefined ? getCell(row, headerMap.endTime) || "" : "";
     const clockInInfoRaw =
       headerMap.clockInInfo !== undefined ? getCell(row, headerMap.clockInInfo) || "" : "";
@@ -233,6 +252,16 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const employeeName = headerMap.employeeName !== undefined ? getCell(row, headerMap.employeeName) || "" : "";
     const shiftType = headerMap.shiftType !== undefined ? getCell(row, headerMap.shiftType) || null : null;
 
+    // 若無獨立上/下班欄，嘗試從班別（如 PT-12:00-16:00）解析時段與表訂工時
+    const shiftTimeParsed =
+      !startTimeStr && !endTimeStr ? parseShiftTypeTimeRange(shiftType) : null;
+    if (shiftTimeParsed) {
+      if (!startTimeStr) startTimeStr = shiftTimeParsed.startTime;
+      if (!endTimeStr) endTimeStr = shiftTimeParsed.endTime;
+    }
+    const resolvedScheduledWorkHours =
+      scheduledWorkHours ?? (shiftTimeParsed?.scheduledHours ?? null);
+
     const startMin = startTimeStr ? parseTimeToMinutes(startTimeStr) : null;
     const endMin = endTimeStr ? parseTimeToMinutes(endTimeStr) : null;
     const isCrossDay =
@@ -250,7 +279,7 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
         employeeName: employeeName || undefined,
         storeCode: storeCode || null,
         department: department || null,
-        scheduledWorkHours,
+        scheduledWorkHours: resolvedScheduledWorkHours,
         clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
         clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
         shiftType: shiftType || null,
@@ -277,7 +306,7 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
         storeCode: storeCode || null,
         department: department || null,
         workHours,
-        scheduledWorkHours,
+        scheduledWorkHours: resolvedScheduledWorkHours,
         startTime: startTimeStr || null,
         endTime: endTimeStr || null,
         clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
