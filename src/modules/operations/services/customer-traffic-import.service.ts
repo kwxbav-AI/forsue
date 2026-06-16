@@ -5,6 +5,30 @@ import { normalizeStoreKey } from "@/lib/operations-dashboard";
 import { ensureRetailStoresFromPerformance } from "@/modules/operations/services/retail-store-sync.service";
 import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 
+/** TMS 銷售毛利分析報表的部門代碼對照表 */
+const DEPT_CODE_TO_STORE: Record<string, string> = {
+  "001": "中正店",
+  "002": "義成店",
+  "003": "宜蘭店",
+  "004": "南竹店",
+  "005": "北成店",
+  "006": "女中店",
+  "007": "力行店",
+  "008": "五福店",
+  "009": "中北店",
+  "010": "五結店",
+  "011": "中埔店",
+  "015": "中正南店",
+  "016": "大竹店",
+  "017": "內壢店",
+  "018": "礁溪店",
+  "020": "昆明店",
+  "021": "馬賽店",
+  "022": "東勇店",
+  "023": "校舍店",
+  "024": "大有店",
+};
+
 export type CustomerTrafficImportResult = {
   upserted: number;
   skipped: number;
@@ -64,10 +88,12 @@ function findHeaderRow(rows: unknown[][]): number {
   for (let r = 0; r < Math.min(15, rows.length); r++) {
     const cells = (rows[r] ?? []).map((c) => String(c ?? "").trim());
     if (
+      cells.some((c) => c === "日期" || c === "交班日期") &&
+      cells.some((c) => c === "部門" || c === "門市") &&
       (
-        cells.some((c) => c === "日期" || c === "交班日期") &&
-        cells.some((c) => c === "部門" || c === "門市") &&
-        (cells.some((c) => /來客/.test(c)) || cells.some((c) => /結帳.*(單數|張數)|單數|張數/.test(c)))
+        cells.some((c) => /來客/.test(c)) ||
+        cells.some((c) => /結帳.*(單數|張數)|單數|張數/.test(c)) ||
+        cells.some((c) => c === "銷售筆數")  // TMS 格式
       )
     ) {
       return r;
@@ -107,7 +133,7 @@ export async function importCustomerTrafficFromExcel(
   const header = (rows[headerRow] ?? []).map((c) => String(c ?? "").trim());
   const dateCol = colIndex(header, ["日期", "交班日期"]);
   const deptCol = colIndex(header, ["部門", "門市"]);
-  const countCol = colIndex(header, ["來客數", "來客", "結帳單張數", "結帳單數", "結帳單"]);
+  const countCol = colIndex(header, ["來客數", "來客", "結帳單張數", "結帳單數", "結帳單", "銷售筆數"]);
   const salesCol = colIndex(header, ["銷售總額", "銷售額", "營業額", "營收金額", "營收"]);
   const avgCol = colIndex(header, ["平均客單", "當日平均客單", "客單價"]);
 
@@ -132,14 +158,17 @@ export async function importCustomerTrafficFromExcel(
 
   for (let r = headerRow + 1; r < rows.length; r++) {
     const row = rows[r] ?? [];
-    const deptLabel = String(row[deptCol] ?? "").trim();
-    if (!deptLabel || /合計|小計|總計/.test(deptLabel)) continue;
+    const rawDept = String(row[deptCol] ?? "").trim();
+    if (!rawDept || /合計|小計|總計/.test(rawDept)) continue;
 
     // 台北區資料不分析：整段略過
-    if (deptLabel.includes("台北區") || deptLabel.startsWith("台北")) {
+    if (rawDept.includes("台北區") || rawDept.startsWith("台北")) {
       skippedTaipei += 1;
       continue;
     }
+
+    // TMS 部門代碼對照（001 → 中正店）；若不在清單則保留原文字
+    const deptLabel = DEPT_CODE_TO_STORE[rawDept] ?? rawDept;
 
     const workDate = parseRocDateCell(row[dateCol]);
     if (!workDate) {
@@ -157,7 +186,8 @@ export async function importCustomerTrafficFromExcel(
     const storeKey = normalizeStoreKey(deptLabel.replace(/店$/, ""));
     const retail = resolveRetailStore(storeKey, deptLabel, retailStores);
     if (!retail) {
-      unmatched.add(deptLabel);
+      // 記錄原始代碼（或門市名稱），方便回報未對應
+      unmatched.add(rawDept !== deptLabel ? `${rawDept}(${deptLabel})` : rawDept);
       skipped++;
       continue;
     }
