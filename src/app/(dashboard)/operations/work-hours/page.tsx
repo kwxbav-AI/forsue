@@ -91,6 +91,7 @@ type CalendarStaff = {
   endTime: string;
   homeStore: string | null;
   isSupport: boolean;
+  outgoingTo: string | null;
 };
 
 type CalendarDeduction = {
@@ -539,7 +540,7 @@ function CalendarTab({
                   <div key={si} className="flex items-center gap-1 mb-0.5">
                     <span
                       className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
-                        s.isSupport ? "bg-amber-400" : "bg-teal-400"
+                        s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"
                       }`}
                     />
                     <span className="truncate text-slate-600">
@@ -547,7 +548,9 @@ function CalendarTab({
                       {s.workHours > 0 ?
                         <span className="text-slate-400 ml-0.5">{s.workHours}h</span>
                       : null}
-                      {s.isSupport && s.homeStore ?
+                      {s.outgoingTo ?
+                        <span className="text-amber-600 ml-0.5">（支援{s.outgoingTo}）</span>
+                      : s.isSupport && s.homeStore ?
                         <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
                       : null}
                     </span>

@@ -781,7 +781,7 @@ export async function buildWorkHoursCalendar(input: {
     date,
     weekday: parseDateOnlyUTC(date).getUTCDay(),
     holiday: holidayMap.get(date) ?? null,
-    staff: [] as { name: string; workHours: number; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean }[],
+    staff: [] as { name: string; workHours: number; startTime: string; endTime: string; homeStore: string | null; isSupport: boolean; outgoingTo: string | null }[],
     efficiencyRatio: null as number | null,
     isAchieved: false,
     hasData: false,
@@ -794,7 +794,7 @@ export async function buildWorkHoursCalendar(input: {
   // 本店出勤：employee.defaultStoreId = input.storeId (HR Store ID)
   // 跨店支援：DispatchRecord.toStoreId = input.storeId，再撈其 AttendanceRecord
   // 工效比：與每日工效比報表相同公式（prefetch 預載整月）
-  const [homeAtts, dispatches, prefetch] = await Promise.all([
+  const [homeAtts, dispatches, outgoingDispatches, prefetch] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         workDate: { in: workDates },
@@ -810,6 +810,7 @@ export async function buildWorkHoursCalendar(input: {
         startTime: true,
         endTime: true,
         department: true,
+        employeeId: true,
         employee: { select: { name: true, defaultStoreId: true } },
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
@@ -826,8 +827,35 @@ export async function buildWorkHoursCalendar(input: {
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
+    // 本店人員調出到他店（用於在本店日曆標記「支援X店」）
+    prisma.dispatchRecord.findMany({
+      where: { fromStoreId: input.storeId, workDate: { in: workDates }, confirmStatus: "已確認" },
+      select: {
+        workDate: true,
+        employeeId: true,
+        toStoreId: true,
+      },
+    }),
     buildRangeDailyMetricsPrefetch(startYmd, endYmd),
   ]);
+
+  // 解析調出目標門市名稱
+  const outgoingToStoreIds = [...new Set(outgoingDispatches.map((d) => d.toStoreId))];
+  const outgoingStoreNameById = new Map<string, string>();
+  if (outgoingToStoreIds.length > 0) {
+    const targetStores = await prisma.store.findMany({
+      where: { id: { in: outgoingToStoreIds } },
+      select: { id: true, name: true },
+    });
+    for (const s of targetStores) outgoingStoreNameById.set(s.id, stripRegionPrefix(s.name));
+  }
+  // empId|ymd → 目標門市名稱（如「北成」）
+  const outgoingByEmpDate = new Map<string, string>();
+  for (const d of outgoingDispatches) {
+    const ymd = workDateYmd(d.workDate);
+    const name = outgoingStoreNameById.get(d.toStoreId);
+    if (name) outgoingByEmpDate.set(`${d.employeeId}|${ymd}`, name);
+  }
 
   // 扣工時來源：StoreHourDeduction / ContentEntry / WorkhourAdjustment
   const storeNameNorm = normalizeStoreName(hrStore.name);
@@ -946,17 +974,21 @@ export async function buildWorkHoursCalendar(input: {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
     const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false };
 
-    // 本店人員
+    // 本店人員（若當日有調出到他店，標記 outgoingTo）
     const homeStaff = homeAtts
       .filter((a) => workDateYmd(a.workDate) === ymd)
-      .map((a) => ({
-        name: a.employee.name,
-        workHours: Number(a.workHours),
-        startTime: a.startTime ?? "",
-        endTime: a.endTime ?? "",
-        homeStore: stripRegionPrefix(a.department ?? homeStoreName),
-        isSupport: false,
-      }));
+      .map((a) => {
+        const outTarget = outgoingByEmpDate.get(`${a.employeeId}|${ymd}`) ?? null;
+        return {
+          name: a.employee.name,
+          workHours: Number(a.workHours),
+          startTime: a.startTime ?? "",
+          endTime: a.endTime ?? "",
+          homeStore: stripRegionPrefix(a.department ?? homeStoreName),
+          isSupport: false,
+          outgoingTo: outTarget,
+        };
+      });
 
     // 跨店支援（過濾掉本店人員已包含的）
     const homeNames = new Set(homeStaff.map((s) => s.name));
@@ -971,6 +1003,7 @@ export async function buildWorkHoursCalendar(input: {
           endTime: d.endTime ?? "",
           homeStore: sa?.department ? stripRegionPrefix(sa.department) : null,
           isSupport: true,
+          outgoingTo: null,
         };
       });
 
