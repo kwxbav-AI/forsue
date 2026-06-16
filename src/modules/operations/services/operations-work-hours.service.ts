@@ -828,8 +828,17 @@ export async function buildWorkHoursCalendar(input: {
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
     // 本店人員調出到他店（用於在本店日曆標記「支援X店」）
+    // fromStoreId 可能為 null，改以 employee.defaultStoreId 判斷是否為本店人員；
+    // 不限 confirmStatus 以與進來支援的顯示邏輯一致
     prisma.dispatchRecord.findMany({
-      where: { fromStoreId: input.storeId, workDate: { in: workDates }, confirmStatus: "已確認" },
+      where: {
+        workDate: { in: workDates },
+        OR: [
+          { fromStoreId: input.storeId },
+          { employee: { defaultStoreId: input.storeId } },
+        ],
+        toStoreId: { not: input.storeId },
+      },
       select: {
         workDate: true,
         employeeId: true,
