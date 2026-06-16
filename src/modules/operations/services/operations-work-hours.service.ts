@@ -830,24 +830,24 @@ export async function buildWorkHoursCalendar(input: {
     buildRangeDailyMetricsPrefetch(startYmd, endYmd),
   ]);
 
-  // 本店人員調出到他店：用 homeAtts 的員工 ID 來查調出記錄
-  // （比用 fromStoreId / employee.defaultStoreId 更可靠，因為建立調度時 fromStoreId 可能為 null）
+  // 本店人員調出到他店，兩種情況都要涵蓋：
+  // 1. homeAtts 員工（originalStoreId 或 defaultStoreId 確認為本店）→ 建立調度時 fromStoreId 可能為 null
+  // 2. fromStoreId 明確設為本店（即使該員工本月無本店出勤記錄）
   const homeEmployeeIds = [...new Set(homeAtts.map((a) => a.employeeId))];
-  const outgoingDispatches =
-    homeEmployeeIds.length > 0
-      ? await prisma.dispatchRecord.findMany({
-          where: {
-            workDate: { in: workDates },
-            employeeId: { in: homeEmployeeIds },
-            toStoreId: { not: input.storeId },
-          },
-          select: {
-            workDate: true,
-            employeeId: true,
-            toStoreId: true,
-          },
-        })
-      : [];
+  const outgoingOrConditions: object[] = [{ fromStoreId: input.storeId }];
+  if (homeEmployeeIds.length > 0) outgoingOrConditions.push({ employeeId: { in: homeEmployeeIds } });
+  const outgoingDispatches = await prisma.dispatchRecord.findMany({
+    where: {
+      workDate: { in: workDates },
+      toStoreId: { not: input.storeId },
+      OR: outgoingOrConditions,
+    },
+    select: {
+      workDate: true,
+      employeeId: true,
+      toStoreId: true,
+    },
+  });
 
   // 解析調出目標門市名稱
   const outgoingToStoreIds = [...new Set(outgoingDispatches.map((d) => d.toStoreId))];
