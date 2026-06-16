@@ -794,7 +794,7 @@ export async function buildWorkHoursCalendar(input: {
   // 本店出勤：employee.defaultStoreId = input.storeId (HR Store ID)
   // 跨店支援：DispatchRecord.toStoreId = input.storeId，再撈其 AttendanceRecord
   // 工效比：與每日工效比報表相同公式（prefetch 預載整月）
-  const [homeAtts, dispatches, outgoingDispatches, prefetch] = await Promise.all([
+  const [homeAtts, dispatches, prefetch] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         workDate: { in: workDates },
@@ -827,26 +827,27 @@ export async function buildWorkHoursCalendar(input: {
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
-    // 本店人員調出到他店（用於在本店日曆標記「支援X店」）
-    // fromStoreId 可能為 null，改以 employee.defaultStoreId 判斷是否為本店人員；
-    // 不限 confirmStatus 以與進來支援的顯示邏輯一致
-    prisma.dispatchRecord.findMany({
-      where: {
-        workDate: { in: workDates },
-        OR: [
-          { fromStoreId: input.storeId },
-          { employee: { defaultStoreId: input.storeId } },
-        ],
-        toStoreId: { not: input.storeId },
-      },
-      select: {
-        workDate: true,
-        employeeId: true,
-        toStoreId: true,
-      },
-    }),
     buildRangeDailyMetricsPrefetch(startYmd, endYmd),
   ]);
+
+  // 本店人員調出到他店：用 homeAtts 的員工 ID 來查調出記錄
+  // （比用 fromStoreId / employee.defaultStoreId 更可靠，因為建立調度時 fromStoreId 可能為 null）
+  const homeEmployeeIds = [...new Set(homeAtts.map((a) => a.employeeId))];
+  const outgoingDispatches =
+    homeEmployeeIds.length > 0
+      ? await prisma.dispatchRecord.findMany({
+          where: {
+            workDate: { in: workDates },
+            employeeId: { in: homeEmployeeIds },
+            toStoreId: { not: input.storeId },
+          },
+          select: {
+            workDate: true,
+            employeeId: true,
+            toStoreId: true,
+          },
+        })
+      : [];
 
   // 解析調出目標門市名稱
   const outgoingToStoreIds = [...new Set(outgoingDispatches.map((d) => d.toStoreId))];
