@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import Decimal from "decimal.js";
 import {
   businessDayWorkDateFromDate,
@@ -538,7 +539,8 @@ export async function computeStoreOvertimeHoursByStore(
       att.originalStoreId ??
       null;
     if (!storeId) continue;
-    const overtime = Math.max(0, Number(att.workHours) - 8);
+    const scheduledHours = resolveScheduledHours(att);
+    const overtime = scheduledHours != null ? Math.max(0, Number(att.workHours) - scheduledHours) : 0;
     byStore[storeId] = (byStore[storeId] ?? 0) + overtime;
   }
   return byStore;

@@ -18,6 +18,7 @@ import {
   computeDailyMetricsByStoreResilientWithPrefetch,
 } from "@/modules/performance/services/range-daily-metrics-prefetch.service";
 import { isEfficiencyTargetMet } from "@/lib/operations-efficiency";
+import { resolveScheduledHours } from "@/lib/scheduled-hours";
 
 const DAY_CONCURRENCY = 12;
 
@@ -357,7 +358,8 @@ export async function buildOperationsWorkHours(input: {
       storeName: storeNameById.get(sid) ?? sid,
     };
 
-    const ot = Math.max(0, wh - 8);
+    const scheduledHours = resolveScheduledHours(a);
+    const ot = scheduledHours != null ? Math.max(0, wh - scheduledHours) : 0;
     if (ot > 0) {
       overtimeByEmployee.set(a.employeeId, (overtimeByEmployee.get(a.employeeId) ?? 0) + ot);
     }

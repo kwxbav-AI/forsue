@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import { addCalendarDaysUTC, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
 import {
@@ -378,6 +379,9 @@ async function fetchScheduledAndOvertimeByStore(
     select: {
       workHours: true,
       scheduledWorkHours: true,
+      shiftType: true,
+      startTime: true,
+      endTime: true,
       originalStoreId: true,
       employee: { select: { defaultStoreId: true } },
     },
@@ -387,7 +391,7 @@ async function fetchScheduledAndOvertimeByStore(
     const sid = r.employee.defaultStoreId ?? r.originalStoreId;
     if (!sid || !hrSet.has(sid)) continue;
     const wh = Number(r.workHours);
-    const sh = r.scheduledWorkHours != null ? Number(r.scheduledWorkHours) : 0;
+    const sh = resolveScheduledHours(r) ?? 0;
     const ot = sh > 0 ? Math.max(0, wh - sh) : 0;
     const cur = result.get(sid) ?? { scheduledHours: 0, overtimeHours: 0 };
     cur.scheduledHours += sh;
