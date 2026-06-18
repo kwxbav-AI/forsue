@@ -16,6 +16,16 @@ function parseTimeToMinutes(t: string): number | null {
  *
  * 回傳 null 表示無法判斷表訂工時。
  */
+/** 從班別字串（如 "FT-10:00-18:00"、"司機-07:30-15:30"）解析工時 */
+function parseShiftString(s: string): number | null {
+  const m = s.match(/-(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  if (!m) return null;
+  const start = parseTimeToMinutes(m[1]);
+  const end = parseTimeToMinutes(m[2]);
+  if (start != null && end != null && end > start) return (end - start) / 60;
+  return null;
+}
+
 export function resolveScheduledHours(record: {
   scheduledWorkHours?: unknown;
   shiftType?: string | null;
@@ -25,14 +35,15 @@ export function resolveScheduledHours(record: {
   if (record.scheduledWorkHours != null) {
     const n = Number(record.scheduledWorkHours);
     if (Number.isFinite(n) && n > 0) return n;
+    // 字串格式：班別-HH:mm-HH:mm（如 "FT-10:00-18:00"、"司機-07:30-15:30"）
+    if (typeof record.scheduledWorkHours === "string") {
+      const h = parseShiftString(record.scheduledWorkHours);
+      if (h != null) return h;
+    }
   }
   if (record.shiftType) {
-    const m = record.shiftType.match(/(?:PT|FT|[A-Z]+)-(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/i);
-    if (m) {
-      const s = parseTimeToMinutes(m[1]);
-      const e = parseTimeToMinutes(m[2]);
-      if (s != null && e != null && e > s) return (e - s) / 60;
-    }
+    const h = parseShiftString(record.shiftType);
+    if (h != null) return h;
   }
   if (record.startTime && record.endTime) {
     const s = parseTimeToMinutes(record.startTime);
