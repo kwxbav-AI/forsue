@@ -540,42 +540,47 @@ export default function DispatchesPage() {
         ) : filteredList.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">此區間沒有調度資料</p>
         ) : (
-          <>
-            <div
-              ref={tableContainerRef}
-              className="relative overflow-x-auto"
-              onScroll={() => syncScroll("table")}
-            >
-              <table ref={tableRef} className="w-full text-sm">
+          <table ref={tableRef} className="w-full text-xs border-collapse">
+              <colgroup>
+                <col style={{ width: 92 }} />
+                <col style={{ width: 118 }} />
+                <col style={{ width: 48 }} />
+                <col style={{ width: 122 }} />
+                <col style={{ width: 48 }} />
+                <col style={{ width: 48 }} />
+                <col style={{ width: 44 }} />
+                <col style={{ width: 36 }} />
+                <col style={{ width: 36 }} />
+                <col style={{ width: 56 }} />
+                <col style={{ width: 52 }} />
+                <col style={{ width: 40 }} />
+                <col style={{ width: 84 }} />
+                <col style={{ width: 60 }} />
+                <col style={{ width: 78 }} />
+                <col style={{ width: 78 }} />
+                <col />
+                <col style={{ width: 58 }} />
+              </colgroup>
               <thead>
                 <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                  <th className="sticky left-0 z-20 w-[100px] min-w-[100px] bg-slate-50 px-3 py-2 text-left font-medium text-slate-700">
-                    日期
-                  </th>
-                  <th className="sticky left-[100px] z-20 w-[130px] min-w-[130px] bg-slate-50 px-2 py-2 text-left font-medium text-slate-700">
-                    員工
-                  </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">填寫人</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">填寫時間</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">調出</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">調入</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">預申請</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">實際</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">差異</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-center font-medium text-slate-700">狀態</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium text-slate-700">出勤h</th>
-                  <th
-                    className="whitespace-nowrap px-2 py-2 text-center font-medium text-slate-700"
-                    title="與預申請比對（以差異判定）"
-                  >
-                    比對
-                  </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">時間</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">打卡地點</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">上班地點</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">下班地點</th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium text-slate-700">備註</th>
-                  <th className="whitespace-nowrap px-2 py-2"></th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">日期</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">員工</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">填寫人</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">填寫時間</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">調出</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">調入</th>
+                  <th className="px-1 py-2 text-right font-medium text-slate-700 whitespace-nowrap">預申請</th>
+                  <th className="px-1 py-2 text-right font-medium text-slate-700 whitespace-nowrap">實際</th>
+                  <th className="px-1 py-2 text-right font-medium text-slate-700 whitespace-nowrap">差異</th>
+                  <th className="px-1 py-2 text-center font-medium text-slate-700 whitespace-nowrap">狀態</th>
+                  <th className="px-1 py-2 text-right font-medium text-slate-700 whitespace-nowrap">出勤時數</th>
+                  <th className="px-1 py-2 text-center font-medium text-slate-700 whitespace-nowrap" title="與預申請比對（以差異判定）">比對</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">時間</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">打卡地點</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">上班地點</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">下班地點</th>
+                  <th className="px-1 py-2 text-left font-medium text-slate-700 whitespace-nowrap">備註</th>
+                  <th className="px-1 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -599,91 +604,55 @@ export default function DispatchesPage() {
                                     ? "無法判定"
                                     : "—";
                   return (
-                  <tr key={r.id} className="border-b border-slate-100">
-                    <td className="sticky left-0 z-[5] w-[100px] min-w-[100px] bg-white px-3 py-2 text-xs">
-                      {r.workDate}
+                  <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-1 py-1.5 tabular-nums whitespace-nowrap">{r.workDate}</td>
+                    <td className="px-1 py-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                      <span className="text-slate-500">{r.employeeCode}</span>{" "}{r.employeeName}
                     </td>
-                    <td className="sticky left-[100px] z-[5] w-[130px] min-w-[130px] bg-white px-2 py-2 text-xs">
-                      {r.employeeCode} {r.employeeName}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-slate-600 text-xs">
-                      {r.createdByName ?? r.createdByCode ?? "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-slate-500 text-xs tabular-nums">
-                      {r.filledAt ?? "—"}
-                    </td>
-                    <td className="max-w-[80px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.fromStoreName ?? ""}>
-                      {r.fromStoreName ?? "—"}
-                    </td>
-                    <td className="max-w-[80px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.toStoreName ?? ""}>
-                      {r.toStoreName ?? "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-xs">{r.dispatchHours}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-xs">
-                      {r.actualHours != null ? r.actualHours : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right text-xs">
+                    <td className="px-1 py-1.5 text-slate-600 whitespace-nowrap overflow-hidden text-ellipsis">{r.createdByName ?? r.createdByCode ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-500 tabular-nums whitespace-nowrap">{r.filledAt ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.fromStoreName ?? ""}>{r.fromStoreName ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.toStoreName ?? ""}>{r.toStoreName ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-right tabular-nums">{r.dispatchHours}</td>
+                    <td className="px-1 py-1.5 text-right tabular-nums">{r.actualHours != null ? r.actualHours : "—"}</td>
+                    <td className="px-1 py-1.5 text-right">
                       {r.hoursDiff != null ? (
                         <span className={r.hoursDiff > 0 ? "text-green-600" : r.hoursDiff < 0 ? "text-amber-600" : "text-slate-600"}>
                           {r.hoursDiff > 0 ? "+" : ""}{r.hoursDiff}
                         </span>
-                      ) : (
-                        "—"
-                      )}
+                      ) : "—"}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-center">
-                      <span
-                        className={
-                          r.confirmStatus === "已確認"
-                            ? "rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800"
-                            : "rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600"
-                        }
-                      >
+                    <td className="px-1 py-1.5 text-center">
+                      <span className={r.confirmStatus === "已確認" ? "rounded bg-green-100 px-1 py-0.5 text-green-800" : "rounded bg-slate-100 px-1 py-0.5 text-slate-600"}>
                         {r.confirmStatus === "已確認" ? "已確認" : "待確認"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right text-slate-600 text-xs">
-                      {r.attendanceHours != null ? r.attendanceHours : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-center">
+                    <td className="px-1 py-1.5 text-right text-slate-600">{r.attendanceHours != null ? r.attendanceHours : "—"}</td>
+                    <td className="px-1 py-1.5 text-center">
                       {r.comparisonResult == null ? (
-                        <span className="text-slate-400 text-xs">—</span>
+                        <span className="text-slate-400">—</span>
                       ) : (
-                        <span
-                          className={
-                            r.comparisonResult === "一致"
-                              ? "rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800"
-                              : r.comparisonResult === "延長"
-                                ? "rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
-                                : "rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800"
-                          }
-                        >
-                          {r.comparisonResult}
-                        </span>
+                        <span className={
+                          r.comparisonResult === "一致"
+                            ? "rounded bg-green-100 px-1 py-0.5 text-green-800"
+                            : r.comparisonResult === "延長"
+                              ? "rounded bg-amber-100 px-1 py-0.5 text-amber-800"
+                              : "rounded bg-blue-100 px-1 py-0.5 text-blue-800"
+                        }>{r.comparisonResult}</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-slate-600 text-xs">
-                      {r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs">{statusLabel}</td>
-                    <td className="max-w-[110px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.clockInStoreText ?? ""}>{r.clockInStoreText ?? "—"}</td>
-                    <td className="max-w-[110px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.clockOutStoreText ?? ""}>{r.clockOutStoreText ?? "—"}</td>
-                    <td className="max-w-[160px] truncate whitespace-nowrap px-2 py-2 text-slate-600 text-xs" title={r.remark ?? ""}>
-                      {r.remark ?? "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(r)}
-                        className="mr-2 text-sky-600 hover:underline text-xs"
-                      >
-                        編輯
-                      </button>
+                    <td className="px-1 py-1.5 text-slate-600 whitespace-nowrap">{r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}</td>
+                    <td className="px-1 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={statusLabel}>{statusLabel}</td>
+                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.clockInStoreText ?? ""}>{r.clockInStoreText ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.clockOutStoreText ?? ""}>{r.clockOutStoreText ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.remark ?? ""}>{r.remark ?? "—"}</td>
+                    <td className="px-1 py-1.5 whitespace-nowrap text-right">
+                      <button type="button" onClick={() => openEdit(r)} className="mr-1 text-sky-600 hover:underline">編輯</button>
                       <button
                         type="button"
                         onClick={() => deleteRow(r.id)}
                         disabled={deletingIds.has(r.id)}
-                        className="text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 text-xs"
+                        className="text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {deletingIds.has(r.id) ? "送出中…" : "刪除"}
                       </button>
@@ -693,8 +662,7 @@ export default function DispatchesPage() {
                 })}
               </tbody>
             </table>
-          </div>
-          </>
+
         )}
       </div>
 
