@@ -34,10 +34,18 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  const usernames = users.map((u) => u.username);
+  const employees = await prisma.employee.findMany({
+    where: { employeeCode: { in: usernames } },
+    select: { employeeCode: true, name: true },
+  });
+  const empNameByCode = new Map(employees.map((e) => [e.employeeCode, e.name]));
+
   return NextResponse.json({
     users: users.map((u) => ({
       id: u.id,
       username: u.username,
+      employeeName: empNameByCode.get(u.username) ?? null,
       roleId: u.roleId,
       roleKey: u.role?.key ?? String(u.legacyRole),
       roleName: u.role?.name ?? null,

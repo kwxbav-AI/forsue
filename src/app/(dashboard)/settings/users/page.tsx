@@ -9,6 +9,7 @@ type SupervisorStore = { storeId: string; storeName: string; region: string | nu
 type UserRow = {
   id: string;
   username: string;
+  employeeName: string | null;
   roleLabel: string;
   roleId: string | null;
   roleKey: string;
@@ -425,6 +426,9 @@ function UsersInner() {
                   <tr key={u.id} className="border-b border-slate-100">
                     <td className="sticky left-0 z-[5] w-[160px] min-w-[160px] bg-white px-3 py-2 font-medium">
                       {u.username}
+                      {u.employeeName ? (
+                        <span className="ml-1.5 font-normal text-slate-500">{u.employeeName}</span>
+                      ) : null}
                     </td>
                     <td className="sticky left-[160px] z-[5] w-[130px] min-w-[130px] bg-white px-3 py-2">
                       <select
