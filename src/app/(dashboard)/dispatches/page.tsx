@@ -551,14 +551,14 @@ export default function DispatchesPage() {
                 <col style={{ width: 44 }} />
                 <col style={{ width: 36 }} />
                 <col style={{ width: 36 }} />
-                <col style={{ width: 56 }} />
+                <col style={{ width: 60 }} />
                 <col style={{ width: 52 }} />
                 <col style={{ width: 40 }} />
+                <col style={{ width: 90 }} />
                 <col style={{ width: 84 }} />
-                <col style={{ width: 60 }} />
-                <col style={{ width: 78 }} />
-                <col style={{ width: 78 }} />
-                <col />
+                <col style={{ width: 96 }} />
+                <col style={{ width: 96 }} />
+                <col style={{ width: 120 }} />
                 <col style={{ width: 58 }} />
               </colgroup>
               <thead>
