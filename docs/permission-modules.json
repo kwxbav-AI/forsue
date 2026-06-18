@@ -398,7 +398,8 @@
       "parentKey": null,
       "patterns": [
         { "kind": "PAGE", "pathPattern": "/settings/role-permissions", "method": null },
-        { "kind": "API", "pathPattern": "/api/role-permissions", "method": null }
+        { "kind": "API", "pathPattern": "/api/role-permissions", "method": null },
+        { "kind": "API", "pathPattern": "/api/role-permissions/all", "method": null }
       ]
     },
     {
