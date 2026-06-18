@@ -69,6 +69,8 @@ type WorkHoursData = {
     regularHours: number;
     overtimeHours: number;
     legalOvertimeHours: number;
+    saturdayHours: number;
+    weekdayLegalOTHours: number;
     excessOTDays: number;
     maxDailyExcessOT: number;
     excessOTStatus: "頻繁" | "注意" | "正常";
@@ -354,6 +356,111 @@ export default function OperationsWorkHoursPage() {
               onClick={() => setDetailModal({ kind: "anomalies" })}
             />
           </div>
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-700 flex items-start gap-2">
+            <span className="mt-0.5 shrink-0">ℹ</span>
+            <span>
+              <strong>法定加班</strong>：週六出勤全數 + 週一~五超出表定部分，計入勞基法 46H/月上限。
+              <strong className="ml-2">當日超時</strong>：任何工作日（含週六）超出當日排班表定的部分，用於監控延班與排班不足。
+            </span>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="font-semibold text-slate-800">法定加班工時</h2>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">主管控管</span>
+              </div>
+              <p className="text-xs text-slate-400 mb-3">週六出勤 + 平日超時 · 法規上限 46h/月</p>
+              {employees.filter((e) => e.legalOvertimeHours > 0).length ?
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="py-2 pr-3">員工</th>
+                        <th className="py-2 pr-3 text-right">週六出勤</th>
+                        <th className="py-2 pr-3 text-right">平日加班</th>
+                        <th className="py-2 pr-3 text-right">合計</th>
+                        <th className="py-2 text-right">警示</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...employees]
+                        .filter((e) => e.legalOvertimeHours > 0)
+                        .sort((a, b) => b.legalOvertimeHours - a.legalOvertimeHours)
+                        .map((e) => {
+                          const alertPct = Math.round((e.legalOvertimeHours / 46) * 1000) / 10;
+                          const alertCls =
+                            alertPct > 75 ? "bg-red-100 text-red-700"
+                            : alertPct > 50 ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700";
+                          return (
+                            <tr key={e.employeeId} className="border-b border-slate-100">
+                              <td className="py-2 pr-3">
+                                {e.employeeName}
+                                <span className="ml-1 text-xs text-slate-400">{e.employeeCode}</span>
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums">{e.saturdayHours}h</td>
+                              <td className="py-2 pr-3 text-right tabular-nums">{e.weekdayLegalOTHours}h</td>
+                              <td className="py-2 pr-3 text-right tabular-nums font-medium">{e.legalOvertimeHours}h</td>
+                              <td className="py-2 text-right">
+                                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${alertCls}`}>
+                                  {alertPct.toFixed(1)}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              : <EmptyState text="本月尚無法定加班記錄" />}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="font-semibold text-slate-800">當日超時工時</h2>
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">排班效率</span>
+              </div>
+              <p className="text-xs text-slate-400 mb-3">超出當日排班表定 · 週六排班內不算超時</p>
+              {employees.filter((e) => e.overtimeHours > 0).length ?
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-slate-500">
+                        <th className="py-2 pr-3">員工</th>
+                        <th className="py-2 pr-3 text-right">超時天數</th>
+                        <th className="py-2 pr-3 text-right">最多單日</th>
+                        <th className="py-2 pr-3 text-right">月合計</th>
+                        <th className="py-2 text-right">狀態</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...employees]
+                        .filter((e) => e.overtimeHours > 0)
+                        .sort((a, b) => b.overtimeHours - a.overtimeHours)
+                        .map((e) => (
+                          <tr key={e.employeeId} className="border-b border-slate-100">
+                            <td className="py-2 pr-3">
+                              {e.employeeName}
+                              <span className="ml-1 text-xs text-slate-400">{e.employeeCode}</span>
+                            </td>
+                            <td className="py-2 pr-3 text-right tabular-nums">{e.excessOTDays} 天</td>
+                            <td className="py-2 pr-3 text-right tabular-nums">{e.maxDailyExcessOT}h</td>
+                            <td className="py-2 pr-3 text-right tabular-nums font-medium">{e.overtimeHours}h</td>
+                            <td className="py-2 text-right">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[e.excessOTStatus] ?? ""}`}>
+                                {e.excessOTStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              : <EmptyState text="本月尚無當日超時記錄" />}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="font-semibold text-slate-800 mb-3">門市工時彙總</h2>
             {o?.storeSummary.length ?

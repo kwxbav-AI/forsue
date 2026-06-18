@@ -340,6 +340,7 @@ export async function buildOperationsWorkHours(input: {
 
   const overtimeByEmployee = new Map<string, number>();
   const legalOTByEmployee = new Map<string, number>();
+  const saturdayHoursByEmployee = new Map<string, number>();
   const excessOTDaysByEmployee = new Map<string, number>();
   const maxDailyExcessByEmployee = new Map<string, number>();
   const mismatchDetailsByEmployee = new Map<string, string[]>();
@@ -377,6 +378,9 @@ export async function buildOperationsWorkHours(input: {
       legalOTByEmployee.set(a.employeeId, (legalOTByEmployee.get(a.employeeId) ?? 0) + legalOT);
       const row = storeAgg.get(sid);
       if (row) row.legalOvertimeHours += legalOT;
+    }
+    if (isSaturday && wh > 0) {
+      saturdayHoursByEmployee.set(a.employeeId, (saturdayHoursByEmployee.get(a.employeeId) ?? 0) + wh);
     }
 
     const status = String(a.locationMatchStatus ?? "UNKNOWN");
@@ -534,6 +538,8 @@ export async function buildOperationsWorkHours(input: {
     regularHours: number;
     overtimeHours: number;
     legalOvertimeHours: number;
+    saturdayHours: number;
+    weekdayLegalOTHours: number;
     excessOTDays: number;
     maxDailyExcessOT: number;
     excessOTStatus: "頻繁" | "注意" | "正常";
@@ -542,7 +548,7 @@ export async function buildOperationsWorkHours(input: {
   const totalHoursByEmployee = new Map<string, number>();
   const employeeMeta = new Map<
     string,
-    Omit<EmployeeSummaryRow, "totalHours" | "regularHours" | "overtimeHours" | "legalOvertimeHours" | "excessOTDays" | "maxDailyExcessOT" | "excessOTStatus">
+    Omit<EmployeeSummaryRow, "totalHours" | "regularHours" | "overtimeHours" | "legalOvertimeHours" | "saturdayHours" | "weekdayLegalOTHours" | "excessOTDays" | "maxDailyExcessOT" | "excessOTStatus">
   >();
   for (const a of attendances) {
     if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
@@ -571,12 +577,15 @@ export async function buildOperationsWorkHours(input: {
       const totalRaw = totalHoursByEmployee.get(base.employeeId) ?? 0;
       const ot = overtimeByEmployee.get(base.employeeId) ?? 0;
       const legalOT = legalOTByEmployee.get(base.employeeId) ?? 0;
+      const satH = saturdayHoursByEmployee.get(base.employeeId) ?? 0;
       return {
         ...base,
         totalHours: Math.round(totalRaw * 10) / 10,
         overtimeHours: Math.round(ot * 10) / 10,
         regularHours: Math.round(Math.max(0, totalRaw - ot) * 10) / 10,
         legalOvertimeHours: Math.round(legalOT * 10) / 10,
+        saturdayHours: Math.round(satH * 10) / 10,
+        weekdayLegalOTHours: Math.round(Math.max(0, legalOT - satH) * 10) / 10,
         excessOTDays: excessOTDaysByEmployee.get(base.employeeId) ?? 0,
         maxDailyExcessOT: Math.round((maxDailyExcessByEmployee.get(base.employeeId) ?? 0) * 10) / 10,
         excessOTStatus: excessOTStatus(ot),
