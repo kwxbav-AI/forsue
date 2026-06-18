@@ -17,7 +17,7 @@ export const ATTENDANCE_COLUMNS = {
   clockInInfo: ["上班資訊", "上班打卡資訊", "上班資訊(含地點)", "clockInInfo", "clockInInfoRaw"],
   clockOutInfo: ["下班資訊", "下班打卡資訊", "下班資訊(含地點)", "clockOutInfo", "clockOutInfoRaw"],
   // 班別/假別：用來辨識請假（含半天），避免用工時門檻誤傷兼職
-  shiftType: ["班別", "班型", "shiftType", "班次", "假別", "出勤狀態", "狀態"],
+  shiftType: ["班別", "班型", "shiftType", "班次", "假別", "出勤狀態", "狀態", "表定時間", "排班時間", "班次時間"],
 } as const;
 
 export const DISPATCH_COLUMNS = {
