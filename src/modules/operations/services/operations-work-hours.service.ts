@@ -261,7 +261,7 @@ export async function buildOperationsWorkHours(input: {
 
   const storeAgg = new Map<
     string,
-    { storeId: string; storeName: string; totalHours: number; overtimeHours: number; employees: Set<string> }
+    { storeId: string; storeName: string; totalHours: number; overtimeHours: number; legalOvertimeHours: number; employees: Set<string> }
   >();
 
   for (const s of filterStores) {
@@ -270,6 +270,7 @@ export async function buildOperationsWorkHours(input: {
       storeName: s.storeName,
       totalHours: 0,
       overtimeHours: 0,
+      legalOvertimeHours: 0,
       employees: new Set(),
     });
   }
@@ -338,6 +339,9 @@ export async function buildOperationsWorkHours(input: {
   };
 
   const overtimeByEmployee = new Map<string, number>();
+  const legalOTByEmployee = new Map<string, number>();
+  const excessOTDaysByEmployee = new Map<string, number>();
+  const maxDailyExcessByEmployee = new Map<string, number>();
   const mismatchDetailsByEmployee = new Map<string, string[]>();
   const shortageByEmployee = new Map<string, number>();
 
@@ -360,8 +364,19 @@ export async function buildOperationsWorkHours(input: {
 
     const scheduledHours = resolveScheduledHours(a);
     const ot = scheduledHours != null ? Math.max(0, wh - scheduledHours) : 0;
+    const isSaturday = parseDateOnlyUTC(workDateYmd(a.workDate)).getUTCDay() === 6;
+    const legalOT = isSaturday ? wh : ot;
+
     if (ot > 0) {
       overtimeByEmployee.set(a.employeeId, (overtimeByEmployee.get(a.employeeId) ?? 0) + ot);
+      excessOTDaysByEmployee.set(a.employeeId, (excessOTDaysByEmployee.get(a.employeeId) ?? 0) + 1);
+      const prevMax = maxDailyExcessByEmployee.get(a.employeeId) ?? 0;
+      if (ot > prevMax) maxDailyExcessByEmployee.set(a.employeeId, ot);
+    }
+    if (legalOT > 0) {
+      legalOTByEmployee.set(a.employeeId, (legalOTByEmployee.get(a.employeeId) ?? 0) + legalOT);
+      const row = storeAgg.get(sid);
+      if (row) row.legalOvertimeHours += legalOT;
     }
 
     const status = String(a.locationMatchStatus ?? "UNKNOWN");
@@ -405,13 +420,13 @@ export async function buildOperationsWorkHours(input: {
     employeeCode: string;
     storeId: string;
     storeName: string;
-    overtimeHours: number;
+    legalOvertimeHours: number;
     alertRatioPct: number;
   };
 
   const monthlyOvertime: MonthlyOvertimeRow[] = [];
-  for (const [eid, ot] of overtimeByEmployee) {
-    if (ot <= 0) continue;
+  for (const [eid, legalOT] of legalOTByEmployee) {
+    if (legalOT <= 0) continue;
     const a = attendances.find((x) => x.employeeId === eid);
     if (!a) continue;
     const sid = homeStoreId(a, fallbackHome);
@@ -424,14 +439,26 @@ export async function buildOperationsWorkHours(input: {
       employeeCode: a.employee.employeeCode,
       storeId: sid,
       storeName: resolveStoreName(sid),
-      overtimeHours: Math.round(ot * 10) / 10,
-      alertRatioPct: Math.round((ot / 46) * 1000) / 10,
+      legalOvertimeHours: Math.round(legalOT * 10) / 10,
+      alertRatioPct: Math.round((legalOT / 46) * 1000) / 10,
     });
   }
-  monthlyOvertime.sort((a, b) => b.overtimeHours - a.overtimeHours);
+  monthlyOvertime.sort((a, b) => b.legalOvertimeHours - a.legalOvertimeHours);
 
-  for (const [eid, ot] of overtimeByEmployee) {
-    if (ot > 12) {
+  // 當日超時「頻繁」狀態基準：有超時員工的平均超時時數
+  const excessOTValues = [...overtimeByEmployee.values()].filter((v) => v > 0);
+  const avgExcessOT =
+    excessOTValues.length > 0
+      ? excessOTValues.reduce((a, b) => a + b, 0) / excessOTValues.length
+      : 0;
+  function excessOTStatus(excessOT: number): "頻繁" | "注意" | "正常" {
+    if (avgExcessOT > 0 && excessOT > avgExcessOT * 1.5) return "頻繁";
+    if (avgExcessOT > 0 && excessOT > avgExcessOT) return "注意";
+    return "正常";
+  }
+
+  for (const [eid, legalOT] of legalOTByEmployee) {
+    if (legalOT > 12) {
       const a = attendances.find((x) => x.employeeId === eid);
       if (!a) continue;
       const sid = homeStoreId(a, fallbackHome);
@@ -446,7 +473,7 @@ export async function buildOperationsWorkHours(input: {
           storeName: storeNameById.get(sid) ?? sid,
         },
         "加班過多",
-        `月加班 ${ot.toFixed(1)}h`
+        `法定加班 ${legalOT.toFixed(1)}h`
       );
     }
   }
@@ -506,12 +533,16 @@ export async function buildOperationsWorkHours(input: {
     totalHours: number;
     regularHours: number;
     overtimeHours: number;
+    legalOvertimeHours: number;
+    excessOTDays: number;
+    maxDailyExcessOT: number;
+    excessOTStatus: "頻繁" | "注意" | "正常";
   };
 
   const totalHoursByEmployee = new Map<string, number>();
   const employeeMeta = new Map<
     string,
-    Omit<EmployeeSummaryRow, "totalHours" | "regularHours" | "overtimeHours">
+    Omit<EmployeeSummaryRow, "totalHours" | "regularHours" | "overtimeHours" | "legalOvertimeHours" | "excessOTDays" | "maxDailyExcessOT" | "excessOTStatus">
   >();
   for (const a of attendances) {
     if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
@@ -539,11 +570,16 @@ export async function buildOperationsWorkHours(input: {
     .map((base) => {
       const totalRaw = totalHoursByEmployee.get(base.employeeId) ?? 0;
       const ot = overtimeByEmployee.get(base.employeeId) ?? 0;
+      const legalOT = legalOTByEmployee.get(base.employeeId) ?? 0;
       return {
         ...base,
         totalHours: Math.round(totalRaw * 10) / 10,
         overtimeHours: Math.round(ot * 10) / 10,
         regularHours: Math.round(Math.max(0, totalRaw - ot) * 10) / 10,
+        legalOvertimeHours: Math.round(legalOT * 10) / 10,
+        excessOTDays: excessOTDaysByEmployee.get(base.employeeId) ?? 0,
+        maxDailyExcessOT: Math.round((maxDailyExcessByEmployee.get(base.employeeId) ?? 0) * 10) / 10,
+        excessOTStatus: excessOTStatus(ot),
       };
     })
     .sort((a, b) => b.totalHours - a.totalHours);
@@ -564,6 +600,7 @@ export async function buildOperationsWorkHours(input: {
       totalHours: Math.round(s.totalHours * 10) / 10,
       regularHours: Math.round(Math.max(0, s.totalHours - s.overtimeHours) * 10) / 10,
       overtimeHours: Math.round(s.overtimeHours * 10) / 10,
+      legalOvertimeHours: Math.round(s.legalOvertimeHours * 10) / 10,
       hasAnomaly: storeIdsWithAnomaly.has(s.storeId),
     }))
     .sort((a, b) => b.totalHours - a.totalHours);
@@ -721,6 +758,7 @@ export async function buildOperationsWorkHours(input: {
     overview: {
       totalRegularHours: Math.round(totalRegular * 10) / 10,
       totalOvertimeHours: Math.round(totalOvertimeAll * 10) / 10,
+      totalLegalOvertimeHours: Math.round([...legalOTByEmployee.values()].reduce((a, b) => a + b, 0) * 10) / 10,
       employeeCount,
       anomalyPersonCount: anomalyList.length,
       storeSummary,

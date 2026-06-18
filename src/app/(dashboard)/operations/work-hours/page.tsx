@@ -20,6 +20,7 @@ type WorkHoursData = {
   overview: {
     totalRegularHours: number;
     totalOvertimeHours: number;
+    totalLegalOvertimeHours: number;
     employeeCount: number;
     anomalyPersonCount: number;
     storeSummary: {
@@ -29,6 +30,7 @@ type WorkHoursData = {
       totalHours: number;
       regularHours: number;
       overtimeHours: number;
+      legalOvertimeHours: number;
       hasAnomaly?: boolean;
     }[];
   };
@@ -53,7 +55,7 @@ type WorkHoursData = {
       employeeName: string;
       employeeCode: string;
       storeName: string;
-      overtimeHours: number;
+      legalOvertimeHours: number;
       alertRatioPct: number;
     }[];
   };
@@ -66,6 +68,10 @@ type WorkHoursData = {
     totalHours: number;
     regularHours: number;
     overtimeHours: number;
+    legalOvertimeHours: number;
+    excessOTDays: number;
+    maxDailyExcessOT: number;
+    excessOTStatus: "頻繁" | "注意" | "正常";
   }[];
   adjustments: {
     recordCount: number;
@@ -145,6 +151,7 @@ type AnomalyFilterId = (typeof ANOMALY_FILTERS)[number]["id"];
 type DetailModalKind =
   | "regular"
   | "overtime"
+  | "legalOvertime"
   | "employees"
   | "anomalies"
   | "storeAnomaly";
@@ -324,11 +331,19 @@ export default function OperationsWorkHoursPage() {
               onClick={() => setDetailModal({ kind: "regular" })}
             />
             <SummaryCard
-              title="加班工時"
-              value={`${o?.totalOvertimeHours ?? 0}h`}
-              sub={`加班率 ${overtimeRate}%`}
+              title="法定加班工時"
+              value={`${o?.totalLegalOvertimeHours ?? 0}h`}
+              sub="週六出勤 + 平日超時"
               icon={<Users className="h-5 w-5 text-amber-600" />}
               bg="bg-amber-50"
+              onClick={() => setDetailModal({ kind: "legalOvertime" })}
+            />
+            <SummaryCard
+              title="當日超時工時"
+              value={`${o?.totalOvertimeHours ?? 0}h`}
+              sub={`超時率 ${overtimeRate}%`}
+              icon={<Users className="h-5 w-5 text-orange-600" />}
+              bg="bg-orange-50"
               onClick={() => setDetailModal({ kind: "overtime" })}
             />
             <SummaryCard
@@ -350,7 +365,8 @@ export default function OperationsWorkHoursPage() {
                       <th className="py-2 pr-4 text-right">人員數</th>
                       <th className="py-2 pr-4 text-right">總工時</th>
                       <th className="py-2 pr-4 text-right">正班</th>
-                      <th className="py-2 text-right">加班</th>
+                      <th className="py-2 pr-4 text-right">法定加班</th>
+                      <th className="py-2 text-right">當日超時</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -376,6 +392,7 @@ export default function OperationsWorkHoursPage() {
                         <td className="py-2 pr-4 text-right">{s.headcount}</td>
                         <td className="py-2 pr-4 text-right">{s.totalHours}h</td>
                         <td className="py-2 pr-4 text-right">{s.regularHours}h</td>
+                        <td className="py-2 pr-4 text-right">{s.legalOvertimeHours}h</td>
                         <td className="py-2 text-right">{s.overtimeHours}h</td>
                       </tr>
                     ))}
@@ -656,7 +673,7 @@ function IssuesTab({
         <div>
           <h2 className="text-lg font-semibold text-slate-800">月加班</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            加班警示 = 月加班時數 ÷ 46h（%）· ≤50% 淡綠、51–75% 淡黃、&gt;75% 淡紅
+            加班警示 = 法定加班時數（週六出勤 + 平日超時）÷ 46h（%）· ≤50% 淡綠、51–75% 淡黃、&gt;75% 淡紅
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -667,7 +684,7 @@ function IssuesTab({
                   <tr className="border-b text-left text-slate-500">
                     <th className="py-2 pr-3">門市</th>
                     <th className="py-2 pr-3">員工</th>
-                    <th className="py-2 pr-3 text-right">月加班時數</th>
+                    <th className="py-2 pr-3 text-right">法定加班時數</th>
                     <th className="py-2 text-right">加班警示</th>
                   </tr>
                 </thead>
@@ -679,7 +696,7 @@ function IssuesTab({
                         {r.employeeName}
                         <span className="ml-1 text-xs text-slate-400">{r.employeeCode}</span>
                       </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.overtimeHours}h</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.legalOvertimeHours}h</td>
                       <td className="py-2 text-right tabular-nums font-medium">{r.alertRatioPct.toFixed(1)}%</td>
                     </tr>
                   ))}
@@ -878,7 +895,8 @@ function WorkHoursDetailModal({
 
   let title = "";
   if (state.kind === "regular") title = "正班工時明細";
-  else if (state.kind === "overtime") title = "加班工時明細";
+  else if (state.kind === "overtime") title = "當日超時工時明細";
+  else if (state.kind === "legalOvertime") title = "法定加班工時明細";
   else if (state.kind === "employees") title = "記錄人員明細";
   else if (state.kind === "anomalies") title = "工時異常人員明細";
   else if (state.kind === "storeAnomaly") title = `${state.storeName ?? "門市"} · 工時異常明細`;
@@ -914,10 +932,18 @@ function WorkHoursDetailModal({
             regularRows.length ?
               <EmployeeHoursTable rows={regularRows} hoursKey="regularHours" hoursLabel="正班工時" />
             : <EmptyState text="尚無正班工時記錄" />
+          : state.kind === "legalOvertime" ?
+            employees.filter((e) => e.legalOvertimeHours > 0).length ?
+              <EmployeeHoursTable
+                rows={[...employees].filter((e) => e.legalOvertimeHours > 0).sort((a, b) => b.legalOvertimeHours - a.legalOvertimeHours)}
+                hoursKey="legalOvertimeHours"
+                hoursLabel="法定加班"
+              />
+            : <EmptyState text="尚無法定加班記錄" />
           : state.kind === "overtime" ?
             overtimeRows.length ?
-              <EmployeeHoursTable rows={overtimeRows} hoursKey="overtimeHours" hoursLabel="加班工時" />
-            : <EmptyState text="尚無加班工時記錄" />
+              <EmployeeHoursTable rows={overtimeRows} hoursKey="overtimeHours" hoursLabel="當日超時" showExcessDetail />
+            : <EmptyState text="尚無超時記錄" />
           : state.kind === "employees" ?
             employees.length ?
               <EmployeeHoursTable rows={employees} hoursKey="totalHours" hoursLabel="總工時" showBreakdown />
@@ -955,16 +981,24 @@ function WorkHoursDetailModal({
   );
 }
 
+const STATUS_STYLES: Record<string, string> = {
+  頻繁: "bg-red-100 text-red-700",
+  注意: "bg-amber-100 text-amber-700",
+  正常: "bg-emerald-100 text-emerald-700",
+};
+
 function EmployeeHoursTable({
   rows,
   hoursKey,
   hoursLabel,
   showBreakdown,
+  showExcessDetail,
 }: {
   rows: WorkHoursData["employeeSummary"];
-  hoursKey: "regularHours" | "overtimeHours" | "totalHours";
+  hoursKey: "regularHours" | "overtimeHours" | "totalHours" | "legalOvertimeHours";
   hoursLabel: string;
   showBreakdown?: boolean;
+  showExcessDetail?: boolean;
 }) {
   return (
     <div className="overflow-x-auto max-h-[60vh]">
@@ -977,6 +1011,13 @@ function EmployeeHoursTable({
               <>
                 <th className="py-2 pr-3 text-right">正班</th>
                 <th className="py-2 pr-3 text-right">加班</th>
+              </>
+            : null}
+            {showExcessDetail ?
+              <>
+                <th className="py-2 pr-3 text-right">超時天數</th>
+                <th className="py-2 pr-3 text-right">最多單日</th>
+                <th className="py-2 pr-3 text-right">狀態</th>
               </>
             : null}
             <th className="py-2 text-right">{hoursLabel}</th>
@@ -994,6 +1035,17 @@ function EmployeeHoursTable({
                 <>
                   <td className="py-2 pr-3 text-right tabular-nums">{r.regularHours}h</td>
                   <td className="py-2 pr-3 text-right tabular-nums">{r.overtimeHours}h</td>
+                </>
+              : null}
+              {showExcessDetail ?
+                <>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.excessOTDays} 天</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{r.maxDailyExcessOT}h</td>
+                  <td className="py-2 pr-3 text-right">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.excessOTStatus] ?? ""}`}>
+                      {r.excessOTStatus}
+                    </span>
+                  </td>
                 </>
               : null}
               <td className="py-2 text-right tabular-nums font-medium">{r[hoursKey]}h</td>
