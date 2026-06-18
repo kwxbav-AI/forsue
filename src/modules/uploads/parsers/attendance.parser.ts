@@ -39,7 +39,7 @@ function parseShiftTypeTimeRange(shiftType: string | null): {
   scheduledHours: Decimal;
 } | null {
   if (!shiftType) return null;
-  const m = shiftType.trim().match(/^[A-Za-z]+[-_](\d{1,2}:\d{2})[-_](\d{1,2}:\d{2})$/);
+  const m = shiftType.trim().match(/-(\d{1,2}:\d{2})[-_](\d{1,2}:\d{2})$/);
   if (!m) return null;
   const start = m[1];
   const end = m[2];
