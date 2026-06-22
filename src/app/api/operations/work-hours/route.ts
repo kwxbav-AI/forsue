@@ -18,7 +18,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "請提供有效 month (1-12)" }, { status: 400 });
     }
 
-    const data = await buildOperationsWorkHours({ year, month, storeId });
+    const region = sp.get("region")?.trim() || undefined;
+    const supervisorZone = sp.get("supervisorZone")?.trim() || undefined;
+    const data = await buildOperationsWorkHours({ year, month, storeId, region, supervisorZone });
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/operations/work-hours failed", error);

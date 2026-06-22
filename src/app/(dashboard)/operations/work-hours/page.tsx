@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -10,6 +10,8 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
+import { SUPERVISOR_ZONES } from "@/lib/supervisor-zones";
 
 type StoreOption = { id: string; storeName: string; region: string };
 
@@ -176,6 +178,7 @@ export default function OperationsWorkHoursPage() {
   const [year, setYear] = useState(init.year);
   const [month, setMonth] = useState(init.month);
   const [storeId, setStoreId] = useState("");
+  const [areaFilter, setAreaFilter] = useState("");
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [tab, setTab] = useState<TabId>("overview");
   const [anomalyFilter, setAnomalyFilter] = useState<AnomalyFilterId>("all");
@@ -195,18 +198,45 @@ export default function OperationsWorkHoursPage() {
     })();
   }, []);
 
+  const filteredStores = useMemo(() => {
+    if (!areaFilter) return stores;
+    if (areaFilter.startsWith("region:")) {
+      const r = areaFilter.slice("region:".length);
+      return stores.filter((s) => s.region === r);
+    }
+    if (areaFilter.startsWith("zone:")) {
+      const zoneKey = areaFilter.slice("zone:".length);
+      const zone = SUPERVISOR_ZONES.find((z) => z.key === zoneKey);
+      if (!zone) return stores;
+      return stores.filter((s) =>
+        zone.storeNames.some((name) => s.storeName.includes(name) || name.includes(s.storeName))
+      );
+    }
+    return stores;
+  }, [stores, areaFilter]);
+
+  useEffect(() => {
+    if (storeId && !filteredStores.some((s) => s.id === storeId)) setStoreId("");
+  }, [filteredStores, storeId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ year: String(year), month: String(month) });
-      if (storeId) params.set("storeId", storeId);
+      if (storeId) {
+        params.set("storeId", storeId);
+      } else if (areaFilter.startsWith("region:")) {
+        params.set("region", areaFilter.slice("region:".length));
+      } else if (areaFilter.startsWith("zone:")) {
+        params.set("supervisorZone", areaFilter.slice("zone:".length));
+      }
       const res = await fetch(`/api/operations/work-hours?${params}`);
       if (res.ok) setData(await res.json());
       else setData(null);
     } finally {
       setLoading(false);
     }
-  }, [year, month, storeId]);
+  }, [year, month, storeId, areaFilter]);
 
   const loadCalendar = useCallback(async () => {
     if (!storeId) { setCalData(null); return; }
@@ -266,12 +296,29 @@ export default function OperationsWorkHoursPage() {
             ))}
           </select>
           <select
+            value={areaFilter}
+            onChange={(e) => setAreaFilter(e.target.value)}
+            className="min-w-[130px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            <option value="">全部區域</option>
+            <optgroup label="行政區">
+              {DUAL_OPS_REGIONS.map((r) => (
+                <option key={r} value={`region:${r}`}>{r}</option>
+              ))}
+            </optgroup>
+            <optgroup label="督導轄區">
+              {SUPERVISOR_ZONES.map((z) => (
+                <option key={z.key} value={`zone:${z.key}`}>{z.label}</option>
+              ))}
+            </optgroup>
+          </select>
+          <select
             value={storeId}
             onChange={(e) => setStoreId(e.target.value)}
-            className="min-w-[140px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+            className="min-w-[130px] rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">全部門市</option>
-            {stores.map((s) => (
+            {filteredStores.map((s) => (
               <option key={s.id} value={s.id}>{s.storeName}</option>
             ))}
           </select>

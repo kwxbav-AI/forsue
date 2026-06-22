@@ -19,6 +19,7 @@ import {
 } from "@/modules/performance/services/range-daily-metrics-prefetch.service";
 import { isEfficiencyTargetMet } from "@/lib/operations-efficiency";
 import { resolveScheduledHours } from "@/lib/scheduled-hours";
+import { storeMatchesSupervisorZone } from "@/lib/supervisor-zones";
 
 const DAY_CONCURRENCY = 12;
 
@@ -147,10 +148,17 @@ export async function buildOperationsWorkHours(input: {
   year: number;
   month: number;
   storeId?: string;
+  region?: string;
+  supervisorZone?: string;
 }) {
   const { startYmd, endYmd } = resolveMonthRange(input.year, input.month);
   const days = listDaysInRange(startYmd, endYmd);
-  const filterStores = await listPerformanceStoresForFilter();
+  let filterStores = await listPerformanceStoresForFilter();
+  if (input.region) {
+    filterStores = filterStores.filter((s) => s.region === input.region);
+  } else if (input.supervisorZone) {
+    filterStores = filterStores.filter((s) => storeMatchesSupervisorZone(s.storeName, input.supervisorZone!));
+  }
   const storeNameById = new Map(filterStores.map((s) => [s.id, s.storeName]));
   /** 月加班／異常清單僅顯示桃園＋宜蘭各 10 間門市 */
   const dualRegionStoreIds = new Set(
