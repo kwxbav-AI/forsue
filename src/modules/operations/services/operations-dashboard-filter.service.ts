@@ -189,6 +189,16 @@ async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<str
   return new Set(holidays.map((h) => formatDateOnly(h.date)));
 }
 
+type RawRetailRow = {
+  id: string;
+  store_name: string;
+  legacy_store_id: string | null;
+  weekday_business_hours: unknown;
+  saturday_business_hours: unknown;
+  daily_business_hours: unknown;
+  default_labor_hours_per_day: unknown;
+};
+
 export async function mapPerformanceToRetailStore(
   performanceStoreIds: string[]
 ): Promise<Map<string, { retailId: string; settings: RetailLaborSettings }>> {
@@ -199,49 +209,65 @@ export async function mapPerformanceToRetailStore(
     select: { id: true, name: true },
   });
 
-  const retailStores = await prisma.retailStore.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      storeName: true,
-      dailyBusinessHours: true,
-      weekdayBusinessHours: true,
-      saturdayBusinessHours: true,
-      defaultLaborHoursPerDay: true,
-    },
-  });
-  const retailByExactName = new Map(
-    retailStores.map((r) => [r.storeName.trim(), r])
+  // 用 raw SQL 取得 legacy_store_id（直接對應 performance Store id），
+  // Prisma schema 未映射此欄位但 DB 已存在。
+  const rawRetailStores = await prisma.$queryRaw<RawRetailRow[]>`
+    SELECT id, store_name, legacy_store_id,
+           weekday_business_hours, saturday_business_hours,
+           daily_business_hours, default_labor_hours_per_day
+    FROM stores
+    WHERE is_active = true
+  `;
+
+  // 優先：legacy_store_id 直接對應 performance Store id
+  const retailByLegacyId = new Map<string, RawRetailRow>();
+  for (const r of rawRetailStores) {
+    if (r.legacy_store_id) retailByLegacyId.set(r.legacy_store_id, r);
+  }
+
+  // 次要：exact name / normalized key 比對
+  const retailByExactName = new Map<string, RawRetailRow>(
+    rawRetailStores.map((r) => [r.store_name.trim(), r])
   );
-  const retailByNormKey = new Map(
-    retailStores.map((r) => [normalizeStoreKey(r.storeName), r])
-  );
+  // 若同 normalize key 有多筆，優先保留名稱本身等於 key 的（不需去掉「店」的版本）
+  const retailByNormKey = new Map<string, RawRetailRow>();
+  for (const r of rawRetailStores) {
+    const key = normalizeStoreKey(r.store_name);
+    const existing = retailByNormKey.get(key);
+    if (!existing || normalizeStoreKey(existing.store_name) !== existing.store_name.trim()) {
+      retailByNormKey.set(key, r);
+    }
+  }
+
+  function toSettings(r: RawRetailRow): RetailLaborSettings {
+    const weekday =
+      toOptionalNumber(r.weekday_business_hours) ??
+      toOptionalNumber(r.daily_business_hours);
+    return {
+      weekdayBusinessHours: weekday,
+      saturdayBusinessHours: toOptionalNumber(r.saturday_business_hours),
+      dailyBusinessHours: weekday,
+      defaultLaborHoursPerDay: toOptionalNumber(r.default_labor_hours_per_day),
+    };
+  }
 
   const out = new Map<string, { retailId: string; settings: RetailLaborSettings }>();
   for (const s of perfStores) {
     const perfKey = normalizeStoreKey(s.name);
-    let retail =
+    const raw =
+      retailByLegacyId.get(s.id) ??
       retailByExactName.get(s.name.trim()) ??
       retailByNormKey.get(perfKey) ??
-      retailStores.find(
+      rawRetailStores.find(
         (r) =>
-          storeNameMatchesCatalogKey(r.storeName, perfKey) ||
-          storeNameMatchesCatalogKey(s.name, r.storeName) ||
-          storeNamesEquivalent(r.storeName, s.name)
+          storeNameMatchesCatalogKey(r.store_name, perfKey) ||
+          storeNameMatchesCatalogKey(s.name, r.store_name) ||
+          storeNamesEquivalent(r.store_name, s.name)
       );
-    if (!retail) continue;
+    if (!raw) continue;
     out.set(s.id, {
-      retailId: retail.id,
-      settings: {
-        weekdayBusinessHours:
-          toOptionalNumber(retail.weekdayBusinessHours) ??
-          toOptionalNumber(retail.dailyBusinessHours),
-        saturdayBusinessHours: toOptionalNumber(retail.saturdayBusinessHours),
-        dailyBusinessHours:
-          toOptionalNumber(retail.weekdayBusinessHours) ??
-          toOptionalNumber(retail.dailyBusinessHours),
-        defaultLaborHoursPerDay: toOptionalNumber(retail.defaultLaborHoursPerDay),
-      },
+      retailId: raw.id,
+      settings: toSettings(raw),
     });
   }
   return out;
