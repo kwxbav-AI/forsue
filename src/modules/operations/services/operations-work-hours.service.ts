@@ -160,6 +160,8 @@ export async function buildOperationsWorkHours(input: {
     filterStores = filterStores.filter((s) => storeMatchesSupervisorZone(s.storeName, input.supervisorZone!));
   }
   const storeNameById = new Map(filterStores.map((s) => [s.id, s.storeName]));
+  // 員工「主責門市」篩選用 — 只包含 filterStores，不因派遣名稱補查而擴大
+  const homeStoreAllowedIds = new Set(filterStores.map((s) => s.id));
   /** 月加班／異常清單僅顯示桃園＋宜蘭各 10 間門市 */
   const dualRegionStoreIds = new Set(
     filterStores
@@ -309,7 +311,7 @@ export async function buildOperationsWorkHours(input: {
   for (const a of attendances) {
     if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
     const sid = homeStoreId(a, fallbackHome);
-    if (!sid || !storeNameById.has(sid)) continue;
+    if (!sid || !homeStoreAllowedIds.has(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
     if (Number(a.workHours) > 0) {
       employeeIdsInScope.add(a.employeeId);
@@ -357,7 +359,7 @@ export async function buildOperationsWorkHours(input: {
   for (const a of attendances) {
     if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
     const sid = homeStoreId(a, fallbackHome);
-    if (!sid || !storeNameById.has(sid)) continue;
+    if (!sid || !homeStoreAllowedIds.has(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
 
     const wh = Number(a.workHours);
@@ -442,7 +444,7 @@ export async function buildOperationsWorkHours(input: {
     const a = attendances.find((x) => x.employeeId === eid);
     if (!a) continue;
     const sid = homeStoreId(a, fallbackHome);
-    if (!sid || !storeNameById.has(sid)) continue;
+    if (!sid || !homeStoreAllowedIds.has(sid)) continue;
     if (!isDualRegionStore(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
     monthlyOvertime.push({
@@ -561,7 +563,7 @@ export async function buildOperationsWorkHours(input: {
   for (const a of attendances) {
     if (!isYmdInRange(workDateYmd(a.workDate), startYmd, endYmd)) continue;
     const sid = homeStoreId(a, fallbackHome);
-    if (!sid || !storeNameById.has(sid)) continue;
+    if (!sid || !homeStoreAllowedIds.has(sid)) continue;
     if (input.storeId && sid !== input.storeId) continue;
     const wh = Number(a.workHours);
     if (wh <= 0 || !employeeIdsInScope.has(a.employeeId)) continue;
