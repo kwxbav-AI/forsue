@@ -209,15 +209,27 @@ export async function mapPerformanceToRetailStore(
     select: { id: true, name: true },
   });
 
-  // 用 raw SQL 取得 legacy_store_id（直接對應 performance Store id），
-  // Prisma schema 未映射此欄位但 DB 已存在。
-  const rawRetailStores = await prisma.$queryRaw<RawRetailRow[]>`
-    SELECT id, store_name, legacy_store_id,
-           weekday_business_hours, saturday_business_hours,
-           daily_business_hours, default_labor_hours_per_day
-    FROM stores
-    WHERE is_active = true
-  `;
+  // 用 raw SQL 取得 legacy_store_id（直接對應 performance Store id）。
+  // 若該欄不存在（舊版 DB 未執行手動 migration），退回不帶 legacy 欄的查詢。
+  let rawRetailStores: RawRetailRow[];
+  try {
+    rawRetailStores = await prisma.$queryRaw<RawRetailRow[]>`
+      SELECT id, store_name, legacy_store_id,
+             weekday_business_hours, saturday_business_hours,
+             daily_business_hours, default_labor_hours_per_day
+      FROM stores
+      WHERE is_active = true
+    `;
+  } catch {
+    const rows = await prisma.$queryRaw<Omit<RawRetailRow, "legacy_store_id">[]>`
+      SELECT id, store_name,
+             weekday_business_hours, saturday_business_hours,
+             daily_business_hours, default_labor_hours_per_day
+      FROM stores
+      WHERE is_active = true
+    `;
+    rawRetailStores = rows.map((r) => ({ ...r, legacy_store_id: null }));
+  }
 
   // 優先：legacy_store_id 直接對應 performance Store id
   const retailByLegacyId = new Map<string, RawRetailRow>();
