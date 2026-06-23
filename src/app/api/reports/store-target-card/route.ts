@@ -7,6 +7,7 @@ import {
   monthStartEndYmd,
   parseMonthParam,
 } from "@/lib/month-working-calendar";
+import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,12 +36,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ month, startDate: startYmd, endDate: endYmd, weeks: [], stores: [] });
   }
 
-  const [stores, holidays] = await Promise.all([
+  const [stores, filterStores, holidays] = await Promise.all([
     prisma.store.findMany({
       where: { isActive: true, hideInReports: false as any },
       select: { id: true, name: true, code: true },
       orderBy: { name: "asc" },
     }),
+    listPerformanceStoresForFilter(),
     prisma.holiday.findMany({
       where: {
         isActive: true,
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   const holidaySet = new Set(holidays.map((h) => formatDateOnly(h.date)));
+  const regionById = new Map(filterStores.map((s) => [s.id, s.region]));
 
   const weeks: WeekRange[] = weekRangesRaw.map((w) => ({
     ...w,
@@ -66,6 +69,7 @@ export async function GET(request: NextRequest) {
       storeId: string;
       storeName: string;
       storeCode: string | null;
+      region: string | null;
       byWeek: { metDays: number; exceedDays: number; total: number }[];
     }
   >();
@@ -75,6 +79,7 @@ export async function GET(request: NextRequest) {
       storeId: s.id,
       storeName: s.name,
       storeCode: s.code ?? null,
+      region: regionById.get(s.id) ?? null,
       byWeek: weeks.map(() => ({ metDays: 0, exceedDays: 0, total: 0 })),
     });
   }
