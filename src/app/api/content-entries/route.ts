@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
 
-  const where: { workDate?: { gte: Date; lte: Date } } = {};
+  const branchFilter = searchParams.get("branch");
+  const where: { workDate?: { gte: Date; lte: Date }; branch?: { contains: string; mode: "insensitive" } } = {};
   if (startDate && endDate) {
     where.workDate = {
       gte: parseDateOnlyUTC(startDate),
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
     const d = parseDateOnlyUTC(startDate);
     where.workDate = { gte: d, lte: d };
   }
+  if (branchFilter) where.branch = { contains: branchFilter, mode: "insensitive" };
 
   const isLatestMode = !where.workDate && latest === "1";
   const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;

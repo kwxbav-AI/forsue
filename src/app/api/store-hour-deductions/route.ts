@@ -26,12 +26,14 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
-  const where: { workDate?: { gte: Date; lte: Date } } = {};
+  const storeIdFilter = searchParams.get("storeId");
+  const where: { workDate?: { gte: Date; lte: Date }; storeId?: string } = {};
   if (startDate && endDate) {
     const start = parseDateOnlyUTC(startDate);
     const end = parseDateOnlyUTC(endDate);
     where.workDate = { gte: start, lte: end };
   }
+  if (storeIdFilter) where.storeId = storeIdFilter;
 
   const isLatestMode = !where.workDate && latest === "1";
   const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;

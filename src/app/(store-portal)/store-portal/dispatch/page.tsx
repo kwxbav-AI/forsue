@@ -1,41 +1,135 @@
-import Link from "next/link";
-import { ExternalLink, ArrowRight } from "lucide-react";
+"use client";
 
-export default function DispatchRedirectPage() {
-  return <WorkHourRedirectPage title="人員調度" href="/dispatches" description="填寫員工跨店支援調度，包含調入 / 調出門市與工作日期。" />;
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { RefreshCw, ExternalLink } from "lucide-react";
+import Link from "next/link";
+
+type StoreContext = {
+  storeName: string;
+  performanceStoreId: string | null;
+};
+
+type DispatchRow = {
+  id: string;
+  workDate: string;
+  employeeCode: string;
+  employeeName: string;
+  fromStoreName: string | null;
+  toStoreName: string | null;
+  dispatchHours: number | null;
+  actualHours: number | null;
+  confirmStatus: string | null;
+};
+
+function toYmd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function WorkHourRedirectPage({
-  title,
-  href,
-  description,
-}: {
-  title: string;
-  href: string;
-  description: string;
-}) {
+function StatusBadge({ s }: { s: string | null }) {
+  if (!s) return <span className="text-slate-300">—</span>;
+  const cls =
+    s === "已確認" ? "bg-emerald-50 text-emerald-700"
+    : s === "未確認" ? "bg-amber-50 text-amber-700"
+    : "bg-slate-100 text-slate-500";
+  return <span className={`rounded px-1.5 py-px text-[9px] font-medium ${cls}`}>{s}</span>;
+}
+
+export default function StoreDispatchPage() {
+  const searchParams = useSearchParams();
+  const adminStoreId = searchParams.get("storeId");
+  const now = new Date();
+  const ctxRef = useRef<StoreContext | null>(null);
+  const [rows, setRows] = useState<DispatchRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const today = toYmd(now);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (!ctxRef.current) {
+        const ctxUrl = adminStoreId
+          ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
+          : "/api/store-portal/context";
+        const res = await fetch(ctxUrl);
+        if (!res.ok) throw new Error("無法取得門市資訊");
+        ctxRef.current = (await res.json()) as StoreContext;
+      }
+      const { performanceStoreId } = ctxRef.current;
+      const params = new URLSearchParams({ startDate: monthStart, endDate: today });
+      if (performanceStoreId) params.set("storeId", performanceStoreId);
+      const res = await fetch(`/api/dispatches?${params.toString()}`);
+      if (!res.ok) throw new Error("調度紀錄載入失敗");
+      setRows(await res.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "載入失敗");
+    } finally {
+      setLoading(false);
+    }
+  }, [adminStoreId, monthStart, today]);
+
+  useEffect(() => {
+    ctxRef.current = null;
+    void load();
+  }, [adminStoreId]);
+
   return (
     <div className="flex flex-col">
-      <div className="border-b border-slate-200 bg-white px-5 py-3">
-        <h1 className="text-sm font-medium text-slate-800">{title}</h1>
-        <p className="text-xs text-slate-400">工時異動填報</p>
-      </div>
-      <div className="flex flex-1 items-center justify-center p-8">
-        <div className="max-w-sm text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-            <ExternalLink size={20} className="text-slate-400" />
-          </div>
-          <h2 className="mb-2 text-sm font-medium text-slate-700">{title}</h2>
-          <p className="mb-6 text-xs text-slate-400">{description}</p>
-          <Link
-            href={href}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-          >
-            前往填報
-            <ArrowRight size={14} />
-          </Link>
-          <p className="mt-3 text-[10px] text-slate-400">將開啟現有填報頁面（登入帳號相同）</p>
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
+        <div>
+          <h1 className="text-sm font-medium text-slate-800">本月調度紀錄</h1>
+          <p className="text-xs text-slate-400">{monthStart} – {today}（含調入 &amp; 調出）</p>
         </div>
+        <Link href="/dispatches" target="_blank"
+          className="flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50">
+          填報 <ExternalLink size={10} />
+        </Link>
+        <button type="button" onClick={() => void load()} disabled={loading}
+          className="rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-40">
+          <RefreshCw size={12} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {error && <div className="mb-3 rounded border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+
+        {loading ? (
+          <p className="text-sm text-slate-400">載入中…</p>
+        ) : rows.length === 0 ? (
+          <p className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-400">本月無調度紀錄</p>
+        ) : (
+          <>
+            <p className="mb-2 text-[11px] text-slate-400">共 {rows.length} 筆</p>
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    {["日期", "員工", "來源門市", "調至門市", "排定", "實際", "狀態"].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
+                      <td className="px-3 py-2 text-slate-500">{r.workDate}</td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{r.employeeName}</td>
+                      <td className="px-3 py-2 text-slate-500">{r.fromStoreName ?? "—"}</td>
+                      <td className="px-3 py-2 text-slate-500">{r.toStoreName ?? "—"}</td>
+                      <td className="px-3 py-2 text-slate-600">{r.dispatchHours != null ? `${r.dispatchHours}h` : "—"}</td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{r.actualHours != null ? `${r.actualHours}h` : "—"}</td>
+                      <td className="px-3 py-2"><StatusBadge s={r.confirmStatus} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
-  const where: { workDate?: Date | { gte: Date; lte: Date } } = {};
+  const storeIdFilter = searchParams.get("storeId");
+  const where: {
+    workDate?: Date | { gte: Date; lte: Date };
+    OR?: { fromStoreId: string; toStoreId: string }[];
+  } = {};
   if (startDate && endDate) {
     const start = parseDateOnlyUTC(startDate);
     const end = parseDateOnlyUTC(endDate);
@@ -48,6 +52,9 @@ export async function GET(request: NextRequest) {
   } else if (date) {
     where.workDate = parseDateOnlyUTC(date);
   }
+  const dispatchWhere = storeIdFilter
+    ? { ...where, OR: [{ fromStoreId: storeIdFilter }, { toStoreId: storeIdFilter }] }
+    : where;
 
   const isLatestMode = !where.workDate && latest === "1";
   const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
@@ -64,7 +71,7 @@ export async function GET(request: NextRequest) {
   const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
 
   const list = await prisma.dispatchRecord.findMany({
-    where,
+    where: dispatchWhere,
     include: {
       employee: { select: { id: true, employeeCode: true, name: true } },
     },
