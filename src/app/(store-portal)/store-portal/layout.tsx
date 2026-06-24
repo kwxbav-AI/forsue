@@ -18,9 +18,9 @@ export default async function StorePortalLayout({
 
   if (isAdmin) {
     const allStores = await prisma.retailStore.findMany({
-      where: { isActive: true },
+      where: { isActive: true, region: { in: ["桃園區", "宜蘭區"] } },
       select: { id: true, storeName: true, region: true },
-      orderBy: { storeName: "asc" },
+      orderBy: [{ region: "asc" }, { storeName: "asc" }],
     });
     return (
       <StorePortalShell
