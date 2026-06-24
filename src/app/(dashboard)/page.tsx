@@ -48,6 +48,12 @@ export default async function HomePage() {
       title: "營運部Dashboard",
       desc: "營運總覽、資料匯入、門市績效與工效比",
     },
+    {
+      key: "store-portal",
+      href: "/store-portal",
+      title: "門市入口",
+      desc: "業績總覽、月曆達標、出勤紀錄、工時異動填報",
+    },
   ] as const;
 
   const visible = !authOn
@@ -62,6 +68,8 @@ export default async function HomePage() {
               ok = await canAccessWorkhourRelatedSectionDb(role);
             } else if (c.key === "reports") {
               ok = await canAccessReportsSectionDb(role);
+            } else if (c.key === "store-portal") {
+              ok = await canAccessPageDb(role, "/store-portal/overview");
             } else {
               ok = await canAccessPageDb(role, c.href);
             }

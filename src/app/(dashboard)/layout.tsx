@@ -52,6 +52,13 @@ export default async function DashboardLayout({
         { id: session.roleId, key: session.roleKey },
         "/operations/dashboard"
       )));
+  const canStorePortal =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/store-portal/overview"
+      )));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -106,6 +113,11 @@ export default async function DashboardLayout({
                 className="text-slate-600 hover:text-sky-600"
               >
                 營運部Dashboard
+              </Link>
+            ) : null}
+            {canStorePortal ? (
+              <Link href="/store-portal" className="text-slate-600 hover:text-sky-600">
+                門市入口
               </Link>
             ) : null}
           </nav>
