@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 type SupervisorStore = { storeId: string; storeName: string; region: string | null };
@@ -422,8 +422,8 @@ function UsersInner() {
               </tr>
             ) : (
               users.map((u) => (
-                <>
-                  <tr key={u.id} className="border-b border-slate-100">
+                <React.Fragment key={u.id}>
+                  <tr className="border-b border-slate-100">
                     <td className="sticky left-0 z-[5] w-[160px] min-w-[160px] bg-white px-3 py-2 font-medium">
                       {u.username}
                       {u.employeeName ? (
@@ -483,7 +483,7 @@ function UsersInner() {
                     </td>
                   </tr>
                   {expandedId === u.id && (
-                    <tr key={`${u.id}-expand`} className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-slate-100 bg-slate-50">
                       <td colSpan={5} className="px-6 py-3">
                         <UserStoreEditor
                           user={u}
@@ -495,7 +495,7 @@ function UsersInner() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))
             )}
           </tbody>
