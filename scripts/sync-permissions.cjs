@@ -105,6 +105,18 @@ async function main() {
       }
     }
 
+    // 3b) delete modules no longer in JSON
+    const validKeys = new Set([...idByKey.keys()]);
+    const allExisting = await prisma.permissionModule.findMany({ select: { id: true, key: true } });
+    const toDelete = allExisting.filter((m) => !validKeys.has(m.key));
+    if (toDelete.length > 0) {
+      const deleteIds = toDelete.map((m) => m.id);
+      await prisma.rolePermission.deleteMany({ where: { moduleId: { in: deleteIds } } });
+      await prisma.permissionModuleApiPattern.deleteMany({ where: { moduleId: { in: deleteIds } } });
+      await prisma.permissionModule.deleteMany({ where: { id: { in: deleteIds } } });
+      console.log(`Deleted ${toDelete.length} retired modules: ${toDelete.map((m) => m.key).join(", ")}`);
+    }
+
     // 4) upsert roles + default role permissions
     const roleIdByKey = new Map();
     for (const r of ALL_ROLE_SPECS) {
