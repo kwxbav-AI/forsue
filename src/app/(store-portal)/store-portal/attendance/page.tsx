@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 type StoreContext = {
   storeName: string;
@@ -21,6 +21,9 @@ type AttendanceRow = {
   clockStatus?: string;
 };
 
+type SortField = "workDate" | "name";
+type SortDir = "asc" | "desc";
+
 function toYmd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -30,14 +33,23 @@ function fmtTime(t: string | null) {
   return t.slice(0, 5);
 }
 
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
+  if (field !== sortField) return <ChevronsUpDown size={11} className="ml-0.5 text-slate-300" />;
+  return sortDir === "asc"
+    ? <ChevronUp size={11} className="ml-0.5 text-emerald-500" />
+    : <ChevronDown size={11} className="ml-0.5 text-emerald-500" />;
+}
+
 export default function StoreAttendancePage() {
   const searchParams = useSearchParams();
   const adminStoreId = searchParams.get("storeId");
   const now = new Date();
-  const [ctx, setCtx] = useState<StoreContext | null>(null);
+  const ctxRef = useRef<StoreContext | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>("workDate");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   const today = toYmd(now);
@@ -46,25 +58,18 @@ export default function StoreAttendancePage() {
     setLoading(true);
     setError(null);
     try {
-      let storeCtx = ctx;
-      if (!storeCtx) {
+      if (!ctxRef.current) {
         const ctxUrl = adminStoreId
           ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
           : "/api/store-portal/context";
         const res = await fetch(ctxUrl);
         if (!res.ok) throw new Error("無法取得門市資訊");
-        const data = await res.json();
-        storeCtx = data as StoreContext;
-        setCtx(storeCtx);
+        ctxRef.current = (await res.json()) as StoreContext;
       }
+      const storeCtx = ctxRef.current;
 
-      const params = new URLSearchParams({
-        startDate: monthStart,
-        endDate: today,
-      });
-      if (storeCtx.performanceStoreId) {
-        params.set("department", storeCtx.storeName);
-      }
+      const params = new URLSearchParams({ startDate: monthStart, endDate: today });
+      if (storeCtx.storeName) params.set("department", storeCtx.storeName);
 
       const attRes = await fetch(`/api/reports/attendance?${params.toString()}`);
       if (!attRes.ok) throw new Error("出勤資料載入失敗");
@@ -78,11 +83,33 @@ export default function StoreAttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [ctx]);
+  }, [adminStoreId, monthStart, today]);
 
   useEffect(() => {
+    ctxRef.current = null;
     void load();
-  }, [load]);
+  }, [adminStoreId]);
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
+
+  const sortedRows = [...rows].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === "workDate") {
+      cmp = a.workDate.localeCompare(b.workDate);
+      if (cmp === 0) cmp = a.name.localeCompare(b.name, "zh-TW");
+    } else {
+      cmp = a.name.localeCompare(b.name, "zh-TW");
+      if (cmp === 0) cmp = a.workDate.localeCompare(b.workDate);
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
 
   const totalHours = rows.reduce((a, r) => a + (r.workHours ?? 0), 0);
 
@@ -142,22 +169,36 @@ export default function StoreAttendancePage() {
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {["日期", "員工", "上班", "下班", "工時", "備註"].map((h) => (
-                    <th
-                      key={h}
-                      className="px-3 py-2 text-left text-[10px] font-medium text-slate-400"
+                  <th className="px-3 py-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("workDate")}
+                      className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
                     >
+                      日期
+                      <SortIcon field="workDate" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("name")}
+                      className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
+                    >
+                      員工
+                      <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  {(["上班", "下班", "工時", "備註"] as const).map((h) => (
+                    <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0"
-                  >
+                {sortedRows.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
                     <td className="px-3 py-2 text-slate-500">{r.workDate}</td>
                     <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
                     <td className="px-3 py-2 text-slate-500">{fmtTime(r.startTime)}</td>

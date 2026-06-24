@@ -58,6 +58,8 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      startTime: string | null;
+      endTime: string | null;
       adjustmentReason: null;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
@@ -73,6 +75,8 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      startTime: string | null;
+      endTime: string | null;
       adjustmentReason: string;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
@@ -88,6 +92,8 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      startTime: string | null;
+      endTime: string | null;
       adjustmentReason: string;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
@@ -103,6 +109,8 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      startTime: string | null;
+      endTime: string | null;
       adjustmentReason: string;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
@@ -118,6 +126,8 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      startTime: string | null;
+      endTime: string | null;
       adjustmentReason: null;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
@@ -514,6 +524,8 @@ export async function GET(request: Request) {
         originalStoreId: string | null;
         department: string | null;
         workHours: number;
+        startTime: string | null;
+        endTime: string | null;
         locationMatchStatus: string | null;
         clockInStoreText: string | null;
         clockOutStoreText: string | null;
@@ -533,6 +545,8 @@ export async function GET(request: Request) {
           department: r.department ?? null,
           workHours: Number(r.workHours),
           locationMatchStatus: (r as any).locationMatchStatus ?? null,
+          startTime: (r as any).startTime ?? null,
+          endTime: (r as any).endTime ?? null,
           clockInStoreText: (r as any).clockInStoreText ?? null,
           clockOutStoreText: (r as any).clockOutStoreText ?? null,
           shiftType: (r as any).shiftType ?? null,
@@ -652,10 +666,10 @@ export async function GET(request: Request) {
             workHours: Number(r.workHours),
             locationMatchStatus:
               (r as { locationMatchStatus?: string | null }).locationMatchStatus ?? null,
-            clockInStoreText:
-              (r as { clockInStoreText?: string | null }).clockInStoreText ?? null,
-            clockOutStoreText:
-              (r as { clockOutStoreText?: string | null }).clockOutStoreText ?? null,
+            startTime: (r as { startTime?: string | null }).startTime ?? null,
+            endTime: (r as { endTime?: string | null }).endTime ?? null,
+            clockInStoreText: (r as { clockInStoreText?: string | null }).clockInStoreText ?? null,
+            clockOutStoreText: (r as { clockOutStoreText?: string | null }).clockOutStoreText ?? null,
             shiftType: (r as { shiftType?: string | null }).shiftType ?? null,
             employee: r.employee,
             id: r.id,
@@ -682,6 +696,8 @@ export async function GET(request: Request) {
         department: null,
         workHours: 0,
         locationMatchStatus: "UNKNOWN",
+        startTime: null,
+        endTime: null,
         clockInStoreText: null,
         clockOutStoreText: null,
         shiftType: null,
@@ -786,6 +802,8 @@ export async function GET(request: Request) {
           workHours: baseHours,
           adjustmentReason: null,
           locationMatchStatus: att.locationMatchStatus ?? null,
+          startTime: att.startTime ?? null,
+          endTime: att.endTime ?? null,
           clockInStoreText: att.clockInStoreText ?? null,
           clockOutStoreText: att.clockOutStoreText ?? null,
         });
@@ -843,6 +861,8 @@ export async function GET(request: Request) {
                   workHours: Math.round(delta * 100) / 100,
                   adjustmentReason: `儲備人力，計${percentLabel}%工時`,
                   locationMatchStatus: null,
+                  startTime: null,
+                  endTime: null,
                   clockInStoreText: null,
                   clockOutStoreText: null,
                 });
@@ -878,6 +898,8 @@ export async function GET(request: Request) {
                 workHours: Math.round(delta * 100) / 100,
                 adjustmentReason: `新進員工，計${percentLabel}%工時`,
                 locationMatchStatus: null,
+                startTime: null,
+                endTime: null,
                 clockInStoreText: null,
                 clockOutStoreText: null,
               });
@@ -910,6 +932,8 @@ export async function GET(request: Request) {
               workHours: 0,
               adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -933,6 +957,8 @@ export async function GET(request: Request) {
               workHours: -h,
               adjustmentReason: isBackoffice ? `後勤支援門市（調出 ${h}h）` : (d.remark?.trim() || "支援"),
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -953,6 +979,8 @@ export async function GET(request: Request) {
                 ? `後勤支援門市（70%：${roundedHIn}h）`
                 : (d.remark?.trim() || "人力支援"),
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -978,6 +1006,8 @@ export async function GET(request: Request) {
               workHours: Math.round(delta * 100) / 100,
               adjustmentReason: "試作",
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -996,6 +1026,8 @@ export async function GET(request: Request) {
               workHours: Math.round(delta * 100) / 100,
               adjustmentReason: "試作",
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -1020,6 +1052,8 @@ export async function GET(request: Request) {
             workHours: h,
             adjustmentReason: reason,
             locationMatchStatus: null,
+            startTime: null,
+            endTime: null,
             clockInStoreText: null,
             clockOutStoreText: null,
           });
@@ -1042,6 +1076,8 @@ export async function GET(request: Request) {
           workHours: Math.round(net * 100) / 100,
           adjustmentReason: null,
           locationMatchStatus: null,
+          startTime: null,
+          endTime: null,
           clockInStoreText: null,
           clockOutStoreText: null,
         });
@@ -1072,6 +1108,8 @@ export async function GET(request: Request) {
               workHours: 0,
               adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -1094,6 +1132,8 @@ export async function GET(request: Request) {
               ? `後勤支援門市（70%：${roundedHIn}h）`
               : (d.remark?.trim() || "支援"),
             locationMatchStatus: null,
+            startTime: null,
+            endTime: null,
             clockInStoreText: null,
             clockOutStoreText: null,
           });
@@ -1118,6 +1158,8 @@ export async function GET(request: Request) {
             workHours: h,
             adjustmentReason: formatAdjustmentReason(a.adjustmentType, a.note),
             locationMatchStatus: null,
+            startTime: null,
+            endTime: null,
             clockInStoreText: null,
             clockOutStoreText: null,
           });
@@ -1147,6 +1189,8 @@ export async function GET(request: Request) {
             workHours: engineNet != null ? engineNet : Math.round(net * 100) / 100,
             adjustmentReason: null,
             locationMatchStatus: null,
+            startTime: null,
+            endTime: null,
             clockInStoreText: null,
             clockOutStoreText: null,
           });
@@ -1170,6 +1214,8 @@ export async function GET(request: Request) {
               workHours: 0,
               adjustmentReason: "後勤支援門市（已確認但未填調度工時）",
               locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
               clockInStoreText: null,
               clockOutStoreText: null,
             });
@@ -1192,6 +1238,8 @@ export async function GET(request: Request) {
               ? `後勤支援門市（70%：${Math.round(hIn * 100) / 100}h）`
               : (d.remark?.trim() || "支援"),
             locationMatchStatus: null,
+            startTime: null,
+            endTime: null,
             clockInStoreText: null,
             clockOutStoreText: null,
           });
