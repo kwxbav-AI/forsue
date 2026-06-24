@@ -59,6 +59,13 @@ export default async function DashboardLayout({
         { id: session.roleId, key: session.roleKey },
         "/store-portal/overview"
       )));
+  const canBonus =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/bonus/monthly"
+      )));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -104,9 +111,11 @@ export default async function DashboardLayout({
                 設定區
               </Link>
             ) : null}
-            <Link href="/bonus/monthly" className="text-slate-600 hover:text-sky-600">
-              績效獎金
-            </Link>
+            {canBonus ? (
+              <Link href="/bonus/monthly" className="text-slate-600 hover:text-sky-600">
+                績效獎金
+              </Link>
+            ) : null}
             {canOperations ? (
               <Link
                 href="/operations/dashboard"
