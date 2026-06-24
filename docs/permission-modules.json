@@ -3,6 +3,18 @@
   "notes": "PermissionModule 匯入用資料。pathPattern 以 startsWith 比對；method 為 null 代表不限制方法。",
   "modules": [
     {
+      "key": "store-portal",
+      "label": "門市入口",
+      "description": "門市人員專屬入口（出勤、工時異動、績效）",
+      "group": "門市人員",
+      "sortOrder": 900,
+      "parentKey": null,
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/store-portal", "method": null },
+        { "kind": "API", "pathPattern": "/api/store-portal", "method": null }
+      ]
+    },
+    {
       "key": "home",
       "label": "首頁",
       "description": "系統首頁入口",
