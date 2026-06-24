@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type StoreContext = {
   performanceStoreId: string | null;
@@ -57,6 +58,8 @@ function nextMonth(year: number, month: number) {
 }
 
 export default function StoreCalendarPage() {
+  const searchParams = useSearchParams();
+  const adminStoreId = searchParams.get("storeId");
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -75,7 +78,10 @@ export default function StoreCalendarPage() {
         let storeCtx = ctx;
         let rsId = retailStoreId;
         if (!storeCtx) {
-          const res = await fetch("/api/store-portal/context");
+          const ctxUrl = adminStoreId
+            ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
+            : "/api/store-portal/context";
+          const res = await fetch(ctxUrl);
           if (!res.ok) throw new Error("無法取得門市資訊");
           const data = await res.json();
           storeCtx = data as StoreContext;

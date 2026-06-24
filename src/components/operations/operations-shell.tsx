@@ -8,7 +8,6 @@ import { OPS_COLORS } from "@/lib/ops-color-tokens";
 
 const SIDEBAR_BG = "#0f172a";
 const SIDEBAR_ACTIVE = "#1e40af";
-const STORE_OPS_ACTIVE = "#BA7517";
 
 function NavLink({
   item,
@@ -20,7 +19,6 @@ function NavLink({
   badgeCount?: number;
 }) {
   const Icon = item.icon;
-  const activeBg = item.storeOps ? STORE_OPS_ACTIVE : SIDEBAR_ACTIVE;
 
   return (
     <Link
@@ -28,11 +26,9 @@ function NavLink({
       className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
         active ?
           "font-medium text-white shadow-sm"
-        : item.storeOps ?
-          "text-amber-100/90 hover:bg-amber-900/30 hover:text-white"
         : "text-slate-300 hover:bg-slate-800 hover:text-white"
       }`}
-      style={active ? { backgroundColor: activeBg } : undefined}
+      style={active ? { backgroundColor: SIDEBAR_ACTIVE } : undefined}
     >
       <Icon className="h-4 w-4 shrink-0 opacity-90" />
       <span>{item.label}</span>
@@ -66,13 +62,7 @@ export function OperationsShell({
 
   useEffect(() => {
     if (!hasDynamicBadge) return;
-    void fetch("/api/operations/store-ops/notifications")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setNotifyCount(Array.isArray(data?.items) ? data.items.length : 0))
-      .catch(() => setNotifyCount(0));
   }, [hasDynamicBadge, pathname]);
-
-  let lastWasStoreOps = false;
 
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] flex min-h-[calc(100vh-4rem)] w-screen max-w-none bg-slate-100">
@@ -89,17 +79,9 @@ export function OperationsShell({
             const active =
               pathname === item.href ||
               (item.href !== "/operations/dashboard" && pathname.startsWith(item.href));
-            const showStoreOpsLabel = item.storeOps && !lastWasStoreOps;
-            if (item.storeOps) lastWasStoreOps = true;
-            else lastWasStoreOps = false;
 
             return (
               <div key={item.href}>
-                {showStoreOpsLabel ?
-                  <p className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">
-                    店務管理
-                  </p>
-                : null}
                 <NavLink
                   item={item}
                   active={active}

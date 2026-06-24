@@ -13,6 +13,26 @@ export default async function StorePortalLayout({
   const session = await getServerSession();
   if (!session) redirect("/login");
 
+  const isAdmin = session.roleKey === "ADMIN";
+  const username = session.username;
+
+  if (isAdmin) {
+    const allStores = await prisma.retailStore.findMany({
+      where: { isActive: true },
+      select: { id: true, storeName: true, region: true },
+      orderBy: { storeName: "asc" },
+    });
+    return (
+      <StorePortalShell
+        storeInfo={{ username, storeName: "（請選擇門市）", region: null }}
+        allStores={allStores}
+        isAdmin
+      >
+        {children}
+      </StorePortalShell>
+    );
+  }
+
   const user = await prisma.appUser.findUnique({
     where: { id: session.userId },
     select: {
@@ -23,10 +43,9 @@ export default async function StorePortalLayout({
 
   const storeName = user?.retailStore?.storeName ?? "未知門市";
   const region = user?.retailStore?.region ?? null;
-  const username = user?.username ?? session.username;
 
   return (
-    <StorePortalShell storeInfo={{ username, storeName, region }}>
+    <StorePortalShell storeInfo={{ username, storeName, region }} isAdmin={false}>
       {children}
     </StorePortalShell>
   );

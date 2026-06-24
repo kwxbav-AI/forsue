@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
 type StoreContext = {
@@ -69,6 +70,8 @@ function monthLabel(d: Date): string {
 }
 
 export default function StoreOverviewPage() {
+  const searchParams = useSearchParams();
+  const adminStoreId = searchParams.get("storeId");
   const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [metrics, setMetrics] = useState<DashMetrics | null>(null);
   const [target, setTarget] = useState<TargetData | null>(null);
@@ -84,7 +87,10 @@ export default function StoreOverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const ctxRes = await fetch("/api/store-portal/context");
+      const ctxUrl = adminStoreId
+        ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
+        : "/api/store-portal/context";
+      const ctxRes = await fetch(ctxUrl);
       if (!ctxRes.ok) throw new Error("無法取得門市資訊");
       const ctxData = (await ctxRes.json()) as StoreContext;
       setCtx(ctxData);
@@ -113,7 +119,7 @@ export default function StoreOverviewPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminStoreId]);
 
   useEffect(() => {
     void load();

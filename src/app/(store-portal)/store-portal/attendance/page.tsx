@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
 type StoreContext = {
@@ -30,6 +31,8 @@ function fmtTime(t: string | null) {
 }
 
 export default function StoreAttendancePage() {
+  const searchParams = useSearchParams();
+  const adminStoreId = searchParams.get("storeId");
   const now = new Date();
   const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
@@ -45,7 +48,10 @@ export default function StoreAttendancePage() {
     try {
       let storeCtx = ctx;
       if (!storeCtx) {
-        const res = await fetch("/api/store-portal/context");
+        const ctxUrl = adminStoreId
+          ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
+          : "/api/store-portal/context";
+        const res = await fetch(ctxUrl);
         if (!res.ok) throw new Error("無法取得門市資訊");
         const data = await res.json();
         storeCtx = data as StoreContext;
