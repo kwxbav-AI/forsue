@@ -182,12 +182,12 @@ export default function StoreCalendarPage() {
         ) : (
           <>
             <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-             <div className="min-w-[560px]">
+             <div style={{ minWidth: 0, maxWidth: "100%" }}>
               <div className="grid grid-cols-7 border-b border-slate-100">
                 {WEEKDAY_LABELS.map((d, i) => (
                   <div
                     key={d}
-                    className={`py-1.5 text-center text-[10px] font-medium ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-500"}`}
+                    className={`py-2 text-center text-sm font-bold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
                   >
                     {d}
                   </div>
@@ -207,7 +207,7 @@ export default function StoreCalendarPage() {
                   const isHoliday = !!day?.holiday;
                   const isRest = isSun || isHoliday;
 
-                  let cellCls = "min-h-32 p-2 ";
+                  let cellCls = "min-h-28 p-1.5 ";
                   if (isRest) cellCls += "bg-slate-50/70 ";
                   else if (isFuture) cellCls += "bg-white opacity-50 ";
                   else if (day?.isExceed) cellCls += "bg-purple-50 ";
@@ -296,43 +296,63 @@ export default function StoreCalendarPage() {
              </div>
             </div>
 
-            {targetData && (
-              <div className="mt-4">
-                <p className="mb-2 text-[11px] font-medium text-slate-500">週別達標摘要</p>
-                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${targetData.weeks.length}, 1fr)` }}>
-                  {targetData.weeks.map((w, i) => {
-                    const wk = storeTarget?.byWeek[i] ?? { metDays: 0, exceedDays: 0, total: 0 };
-                    const isOngoing = w.endYmd >= todayYmd && w.startYmd <= todayYmd;
-                    const notStarted = w.startYmd > todayYmd;
-                    return (
-                      <div
-                        key={w.index}
-                        className={`rounded-lg border p-2.5 ${wk.total > 0 ? "border-emerald-100 bg-emerald-50" : "border-slate-100 bg-slate-50"}`}
-                      >
-                        <div className="mb-1.5 text-[9px] text-slate-400">
-                          W{w.index} · {fmtMd(w.startYmd)}–{fmtMd(w.endYmd)}
+            {targetData && storeTarget && (() => {
+              const totalMet = storeTarget.byWeek.reduce((a, w) => a + w.metDays, 0);
+              const totalExceed = storeTarget.byWeek.reduce((a, w) => a + w.exceedDays, 0);
+              return (
+                <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4">
+                  <div className="mb-4 flex items-center gap-3 border-b border-slate-100 pb-3">
+                    <span className="text-sm font-bold text-slate-700">週別達標摘要</span>
+                    <div className="ml-auto flex items-center gap-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                        達標 {totalMet} 天
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${totalExceed > 0 ? "bg-purple-50 text-purple-600" : "bg-slate-50 text-slate-300"}`}>
+                        <span className={`inline-block h-2 w-2 rounded-full ${totalExceed > 0 ? "bg-purple-400" : "bg-slate-200"}`} />
+                        超標 {totalExceed} 天
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {targetData.weeks.map((w, i) => {
+                      const wk = storeTarget.byWeek[i] ?? { metDays: 0, exceedDays: 0, total: 0 };
+                      const isOngoing = w.endYmd >= todayYmd && w.startYmd <= todayYmd;
+                      const notStarted = w.startYmd > todayYmd;
+                      return (
+                        <div
+                          key={w.index}
+                          className="flex items-center gap-3"
+                          style={{ opacity: notStarted ? 0.4 : 1 }}
+                        >
+                          <span className="w-28 flex-shrink-0 text-xs text-slate-500">
+                            W{w.index} · {fmtMd(w.startYmd)}–{fmtMd(w.endYmd)}
+                          </span>
+                          <div className="flex gap-2">
+                            {notStarted ? (
+                              <span className="rounded-full bg-slate-50 px-3 py-0.5 text-xs text-slate-400">尚未開始</span>
+                            ) : (
+                              <>
+                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${wk.metDays > 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-400"}`}>
+                                  達標 {wk.metDays}
+                                </span>
+                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${wk.exceedDays > 0 ? "bg-purple-100 text-purple-600" : "bg-slate-50 text-slate-300"}`}>
+                                  超標 {wk.exceedDays}
+                                </span>
+                                {isOngoing && (
+                                  <span className="rounded-full bg-blue-50 px-3 py-0.5 text-xs text-blue-500">進行中</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <span className="ml-auto text-xs text-slate-400">{w.workingDays} 工作日</span>
                         </div>
-                        {notStarted ? (
-                          <div className="text-[10px] text-slate-400">尚未開始</div>
-                        ) : isOngoing ? (
-                          <>
-                            <div className="text-sm font-medium text-emerald-700">達標 {wk.metDays}</div>
-                            <div className={`text-xs font-medium ${wk.exceedDays > 0 ? "text-purple-600" : "text-slate-300"}`}>超標 {wk.exceedDays}</div>
-                            <div className="text-[9px] text-slate-400">進行中</div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="text-sm font-medium text-emerald-700">達標 {wk.metDays}</div>
-                            <div className={`text-xs font-medium ${wk.exceedDays > 0 ? "text-purple-600" : "text-slate-300"}`}>超標 {wk.exceedDays}</div>
-                            <div className="text-[9px] text-slate-400">{w.workingDays} 工作日</div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         )}
       </div>
