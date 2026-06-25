@@ -205,10 +205,10 @@ export default function StoreCalendarPage() {
                   const isHoliday = !!day?.holiday;
                   const isRest = isSun || isHoliday;
 
-                  let cellCls = "min-h-24 p-1.5 ";
+                  let cellCls = "min-h-32 p-2 ";
                   if (isRest) cellCls += "bg-slate-50/70 ";
                   else if (isFuture) cellCls += "bg-white opacity-50 ";
-                  else if (day?.efficiencyRatio != null && day.efficiencyRatio >= 6000) cellCls += "bg-purple-50 ";
+                  else if (day?.isExceed) cellCls += "bg-purple-50 ";
                   else if (day?.isAchieved) cellCls += "bg-emerald-50 ";
                   else if (day?.hasData) cellCls += "bg-white ";
                   else cellCls += "bg-white ";
@@ -230,7 +230,7 @@ export default function StoreCalendarPage() {
                     <div key={d} className={cellCls}>
                       <div className="mb-1 flex items-center justify-between">
                         <span
-                          className={`text-[10px] font-medium ${
+                          className={`text-xs font-medium ${
                             isSun || isHoliday
                               ? "text-red-400"
                               : isSat
@@ -243,7 +243,7 @@ export default function StoreCalendarPage() {
                           {d}
                         </span>
                         {tag && (
-                          <span className={`rounded px-1 py-px text-[8px] font-medium ${tag.cls}`}>
+                          <span className={`rounded px-1.5 py-px text-[10px] font-medium ${tag.cls}`}>
                             {tag.label}
                           </span>
                         )}
@@ -251,11 +251,11 @@ export default function StoreCalendarPage() {
                       {!isRest && !isFuture && (
                         <>
                           {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
-                            <div key={si} className="flex items-center gap-1 mb-0.5">
-                              <span className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"}`} />
-                              <span className="truncate text-[9px] text-slate-600">
+                            <div key={si} className="flex items-start gap-1 mb-1">
+                              <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"}`} />
+                              <span className="text-[11px] leading-tight text-slate-700">
                                 {s.name}
-                                <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(2)}h</span>
+                                <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
                                 {s.outgoingTo ? (
                                   <span className="text-amber-600 ml-0.5">（{s.outgoingTo}）</span>
                                 ) : s.isSupport && s.homeStore ? (
@@ -265,14 +265,14 @@ export default function StoreCalendarPage() {
                             </div>
                           ))}
                           {(day?.staff.length ?? 0) > maxStaff && (
-                            <div className="text-[8px] text-slate-400">
+                            <div className="text-[10px] text-slate-400">
                               +{(day?.staff.length ?? 0) - maxStaff} 人
                             </div>
                           )}
                           {day?.efficiencyRatio != null && (
                             <div
-                              className={`mt-0.5 text-[8px] ${
-                                day.efficiencyRatio >= 6000
+                              className={`mt-1 text-[11px] font-medium ${
+                                day.isExceed
                                   ? "text-purple-600"
                                   : day.isAchieved
                                   ? "text-emerald-600"
@@ -315,13 +315,13 @@ export default function StoreCalendarPage() {
                         ) : isOngoing ? (
                           <>
                             <div className="text-sm font-medium text-emerald-700">達標 {wk.metDays}</div>
-                            {wk.exceedDays > 0 && <div className="text-xs font-medium text-purple-600">超標 {wk.exceedDays}</div>}
+                            <div className={`text-xs font-medium ${wk.exceedDays > 0 ? "text-purple-600" : "text-slate-300"}`}>超標 {wk.exceedDays}</div>
                             <div className="text-[9px] text-slate-400">進行中</div>
                           </>
                         ) : (
                           <>
                             <div className="text-sm font-medium text-emerald-700">達標 {wk.metDays}</div>
-                            {wk.exceedDays > 0 && <div className="text-xs font-medium text-purple-600">超標 {wk.exceedDays}</div>}
+                            <div className={`text-xs font-medium ${wk.exceedDays > 0 ? "text-purple-600" : "text-slate-300"}`}>超標 {wk.exceedDays}</div>
                             <div className="text-[9px] text-slate-400">{w.workingDays} 工作日</div>
                           </>
                         )}
