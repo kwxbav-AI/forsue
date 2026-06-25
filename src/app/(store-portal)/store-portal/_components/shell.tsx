@@ -90,13 +90,13 @@ export function StorePortalShell({
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside className="flex w-48 flex-shrink-0 flex-col border-r border-slate-200 bg-white">
+      <aside className="flex w-60 flex-shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-3">
           {isAdmin ? (
             <select
               value={selectedStoreId}
               onChange={(e) => handleStoreChange(e.target.value)}
-              className="mb-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              className="mb-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400"
             >
               <option value="">— 選擇門市 —</option>
               {(allStores ?? []).map((s) => (
@@ -106,10 +106,10 @@ export function StorePortalShell({
               ))}
             </select>
           ) : (
-            <div className="text-sm font-medium text-slate-800">{displayStoreName}</div>
+            <div className="text-base font-bold text-slate-800">{displayStoreName}</div>
           )}
           {displayRegion && (
-            <span className={`mt-1 inline-block rounded px-1.5 py-px text-[10px] font-medium ${regionColor}`}>
+            <span className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-bold ${regionColor}`}>
               {displayRegion}
             </span>
           )}
@@ -119,12 +119,12 @@ export function StorePortalShell({
             </span>
           )}
           <div className="mt-2 flex items-center gap-2 border-t border-slate-100 pt-2">
-            <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[11px] font-medium text-emerald-800">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-800">
               {initials}
             </div>
-            <span className="truncate text-[11px] text-slate-500">
+            <span className="truncate text-sm font-medium text-slate-600">
               {storeInfo.username}
-              {isAdmin && <span className="ml-1 text-amber-500">管</span>}
+              {isAdmin && <span className="ml-1 font-bold text-amber-500">管</span>}
             </span>
           </div>
         </div>
@@ -134,7 +134,7 @@ export function StorePortalShell({
             const items = NAV_ITEMS.filter((i) => i.group === group);
             return (
               <div key={group}>
-                <div className="px-3 pb-1 pt-3 text-[9px] font-medium uppercase tracking-wider text-slate-400">
+                <div className="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   {group}
                 </div>
                 {items.map((item) => {
@@ -145,7 +145,7 @@ export function StorePortalShell({
                       key={item.href}
                       href={disabled ? "#" : navHref(item.href)}
                       className={[
-                        "flex items-center gap-2 border-l-2 px-3 py-2 text-xs",
+                        "flex items-center gap-2 border-l-2 px-3 py-2.5 text-sm font-medium",
                         disabled
                           ? "cursor-not-allowed border-transparent text-slate-300"
                           : isActive
@@ -154,7 +154,7 @@ export function StorePortalShell({
                       ].join(" ")}
                       onClick={disabled ? (e) => e.preventDefault() : undefined}
                     >
-                      <item.Icon size={14} />
+                      <item.Icon size={16} />
                       <span className="flex-1">{item.label}</span>
                       {item.external && (
                         <ExternalLink size={10} className="text-slate-300" />

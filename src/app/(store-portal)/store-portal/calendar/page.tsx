@@ -138,21 +138,23 @@ export default function StoreCalendarPage() {
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
-        <h1 className="text-sm font-medium text-slate-800">月曆 &amp; 達標</h1>
+        <h1 className="text-lg font-bold text-slate-800">月曆 &amp; 達標</h1>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={() => { const p = prevMonth(year, month); goMonth(p.year, p.month); }}
-            className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+            className="flex items-center gap-1 rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
           >
             <i className="ti ti-chevron-left" aria-hidden="true" />
+            上個月
           </button>
-          <span className="min-w-20 text-center text-sm font-medium">{year}年{month}月</span>
+          <span className="min-w-24 text-center text-base font-bold text-slate-800">{year}年{month}月</span>
           <button
             type="button"
             onClick={() => { const n = nextMonth(year, month); goMonth(n.year, n.month); }}
-            className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+            className="flex items-center gap-1 rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
           >
+            下個月
             <i className="ti ti-chevron-right" aria-hidden="true" />
           </button>
         </div>
