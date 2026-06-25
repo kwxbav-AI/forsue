@@ -17,7 +17,10 @@ import {
 import { jsonWithStatsCache } from "@/lib/api-cache-headers";
 import { parseApiPagination, paginateArray } from "@/lib/api-pagination";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
-import { aggregateCustomerMetricsForRetailIds } from "@/modules/operations/services/operations-customer-metrics.service";
+import {
+  aggregateCustomerMetricsForRetailIds,
+  resolveRetailIdsFromPerfStores,
+} from "@/modules/operations/services/operations-customer-metrics.service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -70,19 +73,26 @@ export async function GET(request: NextRequest) {
           .filter((s) => !region || s.region === region)
           .map((s) => s.id);
 
-    const [perStore, priorPerStore, filteredCustomerMetrics] = await Promise.all([
+    // DailyStorePerformance 關聯 RetailStore（非 Store），需先轉換 ID
+    const filteredPerfStores = storeId
+      ? filterStores.filter((s) => s.id === storeId)
+      : filterStores.filter((s) => !region || s.region === region);
+
+    const [perStore, priorPerStore, filteredRetailIds] = await Promise.all([
       fetchChartsPerStore(effectiveRange.startDate, effectiveRange.endDate),
       fetchPriorYearChartsForFilter(
         effectiveRange.startDate,
         effectiveRange.endDate,
         (ymd, delta) => shiftYear(ymd, delta)
       ),
-      aggregateCustomerMetricsForRetailIds(
-        filteredStoreIds,
-        effectiveRange.startDate,
-        effectiveRange.endDate
-      ),
+      resolveRetailIdsFromPerfStores(filteredPerfStores),
     ]);
+
+    const filteredCustomerMetrics = await aggregateCustomerMetricsForRetailIds(
+      filteredRetailIds,
+      effectiveRange.startDate,
+      effectiveRange.endDate
+    );
 
     const dualCurrent = sumChartRows(
       filterChartsByCatalogRegions(perStore, DUAL_OPS_REGIONS)
