@@ -98,7 +98,7 @@ export default function TargetSummaryPage() {
                     {row.storeName}
                   </td>
                   <td className="px-4 py-2 text-right">{row.totalDays}</td>
-                  <td className="px-4 py-2 text-right text-green-600">{row.metDays}</td>
+                  <td className="px-4 py-2 text-right text-green-600">{row.metDays - row.exceedDays}</td>
                   <td className="px-4 py-2 text-right">
                     {row.exceedDays > 0 ? (
                       <span className="font-medium text-purple-600">{row.exceedDays}</span>
