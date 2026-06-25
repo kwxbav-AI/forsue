@@ -255,7 +255,7 @@ export default function WorkhourAdjustmentsPage() {
       </div>
 
       {modal === "add" && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h2 className="mb-4 font-medium text-slate-800">新增工時異動</h2>
             <div className="space-y-3">
