@@ -21,8 +21,23 @@ type DeductionRow = {
   filledAt: string;
 };
 
+const REASON_LABEL: Record<string, string> = {
+  EXPIRY: "效期處理",
+  CLEANING: "清掃",
+  INVENTORY_REGISTRATION: "庫存登記",
+  OTHER: "其他",
+};
+
+const WEEKDAY_ZH = ["日", "一", "二", "三", "四", "五", "六"];
+
 function toYmd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function fmtDateWithWeekday(raw: string): string {
+  const ymd = raw.length > 10 ? raw.slice(0, 10) : raw;
+  const d = new Date(ymd + "T00:00:00Z");
+  return `${ymd}（${WEEKDAY_ZH[d.getUTCDay()]}）`;
 }
 
 export default function StoreDeductionsPage() {
@@ -73,7 +88,7 @@ export default function StoreDeductionsPage() {
     <div className="flex flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div>
-          <h1 className="text-sm font-medium text-slate-800">效期 / 清掃本月填報</h1>
+          <h1 className="text-lg font-bold text-slate-800">效期 / 清掃本月填報</h1>
           <p className="text-xs text-slate-400">{monthStart} – {today}</p>
         </div>
         <Link href="/store-hour-deductions" target="_blank"
@@ -90,14 +105,20 @@ export default function StoreDeductionsPage() {
         {error && <div className="mb-3 rounded border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
         {!loading && rows.length > 0 && (
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-[10px] text-slate-400">本月填報筆數</p>
-              <p className="text-lg font-medium text-slate-800">{rows.length} 筆</p>
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl p-4" style={{ background: "#E6F1FB" }}>
+              <p className="mb-1 text-xs font-medium" style={{ color: "#185FA5" }}>本月填報筆數</p>
+              <p className="text-2xl font-medium" style={{ color: "#0C447C" }}>
+                {rows.length}
+                <span className="ml-1 text-sm font-normal" style={{ color: "#185FA5" }}>筆</span>
+              </p>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-[10px] text-slate-400">本月扣工時合計</p>
-              <p className="text-lg font-medium text-red-600">-{totalHours.toFixed(2)}h</p>
+            <div className="rounded-xl p-4" style={{ background: "#FCEBEB" }}>
+              <p className="mb-1 text-xs font-medium" style={{ color: "#A32D2D" }}>本月扣工時合計</p>
+              <p className="text-2xl font-medium" style={{ color: "#791F1F" }}>
+                -{totalHours.toFixed(2)}
+                <span className="ml-1 text-sm font-normal" style={{ color: "#A32D2D" }}>h</span>
+              </p>
             </div>
           </div>
         )}
@@ -108,22 +129,22 @@ export default function StoreDeductionsPage() {
           <p className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-sm text-slate-400">本月無填報紀錄</p>
         ) : (
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <table className="w-full border-collapse text-xs">
+            <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   {["日期", "原因", "扣工時", "備註", "填報時間"].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left text-sm font-bold text-slate-500">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
-                    <td className="px-3 py-2 text-slate-500">{r.workDate}</td>
-                    <td className="px-3 py-2 text-slate-700">{r.reason}</td>
-                    <td className="px-3 py-2 font-medium text-red-600">-{r.hours.toFixed(2)}h</td>
-                    <td className="px-3 py-2 text-slate-400">{r.note ?? "—"}</td>
-                    <td className="px-3 py-2 text-[10px] text-slate-400">{r.filledAt}</td>
+                    <td className="px-3 py-2 text-sm text-slate-500">{fmtDateWithWeekday(r.workDate)}</td>
+                    <td className="px-3 py-2 text-sm text-slate-700">{REASON_LABEL[r.reason] ?? r.reason}</td>
+                    <td className="px-3 py-2 text-sm font-medium text-red-600">-{r.hours.toFixed(2)}h</td>
+                    <td className="px-3 py-2 text-sm text-slate-400">{r.note ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-slate-400">{r.filledAt}</td>
                   </tr>
                 ))}
               </tbody>
