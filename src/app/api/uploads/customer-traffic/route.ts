@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importCustomerTrafficFromExcel } from "@/modules/operations/services/customer-traffic-import.service";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -17,6 +18,17 @@ export async function POST(request: NextRequest) {
     }
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await importCustomerTrafficFromExcel(buffer);
+
+    await prisma.uploadBatch.create({
+      data: {
+        fileType: "CUSTOMER_TRAFFIC",
+        originalName: file.name,
+        storedName: file.name,
+        recordCount: result.upserted,
+        status: "SUCCESS",
+      },
+    });
+
     return NextResponse.json({
       success: true,
       importedCount: result.upserted,

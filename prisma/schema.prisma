@@ -129,6 +129,7 @@ enum UploadFileType {
   EMPLOYEE_MASTER
   DAILY_REVENUE
   SHIFT_ROSTER
+  CUSTOMER_TRAFFIC
 }
 
 enum ShiftPlanKind {

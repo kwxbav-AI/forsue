@@ -12,6 +12,7 @@ export async function GET() {
     "DAILY_REVENUE",
     "INVENTORY_REFERENCE",
     "SHIFT_ROSTER",
+    "CUSTOMER_TRAFFIC",
   ] as const;
   const results = await Promise.all(
     types.map(async (fileType) => {
