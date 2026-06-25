@@ -118,6 +118,7 @@ type CalendarDay = {
   deductions: CalendarDeduction[];
   efficiencyRatio: number | null;
   isAchieved: boolean;
+  isExceed: boolean;
   hasData: boolean;
 };
 
@@ -130,6 +131,7 @@ type CalendarData = {
     isSupport: boolean;
     attendanceDays: number;
     achievedDays: number;
+    exceedDays: number;
     achieveRate: number;
   }[];
 };
@@ -693,7 +695,11 @@ function CalendarTab({
                     {dom}
                   </span>
                   {day.hasData ?
-                    day.isAchieved ?
+                    day.isExceed ?
+                      <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                        超標
+                      </span>
+                    : day.isAchieved ?
                       <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
                         達標
                       </span>
@@ -761,6 +767,7 @@ function CalendarTab({
                   <th className="py-2 pr-4 font-normal">類別</th>
                   <th className="py-2 pr-4 text-right font-normal">出勤工作日</th>
                   <th className="py-2 pr-4 text-right font-normal">達標次數</th>
+                  <th className="py-2 pr-4 text-right font-normal">超標次數</th>
                   <th className="py-2 text-right font-normal">達標率</th>
                 </tr>
               </thead>
@@ -785,6 +792,15 @@ function CalendarTab({
                       <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                         {e.achievedDays} 次
                       </span>
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      {e.exceedDays > 0 ? (
+                        <span className="inline-block rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                          {e.exceedDays} 次
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
                     </td>
                     <td className="py-2 text-right tabular-nums text-slate-500">{e.achieveRate}%</td>
                   </tr>

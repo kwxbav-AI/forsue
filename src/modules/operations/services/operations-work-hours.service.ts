@@ -994,7 +994,8 @@ export async function buildWorkHoursCalendar(input: {
 
   // 與每日工效比報表相同公式：逐日計算工效比與達標狀態
   // 門檻：平日(一~五) ≥ 4,000、週六 ≥ 5,500（與 isEfficiencyTargetMet 一致）
-  type DayEff = { ratio: number | null; isAchieved: boolean };
+  const EXCEED_THRESHOLD = 6000;
+  type DayEff = { ratio: number | null; isAchieved: boolean; isExceed: boolean };
   const dateToEff = new Map<string, DayEff>();
   await Promise.all(
     days.map(async (ymd) => {
@@ -1004,7 +1005,8 @@ export async function buildWorkHoursCalendar(input: {
       const laborH = m?.laborHours ?? 0;
       const revenue = m?.revenue ?? 0;
       const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
-      dateToEff.set(ymd, { ratio, isAchieved: isEfficiencyTargetMet(ymd, ratio) });
+      const isAchieved = isEfficiencyTargetMet(ymd, ratio);
+      dateToEff.set(ymd, { ratio, isAchieved, isExceed: ratio != null && ratio >= EXCEED_THRESHOLD });
     })
   );
 
@@ -1041,7 +1043,7 @@ export async function buildWorkHoursCalendar(input: {
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
-    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false };
+    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false, isExceed: false };
 
     // 本店人員（若當日有調出到他店，標記 outgoingTo）
     const homeStaff = homeAtts
@@ -1084,13 +1086,14 @@ export async function buildWorkHoursCalendar(input: {
       deductions: deductionsByDate.get(ymd) ?? [],
       efficiencyRatio: eff.ratio,
       isAchieved: eff.isAchieved,
+      isExceed: eff.isExceed,
       hasData: dateToEff.has(ymd),
     };
   });
 
   const empAgg = new Map<
     string,
-    { attendanceDays: number; achievedDays: number; homeStore: string | null; isSupport: boolean }
+    { attendanceDays: number; achievedDays: number; exceedDays: number; homeStore: string | null; isSupport: boolean }
   >();
   for (const day of calendarDays) {
     for (const s of day.staff) {
@@ -1099,12 +1102,14 @@ export async function buildWorkHoursCalendar(input: {
         empAgg.set(s.name, {
           attendanceDays: 1,
           achievedDays: day.isAchieved ? 1 : 0,
+          exceedDays: day.isExceed ? 1 : 0,
           homeStore: s.homeStore,
           isSupport: s.isSupport,
         });
       } else {
         cur.attendanceDays += 1;
         if (day.isAchieved) cur.achievedDays += 1;
+        if (day.isExceed) cur.exceedDays += 1;
       }
     }
   }
@@ -1116,6 +1121,7 @@ export async function buildWorkHoursCalendar(input: {
       isSupport: agg.isSupport,
       attendanceDays: agg.attendanceDays,
       achievedDays: agg.achievedDays,
+      exceedDays: agg.exceedDays,
       achieveRate: agg.attendanceDays > 0
         ? Math.round((agg.achievedDays / agg.attendanceDays) * 1000) / 10
         : 0,

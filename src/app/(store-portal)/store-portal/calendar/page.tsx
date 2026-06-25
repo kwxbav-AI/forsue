@@ -23,6 +23,7 @@ type CalDay = {
   staff: CalStaff[];
   efficiencyRatio: number | null;
   isAchieved: boolean;
+  isExceed: boolean;
   hasData: boolean;
 };
 
@@ -128,8 +129,8 @@ export default function StoreCalendarPage() {
   const blanks = Array(firstWeekday).fill(null);
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const storeTarget = retailStoreId && targetData
-    ? targetData.stores.find((s) => s.storeId === retailStoreId)
+  const storeTarget = ctx?.performanceStoreId && targetData
+    ? targetData.stores.find((s) => s.storeId === ctx.performanceStoreId)
     : null;
 
   const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -164,24 +165,22 @@ export default function StoreCalendarPage() {
           </div>
         )}
 
-        <div className="mb-2 flex flex-wrap gap-3 text-[10px] text-slate-500">
+        <div className="mb-2 flex flex-wrap gap-3 text-[11px] text-amber-800 rounded-xl border border-slate-100 bg-amber-50 px-3 py-2">
+          <span>達標條件：平日工效比 ≥ 4,000 元/hr、週六 ≥ 5,500 元/hr</span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />達標
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-teal-400" />本店人員
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-purple-400" />超標
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />跨店支援
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-300" />未達
-          </span>
-          <span className="ml-auto text-[9px] text-slate-400">藍色文字 = 跨店支援</span>
         </div>
 
         {loading ? (
           <p className="text-sm text-slate-400">載入中…</p>
         ) : (
           <>
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+             <div className="min-w-[560px]">
               <div className="grid grid-cols-7 border-b border-slate-100">
                 {WEEKDAY_LABELS.map((d, i) => (
                   <div
@@ -218,11 +217,11 @@ export default function StoreCalendarPage() {
 
                   const tag =
                     !isRest && !isFuture && day?.hasData
-                      ? day.efficiencyRatio != null && day.efficiencyRatio >= 6000
+                      ? (day as any).isExceed
                         ? { label: "超標", cls: "bg-purple-100 text-purple-700" }
                         : day.isAchieved
                         ? { label: "達標", cls: "bg-emerald-100 text-emerald-700" }
-                        : { label: "未達", cls: "bg-slate-100 text-slate-500" }
+                        : { label: "未達", cls: "bg-red-100 text-red-600" }
                       : null;
 
                   const maxStaff = 5;
@@ -252,21 +251,17 @@ export default function StoreCalendarPage() {
                       {!isRest && !isFuture && (
                         <>
                           {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
-                            <div key={si} className="flex items-center gap-0.5 leading-tight">
-                              <span
-                                className={`truncate text-[9px] ${s.isSupport || s.outgoingTo ? "text-blue-500" : "text-slate-500"}`}
-                                style={{ maxWidth: 38 }}
-                              >
+                            <div key={si} className="flex items-center gap-1 mb-0.5">
+                              <span className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"}`} />
+                              <span className="truncate text-[9px] text-slate-600">
                                 {s.name}
+                                <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(2)}h</span>
+                                {s.outgoingTo ? (
+                                  <span className="text-amber-600 ml-0.5">（{s.outgoingTo}）</span>
+                                ) : s.isSupport && s.homeStore ? (
+                                  <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
+                                ) : null}
                               </span>
-                              <span className="text-[9px] font-medium text-slate-700">
-                                {s.workHours.toFixed(2)}h
-                              </span>
-                              {(s.homeStore || s.outgoingTo) && (
-                                <span className="text-[8px] text-blue-400">
-                                  ({s.homeStore ?? s.outgoingTo})
-                                </span>
-                              )}
                             </div>
                           ))}
                           {(day?.staff.length ?? 0) > maxStaff && (
@@ -296,6 +291,7 @@ export default function StoreCalendarPage() {
                   );
                 })}
               </div>
+             </div>
             </div>
 
             {targetData && (
