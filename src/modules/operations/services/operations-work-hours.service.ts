@@ -1006,7 +1006,8 @@ export async function buildWorkHoursCalendar(input: {
       const revenue = m?.revenue ?? 0;
       const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
       const isAchieved = isEfficiencyTargetMet(ymd, ratio);
-      dateToEff.set(ymd, { ratio, isAchieved, isExceed: ratio != null && ratio >= EXCEED_THRESHOLD });
+      const isSat = parseDateOnlyUTC(ymd).getUTCDay() === 6;
+      dateToEff.set(ymd, { ratio, isAchieved, isExceed: !isSat && ratio != null && ratio >= EXCEED_THRESHOLD });
     })
   );
 
