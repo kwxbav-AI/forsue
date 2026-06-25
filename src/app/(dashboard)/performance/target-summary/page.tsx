@@ -10,6 +10,7 @@ type SummaryRow = {
   storeCode: string | null;
   totalDays: number;
   metDays: number;
+  exceedDays: number;
   notMetDays: number;
   metRate: number;
   avgEfficiencyRatio: number;
@@ -84,6 +85,7 @@ export default function TargetSummaryPage() {
                 </th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">總天數</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">達標天數</th>
+                <th className="px-4 py-2 text-right font-medium text-slate-700">超標天數</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">未達標天數</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">達標率</th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">平均工效比</th>
@@ -97,6 +99,13 @@ export default function TargetSummaryPage() {
                   </td>
                   <td className="px-4 py-2 text-right">{row.totalDays}</td>
                   <td className="px-4 py-2 text-right text-green-600">{row.metDays}</td>
+                  <td className="px-4 py-2 text-right">
+                    {row.exceedDays > 0 ? (
+                      <span className="font-medium text-purple-600">{row.exceedDays}</span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right text-amber-600">{row.notMetDays}</td>
                   <td className="px-4 py-2 text-right">
                     <span

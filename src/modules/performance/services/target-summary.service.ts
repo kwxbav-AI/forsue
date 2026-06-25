@@ -7,10 +7,13 @@ export type TargetSummaryRow = {
   storeCode: string | null;
   totalDays: number;
   metDays: number;
+  exceedDays: number;
   notMetDays: number;
   metRate: number;
   avgEfficiencyRatio: number;
 };
+
+const EXCEED_RATIO = 6000;
 
 /** 選定區間內（含起訖）排除週日與假日後的工作日天數 */
 export function countWorkingDaysInRangeUTC(
@@ -87,7 +90,10 @@ export async function buildTargetSummaryReport(input: {
     ...(storeId ? { storeId } : {}),
   };
 
-  const [statsGrouped, metGrouped] = await Promise.all([
+  // 超標只計平日（週六無超標概念）
+  const weekdayDates = workingDates.filter((d) => d.getUTCDay() !== 6);
+
+  const [statsGrouped, metGrouped, exceedGrouped] = await Promise.all([
     prisma.performanceDaily.groupBy({
       by: ["storeId"],
       where: baseWhere,
@@ -103,6 +109,19 @@ export async function buildTargetSummaryReport(input: {
       where: { ...baseWhere, isTargetMet: true },
       _count: { _all: true },
     }),
+    weekdayDates.length > 0
+      ? prisma.performanceDaily.groupBy({
+          by: ["storeId"],
+          where: {
+            workDate: { in: weekdayDates },
+            versionNo: 1,
+            store: performanceDailyStoreFilter(storeId),
+            ...(storeId ? { storeId } : {}),
+            efficiencyRatio: { gte: EXCEED_RATIO },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (statsGrouped.length === 0) {
@@ -111,6 +130,9 @@ export async function buildTargetSummaryReport(input: {
 
   const metByStore = new Map(
     metGrouped.map((g) => [g.storeId, g._count._all])
+  );
+  const exceedByStore = new Map(
+    exceedGrouped.map((g) => [g.storeId, g._count._all])
   );
 
   const stores = await prisma.store.findMany({
@@ -123,6 +145,7 @@ export async function buildTargetSummaryReport(input: {
     const store = storeById.get(g.storeId);
     const dataDays = g._count._all;
     const metDays = metByStore.get(g.storeId) ?? 0;
+    const exceedDays = exceedByStore.get(g.storeId) ?? 0;
     const sumRatio = Number(g._sum.efficiencyRatio ?? 0);
 
     return {
@@ -131,6 +154,7 @@ export async function buildTargetSummaryReport(input: {
       storeCode: store?.code ?? null,
       totalDays: workingDaysInPeriod,
       metDays,
+      exceedDays,
       notMetDays: workingDaysInPeriod - metDays,
       metRate: workingDaysInPeriod > 0 ? metDays / workingDaysInPeriod : 0,
       avgEfficiencyRatio: dataDays > 0 ? sumRatio / dataDays : 0,
