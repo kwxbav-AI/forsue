@@ -51,13 +51,6 @@ function fmtYoy(r: number | null) {
   return `${sign}${r.toFixed(1)}%`;
 }
 
-function yoyColor(r: number | null) {
-  if (r == null) return "text-slate-400";
-  if (r > 0) return "text-emerald-700";
-  if (r < 0) return "text-red-600";
-  return "text-slate-600";
-}
-
 function toYmd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -67,6 +60,12 @@ function toYmd(d: Date): string {
 
 function monthLabel(d: Date): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
+function fmtMd(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return ymd;
+  return `${Number(m[2])}/${Number(m[3])}`;
 }
 
 export default function StoreOverviewPage() {
@@ -139,6 +138,9 @@ export default function StoreOverviewPage() {
     metrics?.revenueForecast && metrics?.revenueAchievement
       ? Math.round((metrics.revenueAchievement / metrics.revenueForecast) * 100)
       : null;
+  const displayPct = achievePct ?? forecastPct;
+
+  const yoy = metrics?.yoyGrowthRate ?? null;
 
   return (
     <div className="flex flex-col">
@@ -170,83 +172,177 @@ export default function StoreOverviewPage() {
           <p className="text-sm text-slate-400">載入中…</p>
         ) : (
           <>
-            <div className="mb-3 grid grid-cols-4 gap-2">
-              <KpiCard label="本月營業額" value={metrics ? fmt(metrics.revenueAchievement ?? metrics.totalRevenue) : "—"} sub={metrics?.revenueForecast ? `目標 ${fmt(metrics.revenueForecast)}` : "—"} />
-              <KpiCard
-                label="達成率"
-                value={achievePct != null ? `${achievePct}%` : forecastPct != null ? `${forecastPct}%` : "—"}
-                sub="本月目標"
-                color={achievePct != null ? (achievePct >= 100 ? "text-emerald-700" : achievePct >= 80 ? "text-amber-600" : "text-red-600") : undefined}
-              />
-              <KpiCard
-                label="去年同期成長"
-                value={fmtYoy(metrics?.yoyGrowthRate ?? null)}
-                sub="YoY"
-                color={yoyColor(metrics?.yoyGrowthRate ?? null)}
-              />
-              <KpiCard
-                label="工效比"
-                value={metrics?.efficiencyRatio != null ? `$${Math.round(metrics.efficiencyRatio).toLocaleString()}` : "—"}
-                sub="元 / hr"
-              />
+            {/* 主要指標：營業額 + YoY */}
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              {/* 營業額 — 綠色 */}
+              <div className="rounded-xl p-4" style={{ background: "#E1F5EE" }}>
+                <p className="mb-1 text-[11px]" style={{ color: "#0F6E56" }}>本月營業額</p>
+                <p className="text-2xl font-medium" style={{ color: "#085041" }}>
+                  {metrics ? fmt(metrics.revenueAchievement ?? metrics.totalRevenue) : "—"}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  {displayPct != null && (
+                    <span
+                      className="rounded px-2 py-0.5 text-[11px] font-medium"
+                      style={{
+                        background: "#9FE1CB",
+                        color: displayPct >= 100 ? "#085041" : "#3B6D11",
+                      }}
+                    >
+                      {displayPct}% 達成
+                    </span>
+                  )}
+                  {metrics?.revenueForecast && (
+                    <span className="text-[11px]" style={{ color: "#0F6E56" }}>
+                      目標 {fmt(metrics.revenueForecast)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* YoY — 紅/綠依正負 */}
+              <div
+                className="rounded-xl p-4"
+                style={{ background: yoy == null ? "#F1EFE8" : yoy >= 0 ? "#EAF3DE" : "#FCEBEB" }}
+              >
+                <p
+                  className="mb-1 text-[11px]"
+                  style={{ color: yoy == null ? "#5F5E5A" : yoy >= 0 ? "#3B6D11" : "#A32D2D" }}
+                >
+                  去年同期成長
+                </p>
+                <p
+                  className="text-2xl font-medium"
+                  style={{ color: yoy == null ? "#888780" : yoy >= 0 ? "#27500A" : "#791F1F" }}
+                >
+                  {fmtYoy(yoy)}
+                </p>
+                <div className="mt-2">
+                  <span
+                    className="rounded px-2 py-0.5 text-[11px] font-medium"
+                    style={{
+                      background: yoy == null ? "#D3D1C7" : yoy >= 0 ? "#C0DD97" : "#F7C1C1",
+                      color: yoy == null ? "#444441" : yoy >= 0 ? "#27500A" : "#791F1F",
+                    }}
+                  >
+                    {yoy == null ? "無資料" : yoy >= 0 ? "年增長" : "YoY 下滑"}
+                  </span>
+                </div>
+              </div>
             </div>
 
+            {/* 次要指標：工效比 + 達標天數 + 來客數 */}
             <div className="mb-3 grid grid-cols-3 gap-2">
-              <KpiCard
-                label="來客數"
-                value={metrics?.customerCount != null ? metrics.customerCount.toLocaleString("zh-TW") : "—"}
-                sub="本月累計"
-              />
-              <KpiCard
-                label="客單價"
-                value={metrics?.avgOrderValue != null ? fmt(metrics.avgOrderValue) : "—"}
-                sub="平均"
-              />
-              <KpiCard
-                label="月達標天數"
-                value={totalWd > 0 ? `${totalMet} 天` : "—"}
-                sub={totalOver > 0 ? `超標 ${totalOver} 天` : `共 ${totalWd} 工作日`}
-                color={totalMet > 0 ? "text-emerald-700" : undefined}
-              />
+              {/* 工效比 — 藍色 */}
+              <div className="rounded-xl p-3" style={{ background: "#E6F1FB" }}>
+                <p className="mb-1 text-[11px]" style={{ color: "#185FA5" }}>工效比</p>
+                <p className="text-lg font-medium" style={{ color: "#0C447C" }}>
+                  {metrics?.efficiencyRatio != null
+                    ? `$${Math.round(metrics.efficiencyRatio).toLocaleString()}`
+                    : "—"}
+                </p>
+                <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>元 / hr</p>
+              </div>
+
+              {/* 達標天數 — 橘色 */}
+              <div className="rounded-xl p-3" style={{ background: "#FAEEDA" }}>
+                <p className="mb-1 text-[11px]" style={{ color: "#854F0B" }}>達標天數</p>
+                <p className="text-lg font-medium" style={{ color: "#633806" }}>
+                  {totalWd > 0 ? `${totalMet}` : "—"}
+                  {totalWd > 0 && (
+                    <span className="text-xs font-normal ml-1" style={{ color: "#854F0B" }}>
+                      / {totalWd} 天
+                    </span>
+                  )}
+                </p>
+                {totalOver > 0 && (
+                  <p className="mt-1 text-[11px]" style={{ color: "#633806" }}>超標 {totalOver} 天</p>
+                )}
+              </div>
+
+              {/* 來客數 — 灰色 */}
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="mb-1 text-[11px] text-slate-400">來客數</p>
+                <p className="text-lg font-medium text-slate-800">
+                  {metrics?.customerCount != null
+                    ? metrics.customerCount.toLocaleString("zh-TW")
+                    : "—"}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">本月累計</p>
+              </div>
             </div>
 
+            {/* 進度條 */}
             {metrics?.revenueForecast && metrics.revenueAchievement != null && (
-              <div className="mb-3 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="mb-3 rounded-xl bg-slate-50 p-4">
                 <p className="mb-3 text-[11px] font-medium text-slate-500">月目標進度</p>
-                <ProgressBar
-                  label="營業額達成"
-                  current={metrics.revenueAchievement}
-                  target={metrics.revenueForecast}
-                  color="bg-emerald-300"
-                />
+                <div className="mb-3">
+                  <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
+                    <span>營業額</span>
+                    <span className="font-medium">
+                      {fmt(metrics.revenueAchievement)} / {fmt(metrics.revenueForecast)}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, Math.round((metrics.revenueAchievement / metrics.revenueForecast) * 100))}%`,
+                        background: "#1D9E75",
+                      }}
+                    />
+                  </div>
+                </div>
                 {totalWd > 0 && (
-                  <ProgressBar
-                    label="達標天數"
-                    current={totalMet + totalOver}
-                    target={totalWd}
-                    color="bg-sky-300"
-                    fmt={(v) => `${v} 天`}
-                  />
+                  <div>
+                    <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
+                      <span>達標天數</span>
+                      <span className="font-medium">{totalMet + totalOver} 天 / {totalWd} 天</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, Math.round(((totalMet + totalOver) / totalWd) * 100))}%`,
+                          background: "#BA7517",
+                        }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             )}
 
+            {/* 週別達標 */}
             {target && storeTarget && (
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="rounded-xl bg-slate-50 p-4">
                 <p className="mb-3 text-[11px] font-medium text-slate-500">週別達標</p>
-                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${target.weeks.length}, 1fr)` }}>
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: `repeat(${target.weeks.length}, 1fr)` }}
+                >
                   {target.weeks.map((w, i) => {
                     const wk = storeTarget.byWeek[i] ?? { metDays: 0, exceedDays: 0, total: 0 };
-                    const label = `W${w.index} ${fmtMd(w.startYmd)}–${fmtMd(w.endYmd)}`;
+                    const hasMet = wk.metDays > 0 || wk.exceedDays > 0;
                     return (
                       <div
                         key={w.index}
-                        className={`rounded-lg border p-2 text-center ${wk.total > 0 ? "border-emerald-100 bg-emerald-50" : "border-slate-100 bg-slate-50"}`}
+                        className="rounded-lg p-2 text-center"
+                        style={{
+                          background: hasMet ? "#E1F5EE" : "#fff",
+                          border: `0.5px solid ${hasMet ? "#9FE1CB" : "#e2e8f0"}`,
+                        }}
                       >
-                        <div className="mb-1 text-[9px] text-slate-400">{label}</div>
-                        <div className="text-sm font-medium text-emerald-700">達標 {wk.metDays}</div>
+                        <div className="mb-1 text-[9px] text-slate-400">
+                          W{w.index} {fmtMd(w.startYmd)}–{fmtMd(w.endYmd)}
+                        </div>
+                        <div className="text-sm font-medium" style={{ color: "#085041" }}>
+                          達標 {wk.metDays}
+                        </div>
                         {wk.exceedDays > 0 && (
-                          <div className="text-xs font-medium text-purple-600">超標 {wk.exceedDays}</div>
+                          <div className="text-xs font-medium text-purple-600">
+                            超標 {wk.exceedDays}
+                          </div>
                         )}
                         <div className="text-[9px] text-slate-400">{w.workingDays} 工作日</div>
                       </div>
@@ -260,61 +356,4 @@ export default function StoreOverviewPage() {
       </div>
     </div>
   );
-}
-
-function KpiCard({
-  label,
-  value,
-  sub,
-  color,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  color?: string;
-}) {
-  return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <p className="mb-1 text-[10px] text-slate-400">{label}</p>
-      <p className={`text-lg font-medium ${color ?? "text-slate-800"}`}>{value}</p>
-      <p className="text-[10px] text-slate-400">{sub}</p>
-    </div>
-  );
-}
-
-function ProgressBar({
-  label,
-  current,
-  target,
-  color,
-  fmt: fmtFn,
-}: {
-  label: string;
-  current: number;
-  target: number;
-  color: string;
-  fmt?: (v: number) => string;
-}) {
-  const pct = Math.min(100, Math.round((current / target) * 100));
-  const display = fmtFn ? fmtFn(current) : fmt(current);
-  const targetDisplay = fmtFn ? fmtFn(target) : fmt(target);
-  return (
-    <div className="mb-3 last:mb-0">
-      <div className="mb-1 flex justify-between text-[10px] text-slate-500">
-        <span>{label}</span>
-        <span className="font-medium">
-          {display} / {targetDisplay}
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function fmtMd(ymd: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return ymd;
-  return `${Number(m[2])}/${Number(m[3])}`;
 }
