@@ -38,6 +38,10 @@ backup.sql
 cloud-sql-proxy.exe
 *.exe
 
+# local analysis scripts & output
+analysis-*.tsv
+scripts/analyze-*.cjs
+
 # Manus reference source (local only, do not push)
 reference/
 
