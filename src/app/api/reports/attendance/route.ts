@@ -15,6 +15,7 @@ import {
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
 import { resolveStoreIdsForAttendanceDepartment } from "@/lib/attendance-region-filter";
+import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import {
   getReserveStaffSettingForEmployeeDate,
   getReserveStaffSettingsByEmployeeDate,
@@ -58,6 +59,7 @@ export type AttendanceReportRow =
       position: string;
       workDate: string;
       workHours: number;
+      scheduledHours: number | null;
       startTime: string | null;
       endTime: string | null;
       adjustmentReason: null;
@@ -530,6 +532,7 @@ export async function GET(request: Request) {
         clockInStoreText: string | null;
         clockOutStoreText: string | null;
         shiftType: string | null;
+        scheduledWorkHours: number | null;
         employee: (typeof records)[number]["employee"];
         id: string; // 取第一筆 id 作為穩定 key
       }
@@ -550,6 +553,7 @@ export async function GET(request: Request) {
           clockInStoreText: (r as any).clockInStoreText ?? null,
           clockOutStoreText: (r as any).clockOutStoreText ?? null,
           shiftType: (r as any).shiftType ?? null,
+          scheduledWorkHours: r.scheduledWorkHours != null ? Number(r.scheduledWorkHours) : null,
           employee: r.employee,
           id: r.id,
         });
@@ -671,6 +675,7 @@ export async function GET(request: Request) {
             clockInStoreText: (r as { clockInStoreText?: string | null }).clockInStoreText ?? null,
             clockOutStoreText: (r as { clockOutStoreText?: string | null }).clockOutStoreText ?? null,
             shiftType: (r as { shiftType?: string | null }).shiftType ?? null,
+            scheduledWorkHours: (r as { scheduledWorkHours?: unknown }).scheduledWorkHours != null ? Number((r as { scheduledWorkHours?: unknown }).scheduledWorkHours) : null,
             employee: r.employee,
             id: r.id,
           });
@@ -701,6 +706,7 @@ export async function GET(request: Request) {
         clockInStoreText: null,
         clockOutStoreText: null,
         shiftType: null,
+        scheduledWorkHours: null,
         employee: d.employee as (typeof records)[number]["employee"],
         id: `disp-att-${d.id}`,
       });
@@ -789,6 +795,12 @@ export async function GET(request: Request) {
       if (reportWithAttendance) {
         const baseHours = Number(att.workHours);
         let net = baseHours;
+        const resolvedScheduled = resolveScheduledHours({
+          scheduledWorkHours: att.scheduledWorkHours,
+          shiftType: att.shiftType,
+          startTime: att.startTime,
+          endTime: att.endTime,
+        });
 
         rows.push({
           type: "attendance",
@@ -800,6 +812,7 @@ export async function GET(request: Request) {
           position,
           workDate: dateStr,
           workHours: baseHours,
+          scheduledHours: resolvedScheduled,
           adjustmentReason: null,
           locationMatchStatus: att.locationMatchStatus ?? null,
           startTime: att.startTime ?? null,

@@ -16,14 +16,18 @@ type AttendanceRow = {
   name: string;
   workDate: string;
   workHours: number;
+  scheduledHours: number | null;
   startTime: string | null;
   endTime: string | null;
-  department: string;
+  department: string | null;
+  position: string | null;
   clockStatus?: string;
 };
 
 type SortField = "workDate" | "name";
 type SortDir = "asc" | "desc";
+
+const WEEKDAY_ZH = ["日", "一", "二", "三", "四", "五", "六"];
 
 function toYmd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -32,6 +36,16 @@ function toYmd(d: Date) {
 function fmtTime(t: string | null) {
   if (!t) return "—";
   return t.slice(0, 5);
+}
+
+function isSaturdayYmd(ymd: string): boolean {
+  const d = new Date(ymd + "T00:00:00Z");
+  return d.getUTCDay() === 6;
+}
+
+function fmtDateWithWeekday(ymd: string): string {
+  const d = new Date(ymd + "T00:00:00Z");
+  return `${ymd}（${WEEKDAY_ZH[d.getUTCDay()]}）`;
 }
 
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
@@ -114,11 +128,24 @@ export default function StoreAttendancePage() {
 
   const totalHours = rows.reduce((a, r) => a + (r.workHours ?? 0), 0);
 
+  // 法定加班：週六全天 + 平日超出表定
+  const legalOT = rows.reduce((acc, r) => {
+    if (isSaturdayYmd(r.workDate)) return acc + (r.workHours ?? 0);
+    const ot = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : 0;
+    return acc + ot;
+  }, 0);
+
+  // 當日超時：所有工作日（含週六）超出表定
+  const dailyOT = rows.reduce((acc, r) => {
+    const ot = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : 0;
+    return acc + ot;
+  }, 0);
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div>
-          <h1 className="text-sm font-medium text-slate-800">出勤紀錄</h1>
+          <h1 className="text-lg font-bold text-slate-800">出勤紀錄</h1>
           <p className="text-xs text-slate-400">
             {now.getFullYear()}年{now.getMonth() + 1}月 · {monthStart} – {today}
           </p>
@@ -141,20 +168,37 @@ export default function StoreAttendancePage() {
         )}
 
         {!loading && rows.length > 0 && (
-          <div className="mb-3 grid grid-cols-3 gap-2">
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-[10px] text-slate-400">本月總工時</p>
-              <p className="text-lg font-medium text-slate-800">{totalHours.toFixed(1)}h</p>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-[10px] text-slate-400">出勤天數（筆）</p>
-              <p className="text-lg font-medium text-slate-800">{rows.length}</p>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="text-[10px] text-slate-400">日均工時</p>
-              <p className="text-lg font-medium text-slate-800">
-                {rows.length > 0 ? (totalHours / rows.length).toFixed(1) : "—"}h
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            {/* 本月總工時 — 藍色 */}
+            <div className="rounded-xl p-4" style={{ background: "#E6F1FB" }}>
+              <p className="mb-1 text-xs font-medium" style={{ color: "#185FA5" }}>本月總工時</p>
+              <p className="text-2xl font-medium" style={{ color: "#0C447C" }}>
+                {totalHours.toFixed(1)}
+                <span className="ml-1 text-sm font-normal" style={{ color: "#185FA5" }}>h</span>
               </p>
+              <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>
+                共 {rows.length} 筆出勤
+              </p>
+            </div>
+
+            {/* 法定加班時數 — 橘色 */}
+            <div className="rounded-xl p-4" style={{ background: "#FAEEDA" }}>
+              <p className="mb-1 text-xs font-medium" style={{ color: "#854F0B" }}>法定加班時數</p>
+              <p className="text-2xl font-medium" style={{ color: "#633806" }}>
+                {legalOT.toFixed(1)}
+                <span className="ml-1 text-sm font-normal" style={{ color: "#854F0B" }}>h</span>
+              </p>
+              <p className="mt-1 text-[11px]" style={{ color: "#854F0B" }}>週六出勤 + 平日超表定</p>
+            </div>
+
+            {/* 當日超時工時 — 紅色 */}
+            <div className="rounded-xl p-4" style={{ background: "#FCEBEB" }}>
+              <p className="mb-1 text-xs font-medium" style={{ color: "#A32D2D" }}>當日超時工時</p>
+              <p className="text-2xl font-medium" style={{ color: "#791F1F" }}>
+                {dailyOT.toFixed(1)}
+                <span className="ml-1 text-sm font-normal" style={{ color: "#A32D2D" }}>h</span>
+              </p>
+              <p className="mt-1 text-[11px]" style={{ color: "#A32D2D" }}>工作日超出當日排班表定</p>
             </div>
           </div>
         )}
@@ -180,6 +224,7 @@ export default function StoreAttendancePage() {
                       <SortIcon field="workDate" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">部門</th>
                   <th className="px-3 py-2 text-left">
                     <button
                       type="button"
@@ -190,32 +235,46 @@ export default function StoreAttendancePage() {
                       <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
-                  {(["上班", "下班", "工時", "備註"] as const).map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">
-                      {h}
-                    </th>
-                  ))}
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">職稱</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">上班</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">下班</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">工時</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">加班時數</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">備註</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
-                    <td className="px-3 py-2 text-slate-500">{r.workDate}</td>
-                    <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
-                    <td className="px-3 py-2 text-slate-500">{fmtTime(r.startTime)}</td>
-                    <td className="px-3 py-2 text-slate-500">{fmtTime(r.endTime)}</td>
-                    <td className="px-3 py-2 font-medium text-slate-700">
-                      {r.workHours?.toFixed(2)}h
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.clockStatus === "anomaly" && (
-                        <span className="rounded bg-red-50 px-1.5 py-px text-[9px] font-medium text-red-600">
-                          異常
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {sortedRows.map((r) => {
+                  const isSat = isSaturdayYmd(r.workDate);
+                  const otHours = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : null;
+                  return (
+                    <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
+                      <td className={`px-3 py-2 ${isSat ? "text-blue-500" : "text-slate-500"}`}>
+                        {fmtDateWithWeekday(r.workDate)}
+                      </td>
+                      <td className="px-3 py-2 text-slate-400">{r.department ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
+                      <td className="px-3 py-2 text-slate-400">{r.position ?? "—"}</td>
+                      <td className="px-3 py-2 text-slate-500">{fmtTime(r.startTime)}</td>
+                      <td className="px-3 py-2 text-slate-500">{fmtTime(r.endTime)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{r.workHours?.toFixed(2)}h</td>
+                      <td className="px-3 py-2">
+                        {otHours != null && otHours > 0 ? (
+                          <span className="font-medium text-amber-600">{otHours.toFixed(2)}h</span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.clockStatus === "anomaly" && (
+                          <span className="rounded bg-red-50 px-1.5 py-px text-[9px] font-medium text-red-600">
+                            異常
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
