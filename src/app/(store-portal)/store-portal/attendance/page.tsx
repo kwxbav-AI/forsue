@@ -10,6 +10,7 @@ type StoreContext = {
 };
 
 type AttendanceRow = {
+  type: string;
   id: string;
   employeeId: string;
   name: string;
@@ -75,7 +76,7 @@ export default function StoreAttendancePage() {
       if (!attRes.ok) throw new Error("出勤資料載入失敗");
       const data = await attRes.json();
       const rawRows: AttendanceRow[] = (data.rows ?? []).filter(
-        (r: AttendanceRow) => r.workDate >= monthStart
+        (r: AttendanceRow) => r.type === "attendance" && r.workDate >= monthStart
       );
       setRows(rawRows);
     } catch (e) {
