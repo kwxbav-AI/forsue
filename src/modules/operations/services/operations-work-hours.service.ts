@@ -438,10 +438,13 @@ export async function buildOperationsWorkHours(input: {
     alertRatioPct: number;
   };
 
+  // O(1) lookup map — replaces repeated attendances.find() O(n) calls below
+  const attendanceByEmpId = new Map(attendances.map((x) => [x.employeeId, x]));
+
   const monthlyOvertime: MonthlyOvertimeRow[] = [];
   for (const [eid, legalOT] of legalOTByEmployee) {
     if (legalOT <= 0) continue;
-    const a = attendances.find((x) => x.employeeId === eid);
+    const a = attendanceByEmpId.get(eid);
     if (!a) continue;
     const sid = homeStoreId(a, fallbackHome);
     if (!sid || !homeStoreAllowedIds.has(sid)) continue;
@@ -473,7 +476,7 @@ export async function buildOperationsWorkHours(input: {
 
   for (const [eid, legalOT] of legalOTByEmployee) {
     if (legalOT > 12) {
-      const a = attendances.find((x) => x.employeeId === eid);
+      const a = attendanceByEmpId.get(eid);
       if (!a) continue;
       const sid = homeStoreId(a, fallbackHome);
       if (!sid) continue;
@@ -494,7 +497,7 @@ export async function buildOperationsWorkHours(input: {
 
   for (const [eid, details] of mismatchDetailsByEmployee) {
     if (details.length < 3) continue;
-    const a = attendances.find((x) => x.employeeId === eid);
+    const a = attendanceByEmpId.get(eid);
     if (!a) continue;
     const sid = homeStoreId(a, fallbackHome);
     if (!sid) continue;
@@ -514,7 +517,7 @@ export async function buildOperationsWorkHours(input: {
 
   for (const [eid, gap] of shortageByEmployee) {
     if (gap >= 8) {
-      const a = attendances.find((x) => x.employeeId === eid);
+      const a = attendanceByEmpId.get(eid);
       if (!a) continue;
       const sid = homeStoreId(a, fallbackHome);
       if (!sid) continue;

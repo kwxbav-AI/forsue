@@ -69,22 +69,33 @@ export async function GET(request: NextRequest) {
   const workDate = toStartOfDay(date);
   const exactWorkDate = businessDayWorkDateFromDate(workDate);
 
-  const stores = await prisma.store.findMany({
-    select: { id: true, name: true },
-  });
-  const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
+  const [attendancesRaw, dispatches, adjustments] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: { workDate: exactWorkDate },
+      include: { employee: true },
+    }),
+    prisma.dispatchRecord.findMany({
+      where: { workDate: exactWorkDate, confirmStatus: "已確認" },
+    }),
+    prisma.workhourAdjustment.findMany({
+      where: { workDate: exactWorkDate },
+      include: { employee: { select: { id: true, employeeCode: true, name: true, defaultStoreId: true, isReserveStaff: true, reserveWorkPercent: true, hireDate: true } } },
+    }),
+  ]);
 
-  const attendancesRaw = await prisma.attendanceRecord.findMany({
-    where: { workDate: exactWorkDate },
-    include: { employee: true },
-  });
-  const dispatches = await prisma.dispatchRecord.findMany({
-    where: { workDate: exactWorkDate, confirmStatus: "已確認" },
-  });
-  const adjustments = await prisma.workhourAdjustment.findMany({
-    where: { workDate: exactWorkDate },
-    include: { employee: { select: { id: true, employeeCode: true, name: true, defaultStoreId: true, isReserveStaff: true, reserveWorkPercent: true, hireDate: true } } },
-  });
+  // 只查 dispatch 涉及的門市名稱，避免全表掃描
+  const dispatchStoreIds = [...new Set([
+    ...dispatches.map((d) => d.toStoreId),
+    ...dispatches.map((d) => d.fromStoreId).filter(Boolean) as string[],
+  ])];
+  const storeNameById = new Map<string, string>();
+  if (dispatchStoreIds.length > 0) {
+    const stores = await prisma.store.findMany({
+      where: { id: { in: dispatchStoreIds } },
+      select: { id: true, name: true },
+    });
+    for (const s of stores) storeNameById.set(s.id, s.name);
+  }
 
   // 同一員工同日可能多筆出勤 → 先聚合
   const aggregatedAttendanceByEmployeeId = new Map<
@@ -116,8 +127,15 @@ export async function GET(request: NextRequest) {
   const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
   const fallbackHomeStoreByEmployee = new Map<string, string>();
   if (noDefaultIds.length > 0) {
+    // 限制查最近 90 天，避免全表掃描
+    const cutoff = new Date(workDate);
+    cutoff.setDate(cutoff.getDate() - 90);
     const attRecords = await prisma.attendanceRecord.findMany({
-      where: { employeeId: { in: noDefaultIds }, originalStoreId: { not: null } },
+      where: {
+        employeeId: { in: noDefaultIds },
+        originalStoreId: { not: null },
+        workDate: { gte: cutoff },
+      },
       select: { employeeId: true, originalStoreId: true },
       orderBy: { workDate: "desc" },
     });
