@@ -756,7 +756,7 @@ function CalendarTab({
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="font-semibold text-slate-800 mb-1">員工達標次數</h2>
         <p className="text-xs text-slate-500 mb-3">
-          出勤日中，本門市工效比達標的次數（達標條件與每日工效比報表相同）
+          出勤日中，本門市工效比達標／超標的次數（達標不含超標，兩欄合計為原達標總次數）
         </p>
         {data.employeeAchievement.length ?
           <div className="overflow-x-auto">
@@ -790,7 +790,7 @@ function CalendarTab({
                     <td className="py-2 pr-4 text-right tabular-nums text-slate-700">{e.attendanceDays} 天</td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                        {e.achievedDays} 次
+                        {e.achievedDays - e.exceedDays} 次
                       </span>
                     </td>
                     <td className="py-2 pr-4 text-right tabular-nums">
