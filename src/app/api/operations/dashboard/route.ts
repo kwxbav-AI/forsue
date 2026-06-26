@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
+import { prisma } from "@/lib/prisma";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
 import {
   buildDashboardFilterResult,
@@ -143,6 +144,40 @@ export async function GET(request: NextRequest) {
         paginateArray(filteredResult.stores, page, pageSize)
       : { items: [] as typeof filteredResult.stores, pagination: null };
 
+    // 單一門市時計算現貨文扣工時與扣工時，供門市入口透明度顯示
+    let contentDeductionHours: number | null = null;
+    let storeDeductionHours: number | null = null;
+    let rawAttendanceHours: number | null = null;
+    if (storeId && selectedStore) {
+      const rangeStart = parseDateOnlyUTC(effectiveRange.startDate);
+      const rangeEnd = parseDateOnlyUTC(effectiveRange.endDate);
+      const catalogKey = selectedStore.catalogKey;
+      const branchVariants = [catalogKey, `${catalogKey}店`];
+      const [contentEntries, storeDeductions] = await Promise.all([
+        prisma.contentEntry.findMany({
+          where: {
+            workDate: { gte: rangeStart, lte: rangeEnd },
+            branch: { in: branchVariants },
+            deductedMinutes: { not: null, gt: 0 },
+          },
+          select: { deductedMinutes: true },
+        }),
+        prisma.storeHourDeduction.findMany({
+          where: { workDate: { gte: rangeStart, lte: rangeEnd }, storeId },
+          select: { hours: true },
+        }),
+      ]);
+      contentDeductionHours = Math.round(
+        contentEntries.reduce((s, e) => s + (e.deductedMinutes ?? 0) / 60, 0) * 10
+      ) / 10;
+      storeDeductionHours = Math.round(
+        storeDeductions.reduce((s, d) => s + Number(d.hours), 0) * 10
+      ) / 10;
+      rawAttendanceHours = Math.round(
+        (filteredResult.summary.laborHours + contentDeductionHours + storeDeductionHours) * 10
+      ) / 10;
+    }
+
     return jsonWithStatsCache({
       meta,
       query: {
@@ -197,6 +232,9 @@ export async function GET(request: NextRequest) {
         customerCount: filteredCustomerMetrics.totalCustomerCount,
         avgOrderValue: filteredCustomerMetrics.avgOrderValue,
         customerDaysWithData: filteredCustomerMetrics.daysWithData,
+        rawAttendanceHours,
+        contentDeductionHours,
+        storeDeductionHours,
       },
       storesPagination: storesPaged.pagination,
     });

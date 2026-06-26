@@ -13,6 +13,7 @@ type StoreContext = {
 
 type DashMetrics = {
   totalRevenue: number;
+  totalLaborHours: number;
   revenueForecast: number | null;
   revenueAchievement: number;
   revenueAchievementRate: number | null;
@@ -20,6 +21,9 @@ type DashMetrics = {
   efficiencyRatio: number | null;
   customerCount?: number;
   avgOrderValue?: number | null;
+  rawAttendanceHours?: number | null;
+  contentDeductionHours?: number | null;
+  storeDeductionHours?: number | null;
 };
 
 type TargetWeek = {
@@ -350,6 +354,44 @@ export default function StoreOverviewPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 工時明細（僅在有扣工時時顯示） */}
+            {metrics && (metrics.rawAttendanceHours != null || metrics.totalLaborHours > 0) && (
+              <div className="mb-3 rounded-xl bg-slate-50 p-4">
+                <p className="mb-3 text-sm font-bold text-slate-700">工時明細</p>
+                <div className="space-y-1.5 text-[12px]">
+                  {metrics.rawAttendanceHours != null ? (
+                    <>
+                      <div className="flex justify-between text-slate-500">
+                        <span>出勤工時</span>
+                        <span>{metrics.rawAttendanceHours.toFixed(1)} h</span>
+                      </div>
+                      {(metrics.contentDeductionHours ?? 0) > 0 && (
+                        <div className="flex justify-between text-slate-400">
+                          <span>現貨文扣</span>
+                          <span>－{metrics.contentDeductionHours!.toFixed(1)} h</span>
+                        </div>
+                      )}
+                      {(metrics.storeDeductionHours ?? 0) > 0 && (
+                        <div className="flex justify-between text-slate-400">
+                          <span>效期 / 清掃扣</span>
+                          <span>－{metrics.storeDeductionHours!.toFixed(1)} h</span>
+                        </div>
+                      )}
+                      <div className="mt-1 border-t border-slate-200 pt-1.5 flex justify-between font-medium text-slate-700">
+                        <span>計算工效的工時</span>
+                        <span>{metrics.totalLaborHours.toFixed(1)} h</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-slate-700 font-medium">
+                      <span>計算工效的工時</span>
+                      <span>{metrics.totalLaborHours.toFixed(1)} h</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
