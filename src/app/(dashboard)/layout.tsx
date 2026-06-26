@@ -10,6 +10,7 @@ import {
   canAccessWorkhourRelatedSectionDb,
 } from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
+import { prisma } from "@/lib/prisma";
 
 export default async function DashboardLayout({
   children,
@@ -52,8 +53,13 @@ export default async function DashboardLayout({
         { id: session.roleId, key: session.roleKey },
         "/operations/dashboard"
       )));
+  const hasSupervisorStores =
+    authOn && session != null
+      ? (await prisma.supervisorStore.count({ where: { supervisorId: session.userId } })) > 0
+      : false;
   const canStorePortal =
     !authOn ||
+    hasSupervisorStores ||
     (session != null &&
       (await canAccessPageDb(
         { id: session.roleId, key: session.roleKey },
