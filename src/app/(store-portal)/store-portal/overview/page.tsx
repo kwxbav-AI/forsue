@@ -190,7 +190,7 @@ export default function StoreOverviewPage() {
             <ChevronLeft size={12} />
             上個月
           </button>
-          <span className="min-w-[72px] text-center text-xs font-medium text-slate-700">
+          <span className="min-w-24 text-center text-base font-bold text-slate-800">
             {selectedYear}年{selectedMonth}月
           </span>
           <button

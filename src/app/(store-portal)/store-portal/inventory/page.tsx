@@ -117,7 +117,7 @@ export default function StoreInventoryPage() {
             className="flex items-center gap-0.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
             <ChevronLeft size={12} />上個月
           </button>
-          <span className="min-w-[72px] text-center text-xs font-medium text-slate-700">
+          <span className="min-w-24 text-center text-base font-bold text-slate-800">
             {selectedYear}年{selectedMonth}月
           </span>
           <button type="button" onClick={nextMonth} disabled={isCurrentMonth}
