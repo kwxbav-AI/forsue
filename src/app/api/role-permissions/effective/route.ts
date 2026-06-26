@@ -30,6 +30,12 @@ export async function GET(req: NextRequest) {
       { pathPattern: "/api/store-portal/", method: null },
       { pathPattern: "/api/operations/work-hours/", method: null },
       { pathPattern: "/api/operations/overview", method: null },
+      { pathPattern: "/api/dispatches", method: null },
+      { pathPattern: "/api/dispatches/", method: null },
+      { pathPattern: "/api/content-entries", method: null },
+      { pathPattern: "/api/content-entries/", method: null },
+      { pathPattern: "/api/store-hour-deductions", method: null },
+      { pathPattern: "/api/store-hour-deductions/", method: null },
     ];
     return NextResponse.json({
       ...effective,
