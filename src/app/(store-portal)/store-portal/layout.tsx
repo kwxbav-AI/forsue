@@ -33,6 +33,30 @@ export default async function StorePortalLayout({
     );
   }
 
+  // 督導：只顯示被指派的門市
+  const supervisorStores = await prisma.supervisorStore.findMany({
+    where: { supervisorId: session.userId },
+    include: {
+      store: { select: { id: true, storeName: true, region: true, isActive: true } },
+    },
+    orderBy: { store: { storeName: "asc" } },
+  });
+
+  if (supervisorStores.length > 0) {
+    const activeStores = supervisorStores
+      .filter((ss) => ss.store.isActive)
+      .map((ss) => ({ id: ss.store.id, storeName: ss.store.storeName, region: ss.store.region }));
+    return (
+      <StorePortalShell
+        storeInfo={{ username, storeName: "（請選擇門市）", region: null }}
+        allStores={activeStores}
+        isAdmin
+      >
+        {children}
+      </StorePortalShell>
+    );
+  }
+
   const user = await prisma.appUser.findUnique({
     where: { id: session.userId },
     select: {

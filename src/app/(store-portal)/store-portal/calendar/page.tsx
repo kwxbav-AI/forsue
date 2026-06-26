@@ -263,25 +263,14 @@ export default function StoreCalendarPage() {
                         )}
                       </div>
                       {!isRest && !isFuture && day?.hasData && (
-                        <div className="mb-1.5 flex gap-1 pb-1.5" style={{ borderBottom: "0.5px solid rgba(0,0,0,0.07)" }}>
-                          <div
-                            className="flex-1 rounded py-1 text-center"
-                            style={{ background: day.isExceed ? "rgba(147,112,219,0.15)" : day.isAchieved ? "rgba(255,255,255,0.55)" : "rgba(248,250,252,0.8)" }}
-                          >
-                            <div className="text-[9px]" style={{ color: day.isExceed ? "#7c3aed" : day.isAchieved ? "#0F6E56" : "#94a3b8" }}>總工時</div>
-                            <div className="text-[12px] font-medium" style={{ color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#334155" }}>
-                              {day.rawHours.toFixed(1)}h
-                            </div>
-                          </div>
-                          <div
-                            className="flex-1 rounded py-1 text-center"
-                            style={{ background: day.isExceed ? "rgba(147,112,219,0.15)" : day.isAchieved ? "rgba(255,255,255,0.55)" : "rgba(248,250,252,0.8)" }}
-                          >
-                            <div className="text-[9px]" style={{ color: day.isExceed ? "#7c3aed" : day.isAchieved ? "#0F6E56" : "#94a3b8" }}>總營收</div>
-                            <div className="text-[12px] font-medium" style={{ color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#334155" }}>
-                              ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
-                            </div>
-                          </div>
+                        <div
+                          className="mb-1.5 pb-1.5 text-[11px] font-medium"
+                          style={{
+                            borderBottom: "0.5px solid rgba(0,0,0,0.07)",
+                            color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
+                          }}
+                        >
+                          {day.rawHours.toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
                         </div>
                       )}
                       {!isRest && !isFuture && (
