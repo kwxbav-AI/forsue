@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 
 type StoreContext = {
   storeName: string;
@@ -52,14 +52,12 @@ function fmtYoy(r: number | null) {
 }
 
 function toYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function monthLabel(d: Date): string {
-  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+function lastDayOfMonth(year: number, month: number): string {
+  const d = new Date(Date.UTC(year, month, 0)); // day 0 = last day of prev month
+  return toYmd(d);
 }
 
 function fmtMd(ymd: string): string {
@@ -71,20 +69,48 @@ function fmtMd(ymd: string): string {
 export default function StoreOverviewPage() {
   const searchParams = useSearchParams();
   const adminStoreId = searchParams.get("storeId");
+  const now = new Date();
+
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+
   const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [metrics, setMetrics] = useState<DashMetrics | null>(null);
   const [target, setTarget] = useState<TargetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const now = new Date();
-  const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const endDate = toYmd(now);
+  const isCurrentMonth =
+    selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
+
+  const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+  const startDate = `${monthStr}-01`;
+  const endDate = isCurrentMonth ? toYmd(now) : lastDayOfMonth(selectedYear, selectedMonth);
+
+  function prevMonth() {
+    if (selectedMonth === 1) {
+      setSelectedYear((y) => y - 1);
+      setSelectedMonth(12);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  }
+
+  function nextMonth() {
+    if (isCurrentMonth) return;
+    if (selectedMonth === 12) {
+      setSelectedYear((y) => y + 1);
+      setSelectedMonth(1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setMetrics(null);
+    setTarget(null);
     try {
       const ctxUrl = adminStoreId
         ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
@@ -110,35 +136,33 @@ export default function StoreOverviewPage() {
       }
 
       if (targetRes.ok) {
-        const tData = (await targetRes.json()) as TargetData;
-        setTarget(tData);
+        setTarget((await targetRes.json()) as TargetData);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "載入失敗");
     } finally {
       setLoading(false);
     }
-  }, [adminStoreId]);
+  }, [adminStoreId, startDate, endDate, monthStr]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const storeTarget = ctx
-    ? target?.stores.find((s) => s.storeId === ctx.retailStoreId)
+  // Fix: use performanceStoreId (Store.id) to match store-target-card data
+  const storeTarget = ctx?.performanceStoreId
+    ? target?.stores.find((s) => s.storeId === ctx.performanceStoreId)
     : null;
   const totalMet = storeTarget?.byWeek.reduce((a, w) => a + w.metDays, 0) ?? 0;
   const totalOver = storeTarget?.byWeek.reduce((a, w) => a + w.exceedDays, 0) ?? 0;
   const totalWd = target?.weeks.reduce((a, w) => a + w.workingDays, 0) ?? 0;
 
-  const achievePct = metrics?.revenueAchievementRate
-    ? Math.round(Number(metrics.revenueAchievementRate))
-    : null;
-  const forecastPct =
-    metrics?.revenueForecast && metrics?.revenueAchievement
+  const displayPct =
+    metrics?.revenueForecast && metrics.revenueAchievement
       ? Math.round((metrics.revenueAchievement / metrics.revenueForecast) * 100)
-      : null;
-  const displayPct = achievePct ?? forecastPct;
+      : metrics?.revenueAchievementRate
+        ? Math.round(Number(metrics.revenueAchievementRate))
+        : null;
 
   const yoy = metrics?.yoyGrowthRate ?? null;
 
@@ -148,17 +172,41 @@ export default function StoreOverviewPage() {
         <div>
           <h1 className="text-sm font-medium text-slate-800">業績總覽</h1>
           <p className="text-xs text-slate-400">
-            {monthLabel(now)} · 截至 {endDate}
+            {isCurrentMonth ? `截至 ${endDate}` : `${startDate} – ${endDate}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="ml-auto rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-        >
-          <RefreshCw size={12} />
-        </button>
+
+        {/* 月份切換 */}
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="flex items-center gap-0.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+          >
+            <ChevronLeft size={12} />
+            上個月
+          </button>
+          <span className="min-w-[72px] text-center text-xs font-medium text-slate-700">
+            {selectedYear}年{selectedMonth}月
+          </span>
+          <button
+            type="button"
+            onClick={nextMonth}
+            disabled={isCurrentMonth}
+            className="flex items-center gap-0.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+          >
+            下個月
+            <ChevronRight size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="ml-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -174,7 +222,6 @@ export default function StoreOverviewPage() {
           <>
             {/* 主要指標：營業額 + YoY */}
             <div className="mb-3 grid grid-cols-2 gap-3">
-              {/* 營業額 — 綠色 */}
               <div className="rounded-xl p-4" style={{ background: "#E1F5EE" }}>
                 <p className="mb-1 text-[11px]" style={{ color: "#0F6E56" }}>本月營業額</p>
                 <p className="text-2xl font-medium" style={{ color: "#085041" }}>
@@ -184,10 +231,7 @@ export default function StoreOverviewPage() {
                   {displayPct != null && (
                     <span
                       className="rounded px-2 py-0.5 text-[11px] font-medium"
-                      style={{
-                        background: "#9FE1CB",
-                        color: displayPct >= 100 ? "#085041" : "#3B6D11",
-                      }}
+                      style={{ background: "#9FE1CB", color: displayPct >= 100 ? "#085041" : "#3B6D11" }}
                     >
                       {displayPct}% 達成
                     </span>
@@ -200,7 +244,6 @@ export default function StoreOverviewPage() {
                 </div>
               </div>
 
-              {/* YoY — 紅/綠依正負 */}
               <div
                 className="rounded-xl p-4"
                 style={{ background: yoy == null ? "#F1EFE8" : yoy >= 0 ? "#EAF3DE" : "#FCEBEB" }}
@@ -233,7 +276,6 @@ export default function StoreOverviewPage() {
 
             {/* 次要指標：工效比 + 達標天數 + 來客數 */}
             <div className="mb-3 grid grid-cols-3 gap-2">
-              {/* 工效比 — 藍色 */}
               <div className="rounded-xl p-3" style={{ background: "#E6F1FB" }}>
                 <p className="mb-1 text-[11px]" style={{ color: "#185FA5" }}>工效比</p>
                 <p className="text-lg font-medium" style={{ color: "#0C447C" }}>
@@ -244,13 +286,12 @@ export default function StoreOverviewPage() {
                 <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>元 / hr</p>
               </div>
 
-              {/* 達標天數 — 橘色 */}
               <div className="rounded-xl p-3" style={{ background: "#FAEEDA" }}>
                 <p className="mb-1 text-[11px]" style={{ color: "#854F0B" }}>達標天數</p>
                 <p className="text-lg font-medium" style={{ color: "#633806" }}>
                   {totalWd > 0 ? `${totalMet}` : "—"}
                   {totalWd > 0 && (
-                    <span className="text-xs font-normal ml-1" style={{ color: "#854F0B" }}>
+                    <span className="ml-1 text-xs font-normal" style={{ color: "#854F0B" }}>
                       / {totalWd} 天
                     </span>
                   )}
@@ -260,11 +301,10 @@ export default function StoreOverviewPage() {
                 )}
               </div>
 
-              {/* 來客數 — 灰色 */}
               <div className="rounded-xl bg-slate-50 p-3">
                 <p className="mb-1 text-[11px] text-slate-400">來客數</p>
                 <p className="text-lg font-medium text-slate-800">
-                  {metrics?.customerCount != null
+                  {metrics?.customerCount != null && metrics.customerCount > 0
                     ? metrics.customerCount.toLocaleString("zh-TW")
                     : "—"}
                 </p>

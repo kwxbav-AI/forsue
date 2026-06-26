@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, Filter, X } from "lucide-react";
 
 type StoreContext = {
   storeName: string;
@@ -66,6 +66,12 @@ export default function StoreAttendancePage() {
   const [sortField, setSortField] = useState<SortField>("workDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  // Filter state
+  const [filterDate, setFilterDate] = useState<string>("all");
+  const [filterName, setFilterName] = useState<string>("all");
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [showNameFilter, setShowNameFilter] = useState(false);
+
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   const today = toYmd(now);
 
@@ -93,6 +99,8 @@ export default function StoreAttendancePage() {
         (r: AttendanceRow) => r.type === "attendance" && r.workDate >= monthStart
       );
       setRows(rawRows);
+      setFilterDate("all");
+      setFilterName("all");
     } catch (e) {
       setError(e instanceof Error ? e.message : "載入失敗");
     } finally {
@@ -114,7 +122,19 @@ export default function StoreAttendancePage() {
     }
   }
 
-  const sortedRows = [...rows].sort((a, b) => {
+  // Unique dates and names for filter dropdowns
+  const uniqueDates = [...new Set(rows.map((r) => r.workDate))].sort();
+  const uniqueNames = [...new Set(rows.map((r) => r.name))].sort((a, b) =>
+    a.localeCompare(b, "zh-TW")
+  );
+
+  const filteredRows = rows.filter((r) => {
+    if (filterDate !== "all" && r.workDate !== filterDate) return false;
+    if (filterName !== "all" && r.name !== filterName) return false;
+    return true;
+  });
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
     let cmp = 0;
     if (sortField === "workDate") {
       cmp = a.workDate.localeCompare(b.workDate);
@@ -128,18 +148,18 @@ export default function StoreAttendancePage() {
 
   const totalHours = rows.reduce((a, r) => a + (r.workHours ?? 0), 0);
 
-  // 法定加班：週六全天 + 平日超出表定
   const legalOT = rows.reduce((acc, r) => {
     if (isSaturdayYmd(r.workDate)) return acc + (r.workHours ?? 0);
     const ot = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : 0;
     return acc + ot;
   }, 0);
 
-  // 當日超時：所有工作日（含週六）超出表定
   const dailyOT = rows.reduce((acc, r) => {
     const ot = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : 0;
     return acc + ot;
   }, 0);
+
+  const hasFilter = filterDate !== "all" || filterName !== "all";
 
   return (
     <div className="flex flex-col">
@@ -169,19 +189,15 @@ export default function StoreAttendancePage() {
 
         {!loading && rows.length > 0 && (
           <div className="mb-4 grid grid-cols-3 gap-3">
-            {/* 本月總工時 — 藍色 */}
             <div className="rounded-xl p-4" style={{ background: "#E6F1FB" }}>
               <p className="mb-1 text-xs font-medium" style={{ color: "#185FA5" }}>本月總工時</p>
               <p className="text-2xl font-medium" style={{ color: "#0C447C" }}>
                 {totalHours.toFixed(1)}
                 <span className="ml-1 text-sm font-normal" style={{ color: "#185FA5" }}>h</span>
               </p>
-              <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>
-                共 {rows.length} 筆出勤
-              </p>
+              <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>共 {rows.length} 筆出勤</p>
             </div>
 
-            {/* 法定加班時數 — 橘色 */}
             <div className="rounded-xl p-4" style={{ background: "#FAEEDA" }}>
               <p className="mb-1 text-xs font-medium" style={{ color: "#854F0B" }}>法定加班時數</p>
               <p className="text-2xl font-medium" style={{ color: "#633806" }}>
@@ -191,7 +207,6 @@ export default function StoreAttendancePage() {
               <p className="mt-1 text-[11px]" style={{ color: "#854F0B" }}>週六出勤 + 平日超表定</p>
             </div>
 
-            {/* 當日超時工時 — 紅色 */}
             <div className="rounded-xl p-4" style={{ background: "#FCEBEB" }}>
               <p className="mb-1 text-xs font-medium" style={{ color: "#A32D2D" }}>當日超時工時</p>
               <p className="text-2xl font-medium" style={{ color: "#791F1F" }}>
@@ -210,74 +225,190 @@ export default function StoreAttendancePage() {
             此月份無出勤紀錄
           </p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-3 py-2 text-left">
+          <>
+            {/* 篩選列 */}
+            <div className="mb-2 flex items-center gap-2">
+              <Filter size={12} className="text-slate-400" />
+              <span className="text-[11px] text-slate-400">篩選：</span>
+
+              {/* 日期篩選 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => { setShowDateFilter((v) => !v); setShowNameFilter(false); }}
+                  className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] ${
+                    filterDate !== "all"
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {filterDate === "all" ? "日期" : fmtDateWithWeekday(filterDate)}
+                  {filterDate !== "all" && (
+                    <X
+                      size={10}
+                      className="ml-0.5"
+                      onClick={(e) => { e.stopPropagation(); setFilterDate("all"); }}
+                    />
+                  )}
+                </button>
+                {showDateFilter && (
+                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
                     <button
                       type="button"
-                      onClick={() => toggleSort("workDate")}
-                      className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
+                      onClick={() => { setFilterDate("all"); setShowDateFilter(false); }}
+                      className="block w-full px-3 py-1.5 text-left text-[11px] text-slate-500 hover:bg-slate-50"
                     >
-                      日期
-                      <SortIcon field="workDate" sortField={sortField} sortDir={sortDir} />
+                      全部日期
                     </button>
-                  </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">部門</th>
-                  <th className="px-3 py-2 text-left">
+                    {uniqueDates.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => { setFilterDate(d); setShowDateFilter(false); }}
+                        className={`block w-full px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                          filterDate === d ? "bg-emerald-50 text-emerald-700" : "text-slate-600"
+                        }`}
+                      >
+                        {fmtDateWithWeekday(d)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 員工篩選 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => { setShowNameFilter((v) => !v); setShowDateFilter(false); }}
+                  className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] ${
+                    filterName !== "all"
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {filterName === "all" ? "員工" : filterName}
+                  {filterName !== "all" && (
+                    <X
+                      size={10}
+                      className="ml-0.5"
+                      onClick={(e) => { e.stopPropagation(); setFilterName("all"); }}
+                    />
+                  )}
+                </button>
+                {showNameFilter && (
+                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
                     <button
                       type="button"
-                      onClick={() => toggleSort("name")}
-                      className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
+                      onClick={() => { setFilterName("all"); setShowNameFilter(false); }}
+                      className="block w-full px-3 py-1.5 text-left text-[11px] text-slate-500 hover:bg-slate-50"
                     >
-                      員工
-                      <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
+                      全部員工
                     </button>
-                  </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">職稱</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">上班</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">下班</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">工時</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">加班時數</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">備註</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map((r) => {
-                  const isSat = isSaturdayYmd(r.workDate);
-                  const otHours = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : null;
-                  return (
-                    <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 last:border-0">
-                      <td className={`px-3 py-2 ${isSat ? "text-blue-500" : "text-slate-500"}`}>
-                        {fmtDateWithWeekday(r.workDate)}
-                      </td>
-                      <td className="px-3 py-2 text-slate-400">{r.department ?? "—"}</td>
-                      <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
-                      <td className="px-3 py-2 text-slate-400">{r.position ?? "—"}</td>
-                      <td className="px-3 py-2 text-slate-500">{fmtTime(r.startTime)}</td>
-                      <td className="px-3 py-2 text-slate-500">{fmtTime(r.endTime)}</td>
-                      <td className="px-3 py-2 font-medium text-slate-700">{r.workHours?.toFixed(2)}h</td>
-                      <td className="px-3 py-2">
-                        {otHours != null && otHours > 0 ? (
-                          <span className="font-medium text-amber-600">{otHours.toFixed(2)}h</span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.clockStatus === "anomaly" && (
-                          <span className="rounded bg-red-50 px-1.5 py-px text-[9px] font-medium text-red-600">
-                            異常
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    {uniqueNames.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => { setFilterName(n); setShowNameFilter(false); }}
+                        className={`block w-full px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                          filterName === n ? "bg-emerald-50 text-emerald-700" : "text-slate-600"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {hasFilter && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterDate("all"); setFilterName("all"); }}
+                  className="ml-1 text-[11px] text-slate-400 hover:text-slate-600"
+                >
+                  清除篩選
+                </button>
+              )}
+
+              <span className="ml-auto text-[11px] text-slate-400">
+                顯示 {sortedRows.length} / {rows.length} 筆
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="px-3 py-2 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("workDate")}
+                        className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
+                      >
+                        日期
+                        <SortIcon field="workDate" sortField={sortField} sortDir={sortDir} />
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">部門</th>
+                    <th className="px-3 py-2 text-left">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("name")}
+                        className="flex items-center text-[10px] font-medium text-slate-400 hover:text-slate-600"
+                      >
+                        員工
+                        <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">職稱</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">上班</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">下班</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">工時</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">加班時數</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-slate-400">備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((r, idx) => {
+                    const isSat = isSaturdayYmd(r.workDate);
+                    const otHours = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : null;
+                    const isEven = idx % 2 === 0;
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`border-b border-slate-50 last:border-0 hover:bg-emerald-50/40 ${isEven ? "bg-white" : "bg-slate-50/70"}`}
+                      >
+                        <td className={`px-3 py-2 ${isSat ? "text-blue-500" : "text-slate-500"}`}>
+                          {fmtDateWithWeekday(r.workDate)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-400">{r.department ?? "—"}</td>
+                        <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
+                        <td className="px-3 py-2 text-slate-400">{r.position ?? "—"}</td>
+                        <td className="px-3 py-2 text-slate-500">{fmtTime(r.startTime)}</td>
+                        <td className="px-3 py-2 text-slate-500">{fmtTime(r.endTime)}</td>
+                        <td className="px-3 py-2 font-medium text-slate-700">{r.workHours?.toFixed(2)}h</td>
+                        <td className="px-3 py-2">
+                          {otHours != null && otHours > 0 ? (
+                            <span className="font-medium text-amber-600">{otHours.toFixed(2)}h</span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.clockStatus === "anomaly" && (
+                            <span className="rounded bg-red-50 px-1.5 py-px text-[9px] font-medium text-red-600">
+                              異常
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
