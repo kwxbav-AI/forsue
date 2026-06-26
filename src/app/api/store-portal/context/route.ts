@@ -34,24 +34,33 @@ export async function GET(request: NextRequest) {
   const isAdmin = session.roleKey === "ADMIN";
   const overrideStoreId = request.nextUrl.searchParams.get("storeId");
 
-  if (isAdmin && overrideStoreId) {
-    const retailStore = await prisma.retailStore.findUnique({
-      where: { id: overrideStoreId },
-      select: { id: true, storeName: true, region: true },
-    });
-    if (!retailStore) {
-      return NextResponse.json({ error: "找不到指定門市" }, { status: 404 });
+  // ADMIN 或督導（有 supervisorStores）傳 storeId 時，直接用該門市
+  if (overrideStoreId) {
+    const isSupervisorOfStore =
+      !isAdmin &&
+      (await prisma.supervisorStore.count({
+        where: { supervisorId: session.userId, storeId: overrideStoreId },
+      })) > 0;
+
+    if (isAdmin || isSupervisorOfStore) {
+      const retailStore = await prisma.retailStore.findUnique({
+        where: { id: overrideStoreId },
+        select: { id: true, storeName: true, region: true },
+      });
+      if (!retailStore) {
+        return NextResponse.json({ error: "找不到指定門市" }, { status: 404 });
+      }
+      const performanceStoreId = await findPerformanceStoreId(retailStore.storeName);
+      return NextResponse.json({
+        userId: session.userId,
+        username: session.username,
+        isAdmin: true,
+        retailStoreId: retailStore.id,
+        storeName: retailStore.storeName,
+        region: retailStore.region ?? null,
+        performanceStoreId,
+      });
     }
-    const performanceStoreId = await findPerformanceStoreId(retailStore.storeName);
-    return NextResponse.json({
-      userId: session.userId,
-      username: session.username,
-      isAdmin: true,
-      retailStoreId: retailStore.id,
-      storeName: retailStore.storeName,
-      region: retailStore.region ?? null,
-      performanceStoreId,
-    });
   }
 
   if (isAdmin && !overrideStoreId) {
