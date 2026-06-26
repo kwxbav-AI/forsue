@@ -224,14 +224,14 @@ export default function StoreOverviewPage() {
           <p className="text-sm text-slate-400">載入中…</p>
         ) : (
           <>
-            {/* 主要指標：營業額 + YoY */}
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div className="rounded-xl p-4" style={{ background: "#E1F5EE" }}>
-                <p className="mb-1 text-[11px]" style={{ color: "#0F6E56" }}>本月營業額</p>
+            {/* 五張指標卡：單排 */}
+            <div className="mb-3 grid grid-cols-5 gap-2">
+              <div className="rounded-xl p-3" style={{ background: "#E1F5EE" }}>
+                <p className="mb-1 text-[17px] font-bold" style={{ color: "#0F6E56" }}>本月營業額</p>
                 <p className="text-2xl font-medium" style={{ color: "#085041" }}>
                   {metrics ? fmt(metrics.revenueAchievement ?? metrics.totalRevenue) : "—"}
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {displayPct != null && (
                     <span
                       className="rounded px-2 py-0.5 text-[11px] font-medium"
@@ -249,11 +249,11 @@ export default function StoreOverviewPage() {
               </div>
 
               <div
-                className="rounded-xl p-4"
+                className="rounded-xl p-3"
                 style={{ background: yoy == null ? "#F1EFE8" : yoy >= 0 ? "#EAF3DE" : "#FCEBEB" }}
               >
                 <p
-                  className="mb-1 text-[11px]"
+                  className="mb-1 text-[17px] font-bold"
                   style={{ color: yoy == null ? "#5F5E5A" : yoy >= 0 ? "#3B6D11" : "#A32D2D" }}
                 >
                   去年同期成長
@@ -276,13 +276,10 @@ export default function StoreOverviewPage() {
                   </span>
                 </div>
               </div>
-            </div>
 
-            {/* 次要指標：工效比 + 達標天數 + 來客數 */}
-            <div className="mb-3 grid grid-cols-3 gap-2">
               <div className="rounded-xl p-3" style={{ background: "#E6F1FB" }}>
-                <p className="mb-1 text-[11px]" style={{ color: "#185FA5" }}>工效比</p>
-                <p className="text-lg font-medium" style={{ color: "#0C447C" }}>
+                <p className="mb-1 text-[17px] font-bold" style={{ color: "#185FA5" }}>工效比</p>
+                <p className="text-2xl font-medium" style={{ color: "#0C447C" }}>
                   {metrics?.efficiencyRatio != null
                     ? `$${Math.round(metrics.efficiencyRatio).toLocaleString()}`
                     : "—"}
@@ -291,11 +288,11 @@ export default function StoreOverviewPage() {
               </div>
 
               <div className="rounded-xl p-3" style={{ background: "#FAEEDA" }}>
-                <p className="mb-1 text-[11px]" style={{ color: "#854F0B" }}>達標天數</p>
-                <p className="text-lg font-medium" style={{ color: "#633806" }}>
+                <p className="mb-1 text-[17px] font-bold" style={{ color: "#854F0B" }}>達標天數</p>
+                <p className="text-2xl font-medium" style={{ color: "#633806" }}>
                   {totalWd > 0 ? `${totalMet}` : "—"}
                   {totalWd > 0 && (
-                    <span className="ml-1 text-xs font-normal" style={{ color: "#854F0B" }}>
+                    <span className="ml-1 text-sm font-normal" style={{ color: "#854F0B" }}>
                       / {totalWd} 天
                     </span>
                   )}
@@ -306,8 +303,8 @@ export default function StoreOverviewPage() {
               </div>
 
               <div className="rounded-xl bg-slate-50 p-3">
-                <p className="mb-1 text-[11px] text-slate-400">來客數</p>
-                <p className="text-lg font-medium text-slate-800">
+                <p className="mb-1 text-[17px] font-bold text-slate-400">來客數</p>
+                <p className="text-2xl font-medium text-slate-800">
                   {metrics?.customerCount != null && metrics.customerCount > 0
                     ? metrics.customerCount.toLocaleString("zh-TW")
                     : "—"}
@@ -316,84 +313,89 @@ export default function StoreOverviewPage() {
               </div>
             </div>
 
-            {/* 進度條 */}
-            {metrics?.revenueForecast && metrics.revenueAchievement != null && (
-              <div className="mb-3 rounded-xl bg-slate-50 p-4">
-                <p className="mb-3 text-sm font-bold text-slate-700">月目標進度</p>
-                <div className="mb-3">
-                  <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
-                    <span>營業額</span>
-                    <span className="font-medium">
-                      {fmt(metrics.revenueAchievement)} / {fmt(metrics.revenueForecast)}
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, Math.round((metrics.revenueAchievement / metrics.revenueForecast) * 100))}%`,
-                        background: "#1D9E75",
-                      }}
-                    />
-                  </div>
-                </div>
-                {totalWd > 0 && (
-                  <div>
+            {/* 月目標進度 + 工時明細：並排 2/3 + 1/3 */}
+            <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: "2fr 1fr" }}>
+              {metrics?.revenueForecast && metrics.revenueAchievement != null ? (
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="mb-3 text-sm font-bold text-slate-700">月目標進度</p>
+                  <div className="mb-3">
                     <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
-                      <span>達標天數</span>
-                      <span className="font-medium">{totalMet + totalOver} 天 / {totalWd} 天</span>
+                      <span>營業額</span>
+                      <span className="font-medium">
+                        {fmt(metrics.revenueAchievement)} / {fmt(metrics.revenueForecast)}
+                      </span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-white">
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${Math.min(100, Math.round(((totalMet + totalOver) / totalWd) * 100))}%`,
-                          background: "#BA7517",
+                          width: `${Math.min(100, Math.round((metrics.revenueAchievement / metrics.revenueForecast) * 100))}%`,
+                          background: "#1D9E75",
                         }}
                       />
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* 工時明細（僅在有扣工時時顯示） */}
-            {metrics && (metrics.rawAttendanceHours != null || metrics.totalLaborHours > 0) && (
-              <div className="mb-3 rounded-xl bg-slate-50 p-4">
-                <p className="mb-3 text-sm font-bold text-slate-700">工時明細</p>
-                <div className="space-y-1.5 text-[12px]">
-                  {metrics.rawAttendanceHours != null ? (
-                    <>
-                      <div className="flex justify-between text-slate-500">
-                        <span>出勤工時</span>
-                        <span>{metrics.rawAttendanceHours.toFixed(1)} h</span>
+                  {totalWd > 0 && (
+                    <div>
+                      <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
+                        <span>達標天數</span>
+                        <span className="font-medium">{totalMet + totalOver} 天 / {totalWd} 天</span>
                       </div>
-                      {(metrics.contentDeductionHours ?? 0) > 0 && (
-                        <div className="flex justify-between text-slate-400">
-                          <span>現貨文扣</span>
-                          <span>－{metrics.contentDeductionHours!.toFixed(1)} h</span>
-                        </div>
-                      )}
-                      {(metrics.storeDeductionHours ?? 0) > 0 && (
-                        <div className="flex justify-between text-slate-400">
-                          <span>效期 / 清掃扣</span>
-                          <span>－{metrics.storeDeductionHours!.toFixed(1)} h</span>
-                        </div>
-                      )}
-                      <div className="mt-1 border-t border-slate-200 pt-1.5 flex justify-between font-medium text-slate-700">
-                        <span>計算工效的工時</span>
-                        <span>{metrics.totalLaborHours.toFixed(1)} h</span>
+                      <div className="h-2 overflow-hidden rounded-full bg-white">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.min(100, Math.round(((totalMet + totalOver) / totalWd) * 100))}%`,
+                            background: "#BA7517",
+                          }}
+                        />
                       </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between text-slate-700 font-medium">
-                      <span>計算工效的工時</span>
-                      <span>{metrics.totalLaborHours.toFixed(1)} h</span>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div />
+              )}
+
+              {metrics && (metrics.rawAttendanceHours != null || metrics.totalLaborHours > 0) ? (
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="mb-3 text-sm font-bold text-slate-700">工時明細</p>
+                  <div className="space-y-1.5 text-[12px]">
+                    {metrics.rawAttendanceHours != null ? (
+                      <>
+                        <div className="flex justify-between text-slate-500">
+                          <span>出勤工時</span>
+                          <span>{metrics.rawAttendanceHours.toFixed(1)} h</span>
+                        </div>
+                        {(metrics.contentDeductionHours ?? 0) > 0 && (
+                          <div className="flex justify-between text-slate-400">
+                            <span>現貨文扣</span>
+                            <span>－{metrics.contentDeductionHours!.toFixed(1)} h</span>
+                          </div>
+                        )}
+                        {(metrics.storeDeductionHours ?? 0) > 0 && (
+                          <div className="flex justify-between text-slate-400">
+                            <span>效期 / 清掃扣</span>
+                            <span>－{metrics.storeDeductionHours!.toFixed(1)} h</span>
+                          </div>
+                        )}
+                        <div className="mt-1 border-t border-slate-200 pt-1.5 flex justify-between font-medium text-slate-700">
+                          <span>計算工效的工時</span>
+                          <span>{metrics.totalLaborHours.toFixed(1)} h</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between font-medium text-slate-700">
+                        <span>計算工效的工時</span>
+                        <span>{metrics.totalLaborHours.toFixed(1)} h</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div />
+              )}
+            </div>
 
             {/* 週別達標 */}
             {target && storeTarget && (
@@ -405,28 +407,49 @@ export default function StoreOverviewPage() {
                 >
                   {target.weeks.map((w, i) => {
                     const wk = storeTarget.byWeek[i] ?? { metDays: 0, exceedDays: 0, total: 0 };
-                    const hasMet = wk.metDays > 0 || wk.exceedDays > 0;
+                    const isAltGreen = i % 2 === 1;
+                    const bg = isAltGreen ? "#E1F5EE" : "#ffffff";
+                    const border = isAltGreen ? "#9FE1CB" : "#e2e8f0";
                     return (
                       <div
                         key={w.index}
-                        className="rounded-lg p-2 text-center"
-                        style={{
-                          background: hasMet ? "#E1F5EE" : "#fff",
-                          border: `0.5px solid ${hasMet ? "#9FE1CB" : "#e2e8f0"}`,
-                        }}
+                        className="rounded-lg p-3"
+                        style={{ background: bg, border: `0.5px solid ${border}` }}
                       >
-                        <div className="mb-1 text-[9px] text-slate-400">
-                          W{w.index} {fmtMd(w.startYmd)}–{fmtMd(w.endYmd)}
+                        {/* 週次標題：1.8x 放大 */}
+                        <div className="mb-2 text-[20px] font-bold leading-tight" style={{ color: isAltGreen ? "#085041" : "#334155" }}>
+                          W{w.index}
                         </div>
-                        <div className="text-sm font-medium" style={{ color: "#085041" }}>
-                          達標 {wk.metDays}
+                        <div className="mb-2.5 text-[11px]" style={{ color: isAltGreen ? "#0F6E56" : "#64748b" }}>
+                          {fmtMd(w.startYmd)}–{fmtMd(w.endYmd)}
                         </div>
-                        {wk.exceedDays > 0 && (
-                          <div className="text-xs font-medium text-purple-600">
-                            超標 {wk.exceedDays}
+                        {/* 數字列：達標、超標、工作日 同字級 */}
+                        <div className="flex items-start gap-2">
+                          <div>
+                            <div className="text-[22px] font-medium leading-none" style={{ color: "#085041" }}>
+                              {wk.metDays}
+                            </div>
+                            <div className="mt-0.5 text-[10px]" style={{ color: "#0F6E56" }}>達標</div>
                           </div>
-                        )}
-                        <div className="text-[9px] text-slate-400">{w.workingDays} 工作日</div>
+                          {wk.exceedDays > 0 && (
+                            <>
+                              <div className="mt-1 h-5 w-px bg-slate-200" />
+                              <div>
+                                <div className="text-[22px] font-medium leading-none" style={{ color: "#533AB7" }}>
+                                  {wk.exceedDays}
+                                </div>
+                                <div className="mt-0.5 text-[10px]" style={{ color: "#533AB7" }}>超標</div>
+                              </div>
+                            </>
+                          )}
+                          <div className="mt-1 h-5 w-px bg-slate-200" />
+                          <div>
+                            <div className="text-[22px] font-medium leading-none text-slate-400">
+                              {w.workingDays}
+                            </div>
+                            <div className="mt-0.5 text-[10px] text-slate-400">工作日</div>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
