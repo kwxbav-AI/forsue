@@ -142,6 +142,8 @@ export async function GET(request: Request) {
   const todayStr = formatDateOnlyTaipei();
   const startDate = searchParams.get("startDate") || todayStr;
   const endDate = searchParams.get("endDate") || startDate;
+  // simple=true: skip heavy per-day engine computations (computeStoreHoursByEmployee + computeDailyMetricsByStore)
+  const simple = searchParams.get("simple") === "true";
   const employeeCode = searchParams.get("employeeCode")?.trim() || "";
   const name = searchParams.get("name")?.trim() || "";
   const department = searchParams.get("department")?.trim() || "";
@@ -728,17 +730,19 @@ export async function GET(request: Request) {
     const sortedKeyList = Array.from(sortedKeys).sort();
 
     const allocationByDate = new Map<string, Awaited<ReturnType<typeof computeStoreHoursByEmployee>>>();
-    const uniqueDatesInReport = Array.from(
-      new Set(sortedKeyList.map((k) => k.split("|")[1]))
-    );
-    await Promise.all(
-      uniqueDatesInReport.map(async (dateStr) => {
-        allocationByDate.set(
-          dateStr,
-          await computeStoreHoursByEmployee(toStartOfDay(dateStr))
-        );
-      })
-    );
+    if (!simple) {
+      const uniqueDatesInReport = Array.from(
+        new Set(sortedKeyList.map((k) => k.split("|")[1]))
+      );
+      await Promise.all(
+        uniqueDatesInReport.map(async (dateStr) => {
+          allocationByDate.set(
+            dateStr,
+            await computeStoreHoursByEmployee(toStartOfDay(dateStr))
+          );
+        })
+      );
+    }
 
     const resolveFilteredStoreNet = (
       employeeId: string,
@@ -1261,22 +1265,24 @@ export async function GET(request: Request) {
     }
 
     let engineTotalHours = 0;
-    const dayStrs = listDaysBetweenYmd(startDate, endDate);
-    for (const ymd of dayStrs) {
-      const metrics = await computeDailyMetricsByStore(toStartOfDay(ymd), {
-        reportVisibleOnly: true,
-      });
-      if (storeIdsForFilter && storeIdsForFilter.length > 0) {
-        for (const sid of storeIdsForFilter) {
-          engineTotalHours += metrics.get(sid)?.laborHours ?? 0;
-        }
-      } else {
-        for (const m of metrics.values()) {
-          engineTotalHours += m.laborHours;
+    if (!simple) {
+      const dayStrs = listDaysBetweenYmd(startDate, endDate);
+      for (const ymd of dayStrs) {
+        const metrics = await computeDailyMetricsByStore(toStartOfDay(ymd), {
+          reportVisibleOnly: true,
+        });
+        if (storeIdsForFilter && storeIdsForFilter.length > 0) {
+          for (const sid of storeIdsForFilter) {
+            engineTotalHours += metrics.get(sid)?.laborHours ?? 0;
+          }
+        } else {
+          for (const m of metrics.values()) {
+            engineTotalHours += m.laborHours;
+          }
         }
       }
+      engineTotalHours = Math.round(engineTotalHours * 100) / 100;
     }
-    engineTotalHours = Math.round(engineTotalHours * 100) / 100;
 
     const rowCount = rows.filter(
       (r) => r.type === "attendance" || r.type === "dispatch_in"

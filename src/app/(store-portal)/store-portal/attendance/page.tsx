@@ -92,6 +92,7 @@ export default function StoreAttendancePage() {
       const params = new URLSearchParams({ startDate: monthStart, endDate: today });
       if (storeCtx.storeName) params.set("department", storeCtx.storeName);
 
+      params.set("simple", "true");
       const attRes = await fetch(`/api/reports/attendance?${params.toString()}`);
       if (!attRes.ok) throw new Error("出勤資料載入失敗");
       const data = await attRes.json();
@@ -252,7 +253,7 @@ export default function StoreAttendancePage() {
                   )}
                 </button>
                 {showDateFilter && (
-                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 min-w-[200px] overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
                     <button
                       type="button"
                       onClick={() => { setFilterDate("all"); setShowDateFilter(false); }}
@@ -297,7 +298,7 @@ export default function StoreAttendancePage() {
                   )}
                 </button>
                 {showNameFilter && (
-                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute left-0 top-full z-10 mt-1 max-h-48 min-w-[120px] overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">
                     <button
                       type="button"
                       onClick={() => { setFilterName("all"); setShowNameFilter(false); }}
@@ -372,7 +373,7 @@ export default function StoreAttendancePage() {
                 <tbody>
                   {sortedRows.map((r, idx) => {
                     const isSat = isSaturdayYmd(r.workDate);
-                    const otHours = r.scheduledHours != null ? Math.max(0, (r.workHours ?? 0) - r.scheduledHours) : null;
+                    const otHours = r.scheduledHours != null ? Math.round(((r.workHours ?? 0) - r.scheduledHours) * 100) / 100 : null;
                     const isEven = idx % 2 === 0;
                     return (
                       <tr
@@ -389,10 +390,14 @@ export default function StoreAttendancePage() {
                         <td className="px-3 py-2 text-slate-500">{fmtTime(r.endTime)}</td>
                         <td className="px-3 py-2 font-medium text-slate-700">{r.workHours?.toFixed(2)}h</td>
                         <td className="px-3 py-2">
-                          {otHours != null && otHours > 0 ? (
-                            <span className="font-medium text-amber-600">{otHours.toFixed(2)}h</span>
-                          ) : (
+                          {otHours == null ? (
                             <span className="text-slate-300">—</span>
+                          ) : otHours > 0 ? (
+                            <span className="font-medium text-amber-600">+{otHours.toFixed(2)}h</span>
+                          ) : otHours < 0 ? (
+                            <span className="font-medium text-red-400">{otHours.toFixed(2)}h</span>
+                          ) : (
+                            <span className="text-slate-400">0h</span>
                           )}
                         </td>
                         <td className="px-3 py-2">

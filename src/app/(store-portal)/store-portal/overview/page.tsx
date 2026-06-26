@@ -170,7 +170,7 @@ export default function StoreOverviewPage() {
     <div className="flex flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div>
-          <h1 className="text-sm font-medium text-slate-800">業績總覽</h1>
+          <h1 className="text-lg font-bold text-slate-800">業績總覽</h1>
           <p className="text-xs text-slate-400">
             {isCurrentMonth ? `截至 ${endDate}` : `${startDate} – ${endDate}`}
           </p>
@@ -315,7 +315,7 @@ export default function StoreOverviewPage() {
             {/* 進度條 */}
             {metrics?.revenueForecast && metrics.revenueAchievement != null && (
               <div className="mb-3 rounded-xl bg-slate-50 p-4">
-                <p className="mb-3 text-[11px] font-medium text-slate-500">月目標進度</p>
+                <p className="mb-3 text-sm font-bold text-slate-700">月目標進度</p>
                 <div className="mb-3">
                   <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
                     <span>營業額</span>
@@ -356,7 +356,7 @@ export default function StoreOverviewPage() {
             {/* 週別達標 */}
             {target && storeTarget && (
               <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-3 text-[11px] font-medium text-slate-500">週別達標</p>
+                <p className="mb-3 text-sm font-bold text-slate-700">週別達標</p>
                 <div
                   className="grid gap-2"
                   style={{ gridTemplateColumns: `repeat(${target.weeks.length}, 1fr)` }}
