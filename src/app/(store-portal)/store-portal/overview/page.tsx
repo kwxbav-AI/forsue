@@ -334,7 +334,7 @@ export default function StoreOverviewPage() {
                         {fmt(metrics.revenueAchievement)} / {fmt(metrics.revenueForecast)}
                       </span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white">
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                       <div
                         className="h-full rounded-full"
                         style={{
@@ -350,7 +350,7 @@ export default function StoreOverviewPage() {
                         <span>達標天數</span>
                         <span className="font-medium">{totalMet + totalOver} 天 / {totalWd} 天</span>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-white">
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                         <div
                           className="h-full rounded-full"
                           style={{
