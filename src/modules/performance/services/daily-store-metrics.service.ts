@@ -11,6 +11,7 @@ import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
 export type DailyStoreMetrics = {
   revenue: number;
   laborHours: number;
+  rawHours: number;
 };
 
 type ComputeOptions = {
@@ -92,7 +93,7 @@ export async function computeDailyMetricsByStore(
     const storeDeduction = storeDeductionHoursByStore[store.id] ?? 0;
     const laborHours = Math.max(0, rawHours - contentDeduction - storeDeduction);
     const revenue = revenueSumByStoreId.get(store.id) ?? 0;
-    result.set(store.id, { revenue, laborHours });
+    result.set(store.id, { revenue, laborHours, rawHours });
   }
 
   return result;
@@ -132,7 +133,7 @@ export async function computeDailyRevenueOnlyByStore(
   for (const store of stores) {
     const revenue = revenueSumByStoreId.get(store.id) ?? 0;
     if (revenue > 0) {
-      result.set(store.id, { revenue, laborHours: 0 });
+      result.set(store.id, { revenue, laborHours: 0, rawHours: 0 });
     }
   }
   return result;

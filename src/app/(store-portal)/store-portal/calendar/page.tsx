@@ -26,7 +26,7 @@ type CalDay = {
   isExceed: boolean;
   hasData: boolean;
   revenue: number;
-  laborHours: number;
+  rawHours: number;
 };
 
 type CalData = {
@@ -260,7 +260,7 @@ export default function StoreCalendarPage() {
                           >
                             <div className="text-[9px]" style={{ color: day.isExceed ? "#7c3aed" : day.isAchieved ? "#0F6E56" : "#94a3b8" }}>總工時</div>
                             <div className="text-[12px] font-medium" style={{ color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#334155" }}>
-                              {day.laborHours.toFixed(1)}h
+                              {day.rawHours.toFixed(1)}h
                             </div>
                           </div>
                           <div

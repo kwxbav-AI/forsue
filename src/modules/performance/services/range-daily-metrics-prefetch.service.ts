@@ -287,7 +287,7 @@ export async function computeDailyMetricsByStoreWithPrefetch(
     const storeDeduction = storeDeductionHoursByStore[store.id] ?? 0;
     const laborHours = Math.max(0, rawHours - contentDeduction - storeDeduction);
     const revenue = revenueSumByStoreId.get(store.id) ?? 0;
-    result.set(store.id, { revenue, laborHours });
+    result.set(store.id, { revenue, laborHours, rawHours });
   }
 
   return result;

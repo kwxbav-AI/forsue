@@ -998,7 +998,7 @@ export async function buildWorkHoursCalendar(input: {
   // 與每日工效比報表相同公式：逐日計算工效比與達標狀態
   // 門檻：平日(一~五) ≥ 4,000、週六 ≥ 5,500（與 isEfficiencyTargetMet 一致）
   const EXCEED_THRESHOLD = 6000;
-  type DayEff = { ratio: number | null; isAchieved: boolean; isExceed: boolean; revenue: number; laborHours: number };
+  type DayEff = { ratio: number | null; isAchieved: boolean; isExceed: boolean; revenue: number; laborHours: number; rawHours: number };
   const dateToEff = new Map<string, DayEff>();
   await Promise.all(
     days.map(async (ymd) => {
@@ -1006,11 +1006,12 @@ export async function buildWorkHoursCalendar(input: {
       const metrics = await computeDailyMetricsByStoreResilientWithPrefetch(workDate, prefetch);
       const m = metrics.get(input.storeId);
       const laborH = m?.laborHours ?? 0;
+      const rawH = m?.rawHours ?? 0;
       const revenue = m?.revenue ?? 0;
       const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
       const isAchieved = isEfficiencyTargetMet(ymd, ratio);
       const isSat = parseDateOnlyUTC(ymd).getUTCDay() === 6;
-      dateToEff.set(ymd, { ratio, isAchieved, isExceed: !isSat && ratio != null && ratio >= EXCEED_THRESHOLD, revenue, laborHours: laborH });
+      dateToEff.set(ymd, { ratio, isAchieved, isExceed: !isSat && ratio != null && ratio >= EXCEED_THRESHOLD, revenue, laborHours: laborH, rawHours: rawH });
     })
   );
 
@@ -1047,7 +1048,7 @@ export async function buildWorkHoursCalendar(input: {
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
-    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0 };
+    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
 
     // 本店人員（若當日有調出到他店，標記 outgoingTo）
     const homeStaff = homeAtts
@@ -1093,7 +1094,7 @@ export async function buildWorkHoursCalendar(input: {
       isExceed: eff.isExceed,
       hasData: dateToEff.has(ymd),
       revenue: eff.revenue,
-      laborHours: eff.laborHours,
+      rawHours: eff.rawHours,
     };
   });
 
