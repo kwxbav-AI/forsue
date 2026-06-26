@@ -131,7 +131,7 @@ export default async function DashboardLayout({
               </Link>
             ) : null}
             {canStorePortal ? (
-              <Link href="/store-portal" className="text-slate-600 hover:text-sky-600">
+              <Link href="/store-portal/overview" className="text-slate-600 hover:text-sky-600">
                 門市入口
               </Link>
             ) : null}

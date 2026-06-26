@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     (await prisma.supervisorStore.count({ where: { supervisorId: session.userId } })) > 0;
 
   if (hasSupervisorStores) {
-    const extraPages = ["/store-portal/"];
+    const extraPages = ["/store-portal/", "/store-portal"];
     const extraApiRead = [
       { pathPattern: "/api/store-portal/", method: null },
       { pathPattern: "/api/operations/work-hours/", method: null },
