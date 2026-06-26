@@ -16,11 +16,14 @@ type CalStaff = {
   outgoingTo: string | null;
 };
 
+type CalDeduction = { label: string; hours: number; note?: string | null };
+
 type CalDay = {
   date: string;
   weekday: number;
   holiday: string | null;
   staff: CalStaff[];
+  deductions: CalDeduction[];
   efficiencyRatio: number | null;
   isAchieved: boolean;
   isExceed: boolean;
@@ -214,10 +217,17 @@ export default function StoreCalendarPage() {
                   else if (isFuture) cellCls += "bg-white opacity-50 ";
                   else if (day?.isExceed) cellCls += "bg-purple-50 ";
                   else if (day?.isAchieved) cellCls += "bg-emerald-50 ";
-                  else if (day?.hasData) cellCls += "bg-white ";
                   else cellCls += "bg-white ";
 
-                  if (isToday) cellCls += "ring-1 ring-inset ring-blue-300 ";
+                  const borderStyle: React.CSSProperties = isToday
+                    ? { outline: "1.5px solid #93c5fd", outlineOffset: "-1.5px" }
+                    : !isRest && !isFuture && day?.hasData
+                    ? day.isExceed
+                      ? { outline: "1.5px solid #d8b4fe", outlineOffset: "-1.5px" }
+                      : day.isAchieved
+                      ? { outline: "1.5px solid #6ee7b7", outlineOffset: "-1.5px" }
+                      : { outline: "1.5px solid #fca5a5", outlineOffset: "-1.5px" }
+                    : {};
 
                   const tag =
                     !isRest && !isFuture && day?.hasData
@@ -231,7 +241,7 @@ export default function StoreCalendarPage() {
                   const maxStaff = 5;
 
                   return (
-                    <div key={d} className={cellCls}>
+                    <div key={d} className={cellCls} style={borderStyle}>
                       <div className="mb-1 flex items-center justify-between">
                         <span
                           className={`text-xs font-medium ${
@@ -295,6 +305,11 @@ export default function StoreCalendarPage() {
                               +{(day?.staff.length ?? 0) - maxStaff} 人
                             </div>
                           )}
+                          {(day?.deductions ?? []).map((ded, di) => (
+                            <div key={di} className="text-[10px] font-medium text-red-500">
+                              -{ded.hours}h {ded.label}{ded.note ? ` (${ded.note})` : ""}
+                            </div>
+                          ))}
                           {day?.efficiencyRatio != null && (
                             <div
                               className={`mt-1 text-[11px] font-medium ${
