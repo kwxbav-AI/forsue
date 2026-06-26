@@ -71,14 +71,26 @@ export async function GET(request: NextRequest) {
     workDateWhere.workDate = parseDateOnlyUTC(date);
   }
 
-  // 若有 storeId 篩選，同時涵蓋 fromStoreId = null 但員工 defaultStoreId 為本店的調出紀錄
+  // 若有 storeId 篩選，同時涵蓋 fromStoreId = null 但員工屬於本店的調出紀錄
+  // 比照 operations 服務：用 defaultStoreId 或 originalStoreId 找本店員工
   let dispatchWhere: object = workDateWhere;
   if (storeIdFilter) {
-    const homeEmployees = await prisma.employee.findMany({
-      where: { defaultStoreId: storeIdFilter, isActive: true },
-      select: { id: true },
-    });
-    const homeEmployeeIds = homeEmployees.map((e) => e.id);
+    const [homeByDefault, homeByOriginal] = await Promise.all([
+      prisma.employee.findMany({
+        where: { defaultStoreId: storeIdFilter, isActive: true },
+        select: { id: true },
+      }),
+      prisma.attendanceRecord.findMany({
+        where: { ...workDateWhere, originalStoreId: storeIdFilter, workHours: { gt: 0 } },
+        select: { employeeId: true },
+      }),
+    ]);
+    const homeEmployeeIds = [
+      ...new Set([
+        ...homeByDefault.map((e) => e.id),
+        ...homeByOriginal.map((a) => a.employeeId),
+      ]),
+    ];
     const orConditions: object[] = [
       { fromStoreId: storeIdFilter },
       { toStoreId: storeIdFilter },
