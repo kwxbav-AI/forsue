@@ -41,22 +41,32 @@ export async function GET(request: NextRequest) {
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
   const storeIdFilter = searchParams.get("storeId");
-  const where: {
-    workDate?: Date | { gte: Date; lte: Date };
-    OR?: { fromStoreId: string; toStoreId: string }[];
-  } = {};
+  const workDateWhere: { workDate?: Date | { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
-    const start = parseDateOnlyUTC(startDate);
-    const end = parseDateOnlyUTC(endDate);
-    where.workDate = { gte: start, lte: end };
+    workDateWhere.workDate = { gte: parseDateOnlyUTC(startDate), lte: parseDateOnlyUTC(endDate) };
   } else if (date) {
-    where.workDate = parseDateOnlyUTC(date);
+    workDateWhere.workDate = parseDateOnlyUTC(date);
   }
-  const dispatchWhere = storeIdFilter
-    ? { ...where, OR: [{ fromStoreId: storeIdFilter }, { toStoreId: storeIdFilter }] }
-    : where;
 
-  const isLatestMode = !where.workDate && latest === "1";
+  // 若有 storeId 篩選，同時涵蓋 fromStoreId = null 但員工 defaultStoreId 為本店的調出紀錄
+  let dispatchWhere: object = workDateWhere;
+  if (storeIdFilter) {
+    const homeEmployees = await prisma.employee.findMany({
+      where: { defaultStoreId: storeIdFilter, isActive: true },
+      select: { id: true },
+    });
+    const homeEmployeeIds = homeEmployees.map((e) => e.id);
+    const orConditions: object[] = [
+      { fromStoreId: storeIdFilter },
+      { toStoreId: storeIdFilter },
+    ];
+    if (homeEmployeeIds.length > 0) {
+      orConditions.push({ employeeId: { in: homeEmployeeIds } });
+    }
+    dispatchWhere = { ...workDateWhere, OR: orConditions };
+  }
+
+  const isLatestMode = !workDateWhere.workDate && latest === "1";
   const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
   const take =
     Number.isFinite(takeRequested) && takeRequested > 0
