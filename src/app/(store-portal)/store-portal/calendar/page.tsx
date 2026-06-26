@@ -198,7 +198,7 @@ export default function StoreCalendarPage() {
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 divide-x divide-y divide-slate-100">
+              <div className="grid grid-cols-7 gap-[3px] bg-slate-100 p-[3px]">
                 {blanks.map((_, i) => (
                   <div key={`b${i}`} className="min-h-24 bg-slate-50/50" />
                 ))}
@@ -212,21 +212,16 @@ export default function StoreCalendarPage() {
                   const isHoliday = !!day?.holiday;
                   const isRest = isSun || isHoliday;
 
-                  let cellCls = "min-h-28 p-1.5 ";
-                  if (isRest) cellCls += "bg-slate-50/70 ";
-                  else if (isFuture) cellCls += "bg-white opacity-50 ";
-                  else if (day?.isExceed) cellCls += "bg-purple-50 ";
-                  else if (day?.isAchieved) cellCls += "bg-emerald-50 ";
-                  else cellCls += "bg-white ";
+                  let cellCls = "min-h-28 p-1.5 rounded-sm border ";
+                  if (isRest) cellCls += "bg-slate-50/70 border-slate-200 ";
+                  else if (isFuture) cellCls += "bg-white opacity-50 border-slate-200 ";
+                  else if (day?.isExceed) cellCls += "bg-purple-50 border-purple-300 ";
+                  else if (day?.isAchieved) cellCls += "bg-emerald-50 border-emerald-300 ";
+                  else if (day?.hasData) cellCls += "bg-white border-red-300 ";
+                  else cellCls += "bg-white border-slate-200 ";
 
                   const borderStyle: React.CSSProperties = isToday
-                    ? { outline: "1.5px solid #93c5fd", outlineOffset: "-1.5px" }
-                    : !isRest && !isFuture && day?.hasData
-                    ? day.isExceed
-                      ? { outline: "1.5px solid #d8b4fe", outlineOffset: "-1.5px" }
-                      : day.isAchieved
-                      ? { outline: "1.5px solid #6ee7b7", outlineOffset: "-1.5px" }
-                      : { outline: "1.5px solid #fca5a5", outlineOffset: "-1.5px" }
+                    ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" }
                     : {};
 
                   const tag =
