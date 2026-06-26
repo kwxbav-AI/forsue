@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { RefreshCw, ExternalLink } from "lucide-react";
+import { RefreshCw, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 type StoreContext = {
@@ -33,6 +33,11 @@ function fmtDateWithWeekday(ymd: string): string {
   return `${ymd}（${WEEKDAY_ZH[d.getUTCDay()]}）`;
 }
 
+function lastDayOfMonth(year: number, month: number): string {
+  const d = new Date(Date.UTC(year, month, 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 function StatusBadge({ s }: { s: string | null }) {
   if (!s) return <span className="text-slate-300">—</span>;
   const cls =
@@ -57,8 +62,22 @@ export default function StoreDispatchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const today = toYmd(now);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const isCurrentMonth = selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
+  const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+  const monthStart = `${monthStr}-01`;
+  const endDate = isCurrentMonth ? toYmd(now) : lastDayOfMonth(selectedYear, selectedMonth);
+
+  function prevMonth() {
+    if (selectedMonth === 1) { setSelectedYear((y) => y - 1); setSelectedMonth(12); }
+    else setSelectedMonth((m) => m - 1);
+  }
+  function nextMonth() {
+    if (isCurrentMonth) return;
+    if (selectedMonth === 12) { setSelectedYear((y) => y + 1); setSelectedMonth(1); }
+    else setSelectedMonth((m) => m + 1);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,7 +92,7 @@ export default function StoreDispatchPage() {
         ctxRef.current = (await res.json()) as StoreContext;
       }
       const { performanceStoreId } = ctxRef.current;
-      const params = new URLSearchParams({ startDate: monthStart, endDate: today });
+      const params = new URLSearchParams({ startDate: monthStart, endDate });
       if (performanceStoreId) params.set("storeId", performanceStoreId);
       const res = await fetch(`/api/dispatches?${params.toString()}`);
       if (!res.ok) throw new Error("調度紀錄載入失敗");
@@ -83,12 +102,10 @@ export default function StoreDispatchPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminStoreId, monthStart, today]);
+  }, [adminStoreId, monthStart, endDate]);
 
-  useEffect(() => {
-    ctxRef.current = null;
-    void load();
-  }, [adminStoreId]);
+  useEffect(() => { ctxRef.current = null; }, [adminStoreId]);
+  useEffect(() => { void load(); }, [load]);
 
   const storeName = ctxRef.current?.storeName ?? "";
   const dispatchIn = rows.filter((r) => r.toStoreName === storeName || (!r.fromStoreName && r.toStoreName));
@@ -102,17 +119,32 @@ export default function StoreDispatchPage() {
     <div className="flex flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-800">本月調度紀錄</h1>
-          <p className="text-xs text-slate-400">{monthStart} – {today}（含調入 &amp; 調出）</p>
+          <h1 className="text-lg font-bold text-slate-800">調度紀錄</h1>
+          <p className="text-xs text-slate-400">
+            {isCurrentMonth ? `截至 ${endDate}` : `${monthStart} – ${endDate}`}（含調入 &amp; 調出）
+          </p>
         </div>
-        <Link href="/dispatches" target="_blank"
-          className="flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50">
-          填報 <ExternalLink size={10} />
-        </Link>
-        <button type="button" onClick={() => void load()} disabled={loading}
-          className="rounded border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-          <RefreshCw size={12} />
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          <Link href="/dispatches" target="_blank"
+            className="flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50">
+            填報 <ExternalLink size={10} />
+          </Link>
+          <button type="button" onClick={prevMonth}
+            className="flex items-center gap-0.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
+            <ChevronLeft size={12} />上個月
+          </button>
+          <span className="min-w-[72px] text-center text-xs font-medium text-slate-700">
+            {selectedYear}年{selectedMonth}月
+          </span>
+          <button type="button" onClick={nextMonth} disabled={isCurrentMonth}
+            className="flex items-center gap-0.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-30">
+            下個月<ChevronRight size={12} />
+          </button>
+          <button type="button" onClick={() => void load()} disabled={loading}
+            className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-40">
+            <RefreshCw size={12} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
