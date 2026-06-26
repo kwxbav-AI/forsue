@@ -41,6 +41,29 @@ export async function GET(request: NextRequest) {
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
   const storeIdFilter = searchParams.get("storeId");
+  const debug = searchParams.get("debug") === "1";
+
+  // debug 模式：回傳診斷資訊（不含完整列表）
+  if (debug && storeIdFilter) {
+    const homeEmployees = await prisma.employee.findMany({
+      where: { defaultStoreId: storeIdFilter, isActive: true },
+      select: { id: true, name: true, employeeCode: true, defaultStoreId: true },
+    });
+    const workDateWhere2 = startDate && endDate
+      ? { workDate: { gte: parseDateOnlyUTC(startDate), lte: parseDateOnlyUTC(endDate) } }
+      : {};
+    const allInRange = await prisma.dispatchRecord.findMany({
+      where: workDateWhere2,
+      select: { workDate: true, fromStoreId: true, toStoreId: true, employeeId: true },
+      orderBy: { workDate: "asc" },
+      take: 20,
+    });
+    return NextResponse.json({
+      storeIdFilter,
+      homeEmployees,
+      allDispatchInRange: allInRange,
+    });
+  }
   const workDateWhere: { workDate?: Date | { gte: Date; lte: Date } } = {};
   if (startDate && endDate) {
     workDateWhere.workDate = { gte: parseDateOnlyUTC(startDate), lte: parseDateOnlyUTC(endDate) };
