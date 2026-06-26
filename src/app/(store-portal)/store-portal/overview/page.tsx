@@ -18,6 +18,7 @@ type DashMetrics = {
   revenueAchievement: number;
   revenueAchievementRate: number | null;
   yoyGrowthRate: number | null;
+  priorYearRevenue: number | null;
   efficiencyRatio: number | null;
   customerCount?: number;
   avgOrderValue?: number | null;
@@ -264,7 +265,7 @@ export default function StoreOverviewPage() {
                 >
                   {fmtYoy(yoy)}
                 </p>
-                <div className="mt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span
                     className="rounded px-2 py-0.5 text-[11px] font-medium"
                     style={{
@@ -274,6 +275,14 @@ export default function StoreOverviewPage() {
                   >
                     {yoy == null ? "無資料" : yoy >= 0 ? "年增長" : "YoY 下滑"}
                   </span>
+                  {metrics?.priorYearRevenue != null && (
+                    <span
+                      className="text-[11px]"
+                      style={{ color: yoy == null ? "#888780" : yoy >= 0 ? "#3B6D11" : "#A32D2D" }}
+                    >
+                      去年 {fmt(metrics.priorYearRevenue)}
+                    </span>
+                  )}
                 </div>
               </div>
 
