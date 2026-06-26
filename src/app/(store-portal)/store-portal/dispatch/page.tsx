@@ -108,11 +108,11 @@ export default function StoreDispatchPage() {
   useEffect(() => { void load(); }, [load]);
 
   const storeName = ctxRef.current?.storeName ?? "";
-  const dispatchIn = rows.filter((r) => r.toStoreName === storeName || (!r.fromStoreName && r.toStoreName));
-  const dispatchOut = rows.filter((r) => r.fromStoreName === storeName);
+  const dispatchIn = rows.filter((r) => r.toStoreName === storeName);
+  const dispatchOut = rows.filter((r) => r.toStoreName !== storeName);
 
   function getDirection(r: DispatchRow): "調入" | "調出" {
-    return r.fromStoreName === storeName ? "調出" : "調入";
+    return r.toStoreName === storeName ? "調入" : "調出";
   }
 
   return (
