@@ -280,7 +280,7 @@ export default function StoreCalendarPage() {
                                 {s.name}
                                 <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
                                 {s.outgoingTo ? (
-                                  <span className="text-indigo-500 ml-0.5">（{s.outgoingTo}）</span>
+                                  <span className="text-indigo-500 ml-0.5">→ {s.outgoingTo}</span>
                                 ) : s.isSupport && s.homeStore ? (
                                   <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
                                 ) : null}
