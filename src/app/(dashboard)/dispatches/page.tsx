@@ -72,6 +72,9 @@ export default function DispatchesPage() {
   const [editRemark, setEditRemark] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(() => new Set());
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
@@ -226,26 +229,31 @@ export default function DispatchesPage() {
     refresh();
   }
 
-  async function deleteRow(id: string) {
-    if (deletingIds.has(id)) {
-      setMessage("刪除申請送出中，請稍候…");
-      return;
-    }
-    if (!confirm("確定刪除此筆調度？")) return;
+  function showToast(msg: string, type: "success" | "error") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function confirmDeleteRow() {
+    const id = confirmDeleteId;
+    if (!id) return;
+    setConfirmDeleteId(null);
     setDeletingIds((s) => new Set(s).add(id));
     try {
       const res = await fetch(`/api/dispatches/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (res.status === 202) {
-        setMessage(data.message || "已送出刪除申請，待核准後生效");
+        showToast(data.message || "已送出刪除申請，待核准後生效", "success");
+        setPendingDeleteIds((s) => new Set(s).add(id));
         setPendingRefresh((k) => k + 1);
         refresh();
         return;
       }
       if (!res.ok) {
-        setMessage(data.error || "刪除失敗");
+        showToast(data.error || "刪除失敗", "error");
         return;
       }
+      showToast("已刪除", "success");
       setPendingRefresh((k) => k + 1);
       refresh();
     } finally {
@@ -647,15 +655,21 @@ export default function DispatchesPage() {
                     <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.clockOutStoreText ?? ""}>{r.clockOutStoreText ?? "—"}</td>
                     <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.remark ?? ""}>{r.remark ?? "—"}</td>
                     <td className="px-1 py-1.5 whitespace-nowrap text-right">
-                      <button type="button" onClick={() => openEdit(r)} className="mr-1 text-sky-600 hover:underline">編輯</button>
-                      <button
-                        type="button"
-                        onClick={() => deleteRow(r.id)}
-                        disabled={deletingIds.has(r.id)}
-                        className="text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {deletingIds.has(r.id) ? "送出中…" : "刪除"}
-                      </button>
+                      {pendingDeleteIds.has(r.id) ? (
+                        <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">刪除審核中</span>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => openEdit(r)} className="mr-1 text-sky-600 hover:underline">編輯</button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(r.id)}
+                            disabled={deletingIds.has(r.id)}
+                            className="text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingIds.has(r.id) ? "送出中…" : "刪除"}
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                   );
@@ -745,6 +759,51 @@ export default function DispatchesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 刪除確認 Modal */}
+      {confirmDeleteId && (() => {
+        const row = list.find((r) => r.id === confirmDeleteId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+              <h3 className="mb-2 text-base font-semibold text-slate-800">確認刪除申請</h3>
+              {row && (
+                <p className="mb-5 text-sm text-slate-600">
+                  確定要申請刪除{" "}
+                  <span className="font-medium text-slate-800">{row.employeeName}</span>{" "}
+                  {row.workDate} 的調度紀錄嗎？<br />
+                  <span className="text-xs text-slate-400">送出後需待核准才會正式生效。</span>
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteRow}
+                  className="rounded bg-red-600 px-4 py-1.5 text-sm text-white hover:bg-red-700"
+                >
+                  確認送出刪除
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Toast 通知 */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg transition-all ${
+          toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+        }`}>
+          {toast.type === "success" ? "✓" : "✕"} {toast.msg}
         </div>
       )}
     </div>
