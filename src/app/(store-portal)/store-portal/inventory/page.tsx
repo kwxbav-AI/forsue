@@ -109,7 +109,7 @@ export default function StoreInventoryPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <Link href="/workhour-adjustments" target="_blank"
+          <Link href="/content-entries" target="_blank"
             className="flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50">
             填報 <ExternalLink size={10} />
           </Link>
