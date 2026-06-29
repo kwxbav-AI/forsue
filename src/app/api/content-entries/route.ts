@@ -18,6 +18,11 @@ const DEDUCT_VIS_MODULE_KEY = "content-entries-deduct";
 async function canSeeDeductedMinutes(req: NextRequest): Promise<boolean> {
   const session = await getSessionFromRequest(req);
   if (!session) return false;
+  // 有綁定門市的帳號（門市人員）預設可見扣工時
+  const hasStore = await prisma.appUser.count({
+    where: { id: session.userId, retailStoreId: { not: null } },
+  });
+  if (hasStore > 0) return true;
   return hasModuleEffectivePermission(
     { id: session.roleId, key: session.roleKey },
     DEDUCT_VIS_MODULE_KEY,
