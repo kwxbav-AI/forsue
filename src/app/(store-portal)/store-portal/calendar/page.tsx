@@ -236,7 +236,7 @@ export default function StoreCalendarPage() {
                         : { label: "未達", cls: "bg-red-100 text-red-600" }
                       : null;
 
-                  const maxStaff = 8;
+                  const maxStaff = 8; // updated
 
                   return (
                     <div key={d} className={cellCls} style={borderStyle}>
