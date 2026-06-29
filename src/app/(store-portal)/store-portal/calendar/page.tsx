@@ -178,7 +178,10 @@ export default function StoreCalendarPage() {
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-teal-400" />本店人員
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />跨店支援
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />調入（他店來支援）
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-indigo-500" />調出（去他店支援）
           </span>
         </div>
 
@@ -272,12 +275,12 @@ export default function StoreCalendarPage() {
                         <>
                           {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
                             <div key={si} className="flex items-start gap-1 mb-1">
-                              <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"}`} />
+                              <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.outgoingTo ? "bg-indigo-500" : s.isSupport ? "bg-amber-400" : "bg-teal-400"}`} />
                               <span className="text-[11px] leading-tight text-slate-700">
                                 {s.name}
                                 <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
                                 {s.outgoingTo ? (
-                                  <span className="text-amber-600 ml-0.5">（{s.outgoingTo}）</span>
+                                  <span className="text-indigo-500 ml-0.5">（{s.outgoingTo}）</span>
                                 ) : s.isSupport && s.homeStore ? (
                                   <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
                                 ) : null}
