@@ -14,17 +14,19 @@ export async function GET(req: NextRequest) {
 
   const effective = await getEffectivePermissionsForRole(session.roleId, session.roleKey);
 
-  // 有指派督導門市的帳號，自動注入 store-portal 所需的 page + API 權限
-  const hasSupervisorStores =
-    (await prisma.supervisorStore.count({ where: { supervisorId: session.userId } })) > 0;
+  // 有指派督導門市、或帳號本身有綁定門市（門市人員），自動注入 store-portal 所需的 page + API 權限
+  const [hasSupervisorStores, hasRetailStore] = await Promise.all([
+    prisma.supervisorStore.count({ where: { supervisorId: session.userId } }).then((c) => c > 0),
+    prisma.appUser.count({ where: { id: session.userId, retailStoreId: { not: null } } }).then((c) => c > 0),
+  ]);
 
   // 若角色已有任何 /store-portal 頁面權限（管理員透過 RolePermission 設定），
-  // 或該帳號有督導門市指派，補齊整個 store-portal prefix 及必要 API
+  // 或該帳號有督導門市指派，或帳號有綁定門市，補齊整個 store-portal prefix 及必要 API
   const hasStorePortalPage = effective.allowedPagePathPatterns.some((p) =>
     p.startsWith("/store-portal")
   );
 
-  if (hasSupervisorStores || hasStorePortalPage) {
+  if (hasSupervisorStores || hasRetailStore || hasStorePortalPage) {
     const extraPages = ["/store-portal/", "/store-portal"];
     const extraApiRead = [
       { pathPattern: "/api/store-portal/", method: null },

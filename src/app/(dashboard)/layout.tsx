@@ -57,9 +57,14 @@ export default async function DashboardLayout({
     authOn && session != null
       ? (await prisma.supervisorStore.count({ where: { supervisorId: session.userId } })) > 0
       : false;
+  const hasRetailStore =
+    authOn && session != null
+      ? (await prisma.appUser.count({ where: { id: session.userId, retailStoreId: { not: null } } })) > 0
+      : false;
   const canStorePortal =
     !authOn ||
     hasSupervisorStores ||
+    hasRetailStore ||
     (session != null &&
       (await canAccessPageDb(
         { id: session.roleId, key: session.roleKey },
