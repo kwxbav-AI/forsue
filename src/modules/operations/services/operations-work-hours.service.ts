@@ -1094,15 +1094,22 @@ export async function buildWorkHoursCalendar(input: {
       dayDeductions.push({ label: "試作", hours: 3 });
     }
 
+    // 用 rawHours - 所有扣項（含試作）重算工效比，確保與顯示的淨工時一致
+    const netHours = Math.max(0, eff.rawHours - dayDeductions.reduce((s, d) => s + d.hours, 0));
+    const correctedRatio = netHours > 0 && eff.revenue > 0 ? Math.round(eff.revenue / netHours) : eff.ratio;
+    const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatio);
+    const isSat = dow === 6;
+    const correctedIsExceed = !isSat && correctedRatio != null && correctedRatio >= EXCEED_THRESHOLD;
+
     return {
       date: ymd,
       weekday: dow,
       holiday: holidayMap.get(ymd) ?? null,
       staff: [...homeStaff, ...supportStaff],
       deductions: dayDeductions,
-      efficiencyRatio: eff.ratio,
-      isAchieved: eff.isAchieved,
-      isExceed: eff.isExceed,
+      efficiencyRatio: correctedRatio,
+      isAchieved: correctedIsAchieved,
+      isExceed: correctedIsExceed,
       hasData: dateToEff.has(ymd),
       revenue: eff.revenue,
       rawHours: eff.rawHours,
