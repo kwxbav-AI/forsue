@@ -1266,20 +1266,37 @@ export async function GET(request: Request) {
 
     let engineTotalHours = 0;
     if (!simple) {
+      // 以報表已算好的 subtotal 行為基準（含試作 -3h），再減掉 performance engine 的扣項（現貨文/效期清掃）
+      // 避免 allocation engine 因試作員工 originalStoreId=null 而漏計 -3h 的問題
+      const subtotalByDate = new Map<string, number>();
+      for (const row of rows) {
+        if (row.type !== "subtotal") continue;
+        subtotalByDate.set(row.workDate, (subtotalByDate.get(row.workDate) ?? 0) + row.workHours);
+      }
+
       const dayStrs = listDaysBetweenYmd(startDate, endDate);
       for (const ymd of dayStrs) {
         const metrics = await computeDailyMetricsByStore(toStartOfDay(ymd), {
           reportVisibleOnly: true,
         });
+        // 從 engine 取得扣項（rawHours - laborHours = 現貨文 + 效期清掃）
+        let rawH = 0;
+        let laborH = 0;
         if (storeIdsForFilter && storeIdsForFilter.length > 0) {
           for (const sid of storeIdsForFilter) {
-            engineTotalHours += metrics.get(sid)?.laborHours ?? 0;
+            const m = metrics.get(sid);
+            rawH += m?.rawHours ?? 0;
+            laborH += m?.laborHours ?? 0;
           }
         } else {
           for (const m of metrics.values()) {
-            engineTotalHours += m.laborHours;
+            rawH += m.rawHours;
+            laborH += m.laborHours;
           }
         }
+        const deductions = Math.max(0, rawH - laborH);
+        const subtotal = subtotalByDate.get(ymd) ?? 0;
+        engineTotalHours += Math.max(0, subtotal - deductions);
       }
       engineTotalHours = Math.round(engineTotalHours * 100) / 100;
     }
