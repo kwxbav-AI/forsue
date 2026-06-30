@@ -873,7 +873,7 @@ export async function buildWorkHoursCalendar(input: {
         endTime: true,
         department: true,
         employeeId: true,
-        employee: { select: { name: true, defaultStoreId: true } },
+        employee: { select: { name: true, defaultStoreId: true, employeeCode: true } },
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
@@ -1083,12 +1083,23 @@ export async function buildWorkHoursCalendar(input: {
         };
       });
 
+    // 試作員工：員工編號以 a / b 開頭，工時被替換為 -3h，需在 deductions 顯示
+    const trialCount = homeAtts.filter((a) => {
+      if (workDateYmd(a.workDate) !== ymd) return false;
+      const code = (a.employee.employeeCode ?? "").trim().toLowerCase();
+      return code.startsWith("a") || code.startsWith("b");
+    }).length;
+    const dayDeductions = [...(deductionsByDate.get(ymd) ?? [])];
+    for (let i = 0; i < trialCount; i++) {
+      dayDeductions.push({ label: "試作", hours: 3 });
+    }
+
     return {
       date: ymd,
       weekday: dow,
       holiday: holidayMap.get(ymd) ?? null,
       staff: [...homeStaff, ...supportStaff],
-      deductions: deductionsByDate.get(ymd) ?? [],
+      deductions: dayDeductions,
       efficiencyRatio: eff.ratio,
       isAchieved: eff.isAchieved,
       isExceed: eff.isExceed,
