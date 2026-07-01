@@ -1182,13 +1182,15 @@ export async function buildWorkHoursCalendar(input: {
     const trialDeductionLabels: DeductionItem[] = Array.from({ length: trialCount }, () => ({ label: "試作", hours: 3 }));
     const dayDeductions = [...otherDeductions, ...trialDeductionLabels];
 
-    // rawHours 已含試作 -3h × n 與工時異動正/負調整；淨工時只需再扣非試作的「負向」扣項
-    const netHours = Math.max(0, eff.rawHours - otherDeductions.filter((d) => !d.isPositive).reduce((s, d) => s + d.hours, 0));
-    const correctedRatio = netHours > 0 && eff.revenue > 0 ? Math.round(eff.revenue / netHours) : eff.ratio;
-    const correctedRatioExact = netHours > 0 && eff.revenue > 0 ? eff.revenue / netHours : eff.ratioExact;
-    const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatioExact ?? null);
+    // rawHours 已含試作 -3h × n 與工時異動（workhourAdjs）的正/負調整；
+    // storeDeductions / contentEntries 則已在 eff.laborHours 裡扣除。
+    // 因此直接以 eff.laborHours 當作淨工時，避免工時異動被雙重扣除。
+    const netHours = eff.laborHours;
+    const correctedRatio = eff.ratio;
+    const correctedRatioExact = eff.ratioExact;
+    const correctedIsAchieved = eff.isAchieved;
     const isSat = dow === 6;
-    const correctedIsExceed = !isSat && correctedRatioExact != null && correctedRatioExact >= EXCEED_THRESHOLD;
+    const correctedIsExceed = eff.isExceed;
 
     return {
       date: ymd,
