@@ -245,16 +245,21 @@ export async function computeStoreHoursByEmployee(
     if (reason === "後勤支援門市" && dr.confirmStatus === "已確認") {
       backofficeConfirmedByEmployeeId.add(dr.employeeId);
     }
-    if (dr.fromStoreId) {
+    // fromStoreId 可能為 null（填報時未指定），改用出勤記錄的 originalStoreId 或員工 defaultStoreId 作為 fallback
+    const resolvedFromStoreId =
+      dr.fromStoreId ||
+      aggregatedAttendanceByEmployeeId.get(dr.employeeId)?.originalStoreId ||
+      null;
+    if (resolvedFromStoreId) {
       if (reason === "跨店學習") {
         learningOutCountByStoreId.set(
-          dr.fromStoreId,
-          (learningOutCountByStoreId.get(dr.fromStoreId) ?? 0) + 1
+          resolvedFromStoreId,
+          (learningOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
         );
       } else {
         otherOutCountByStoreId.set(
-          dr.fromStoreId,
-          (otherOutCountByStoreId.get(dr.fromStoreId) ?? 0) + 1
+          resolvedFromStoreId,
+          (otherOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
         );
       }
     }
