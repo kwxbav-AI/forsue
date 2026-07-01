@@ -38,6 +38,16 @@ export function resolveStoreIdsForAttendanceDepartment(
   if (trimmed === "桃園區全門市") return storeIdsInCatalogRegion(allStores, "桃園區");
 
   const keyword = trimmed.toLowerCase();
+
+  // 優先用精確比對（部門欄位或門市名稱完全一致），避免「中正」誤匹配「中正南店」
+  const exact = allStores.filter(
+    (s) =>
+      (s.department || "").trim().toLowerCase() === keyword ||
+      (s.name || "").trim().toLowerCase() === keyword
+  );
+  if (exact.length > 0) return exact.map((s) => s.id);
+
+  // fallback：子字串比對（相容舊的模糊搜尋）
   return allStores
     .filter((s) =>
       ((s.department || "") + " " + (s.name || "")).toLowerCase().includes(keyword)
