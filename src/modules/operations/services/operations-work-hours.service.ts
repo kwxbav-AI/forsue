@@ -20,6 +20,13 @@ import {
 import { isEfficiencyTargetMet } from "@/lib/operations-efficiency";
 import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import { storeMatchesSupervisorZone } from "@/lib/supervisor-zones";
+import {
+  buildNewHireWorkedDayNoIndex,
+  getAttendanceDataStartDate,
+  getNewHireOffsetOverridesByEmployeeCode,
+  isEligibleForNewHireWorkPercent,
+  newHirePercentByWorkedDays,
+} from "@/lib/attendance-data";
 
 const DAY_CONCURRENCY = 12;
 
@@ -873,7 +880,7 @@ export async function buildWorkHoursCalendar(input: {
         endTime: true,
         department: true,
         employeeId: true,
-        employee: { select: { name: true, defaultStoreId: true, employeeCode: true } },
+        employee: { select: { name: true, defaultStoreId: true, employeeCode: true, hireDate: true } },
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
@@ -1046,6 +1053,56 @@ export async function buildWorkHoursCalendar(input: {
     });
   }
 
+  // 建立新進員工工時比例索引（employeeId -> ymd -> percent）
+  // 試作人員不套用新人比例；isEligibleForNewHireWorkPercent 判定範圍
+  const newHirePercentByEmpDate = new Map<string, Map<string, number>>();
+  {
+    const newHireCandidates = homeAtts.filter((a) => {
+      const code = (a.employee.employeeCode ?? "").trim().toLowerCase();
+      const isTrial = code.startsWith("a") || code.startsWith("b");
+      return !isTrial && isEligibleForNewHireWorkPercent(a.employee.hireDate);
+    });
+    const candidateIds = [...new Set(newHireCandidates.map((a) => a.employeeId))];
+    if (candidateIds.length > 0) {
+      const [attendanceDataStartDate, overrides] = await Promise.all([
+        getAttendanceDataStartDate(),
+        getNewHireOffsetOverridesByEmployeeCode(),
+      ]);
+      // 查詢候選人從 dataStartDate 到月底的所有出勤日（有上班才計天數）
+      const workedRows = await prisma.attendanceRecord.findMany({
+        where: {
+          employeeId: { in: candidateIds },
+          workDate: { gte: attendanceDataStartDate, lte: parseDateOnlyUTC(endYmd) },
+          workHours: { gt: 0 },
+        },
+        select: { employeeId: true, workDate: true },
+        orderBy: [{ employeeId: "asc" }, { workDate: "asc" }],
+      });
+      const hireDateByEmployeeId = new Map<string, Date>();
+      const employeeCodeByEmployeeId = new Map<string, string>();
+      for (const a of newHireCandidates) {
+        if (a.employee.hireDate) hireDateByEmployeeId.set(a.employeeId, a.employee.hireDate);
+        if (a.employee.employeeCode) employeeCodeByEmployeeId.set(a.employeeId, a.employee.employeeCode);
+      }
+      const workedDayNoIndex = buildNewHireWorkedDayNoIndex(
+        workedRows,
+        hireDateByEmployeeId,
+        attendanceDataStartDate,
+        employeeCodeByEmployeeId,
+        overrides
+      );
+      for (const empId of candidateIds) {
+        const dayNoMap = workedDayNoIndex.get(empId);
+        if (!dayNoMap) continue;
+        const percentByDate = new Map<string, number>();
+        for (const [dateStr, dayNo] of dayNoMap.entries()) {
+          percentByDate.set(dateStr, newHirePercentByWorkedDays(dayNo));
+        }
+        newHirePercentByEmpDate.set(empId, percentByDate);
+      }
+    }
+  }
+
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
     const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
@@ -1055,6 +1112,12 @@ export async function buildWorkHoursCalendar(input: {
       .filter((a) => workDateYmd(a.workDate) === ymd)
       .map((a) => {
         const outTarget = outgoingByEmpDate.get(`${a.employeeId}|${ymd}`) ?? null;
+        const dateStr = formatDateOnly(parseDateOnlyUTC(ymd));
+        const nhPercent = newHirePercentByEmpDate.get(a.employeeId)?.get(dateStr);
+        const newHireLabel =
+          nhPercent != null && nhPercent < 1
+            ? `新人計${Math.round(nhPercent * 100)}%`
+            : null;
         return {
           name: a.employee.name,
           workHours: Number(a.workHours),
@@ -1063,6 +1126,7 @@ export async function buildWorkHoursCalendar(input: {
           homeStore: stripRegionPrefix(a.department ?? homeStoreName),
           isSupport: false,
           outgoingTo: outTarget,
+          newHireLabel,
         };
       });
 
@@ -1080,6 +1144,7 @@ export async function buildWorkHoursCalendar(input: {
           homeStore: sa?.department ? stripRegionPrefix(sa.department) : null,
           isSupport: true,
           outgoingTo: null,
+          newHireLabel: null,
         };
       });
 
