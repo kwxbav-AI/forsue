@@ -42,9 +42,46 @@ type CalData = {
   days: CalDay[];
 };
 
-type TargetWeek = { index: number; startYmd: string; endYmd: string; workingDays: number };
-type TargetRow = { storeId: string; byWeek: { metDays: number; exceedDays: number; total: number }[] };
-type TargetData = { weeks: TargetWeek[]; stores: TargetRow[] };
+type WeekSummary = {
+  index: number;
+  startYmd: string;
+  endYmd: string;
+  workingDays: number;
+  metDays: number;
+  exceedDays: number;
+};
+
+/** 與 server-side buildWeeksForMonth 相同邏輯：週日斷開，月份所有日期切成週段 */
+function buildWeeklySummary(year: number, month: number, dayMap: Map<string, CalDay>): WeekSummary[] {
+  const weeks: WeekSummary[] = [];
+  let batch: string[] = [];
+
+  function flushWeek() {
+    if (batch.length === 0) return;
+    const startYmd = batch[0];
+    const endYmd = batch[batch.length - 1];
+    let workingDays = 0, metDays = 0, exceedDays = 0;
+    for (const ymd of batch) {
+      const d = dayMap.get(ymd);
+      if (!d?.holiday) workingDays++;
+      if (d?.isExceed) exceedDays++;
+      else if (d?.isAchieved) metDays++;
+    }
+    weeks.push({ index: weeks.length + 1, startYmd, endYmd, workingDays, metDays, exceedDays });
+    batch = [];
+  }
+
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  for (let day = 1; day <= lastDay; day++) {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    const dow = d.getUTCDay();
+    const ymd = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (dow === 0) { flushWeek(); continue; }
+    batch.push(ymd);
+  }
+  flushWeek();
+  return weeks;
+}
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -73,7 +110,6 @@ export default function StoreCalendarPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [calData, setCalData] = useState<CalData | null>(null);
-  const [targetData, setTargetData] = useState<TargetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retailStoreId, setRetailStoreId] = useState<string | null>(null);
@@ -99,16 +135,11 @@ export default function StoreCalendarPage() {
         }
         if (!storeCtx.performanceStoreId) throw new Error("找不到對應績效門市");
 
-        const monthStr = toMonthStr(y, m);
-        const [calRes, targetRes] = await Promise.all([
-          fetch(
-            `/api/operations/work-hours/calendar?storeId=${encodeURIComponent(storeCtx.performanceStoreId)}&year=${y}&month=${m}`
-          ),
-          fetch(`/api/reports/store-target-card?month=${encodeURIComponent(monthStr)}`),
-        ]);
+        const calRes = await fetch(
+          `/api/operations/work-hours/calendar?storeId=${encodeURIComponent(storeCtx.performanceStoreId)}&year=${y}&month=${m}`
+        );
         if (!calRes.ok) throw new Error("月曆載入失敗");
         setCalData(await calRes.json());
-        if (targetRes.ok) setTargetData(await targetRes.json());
       } catch (e) {
         setError(e instanceof Error ? e.message : "載入失敗");
       } finally {
@@ -136,9 +167,7 @@ export default function StoreCalendarPage() {
   const blanks = Array(firstWeekday).fill(null);
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const storeTarget = ctx?.performanceStoreId && targetData
-    ? targetData.stores.find((s) => s.storeId === ctx.performanceStoreId)
-    : null;
+  const weeklySummary = calData ? buildWeeklySummary(year, month, dayMap) : [];
 
   const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -327,9 +356,9 @@ export default function StoreCalendarPage() {
              </div>
             </div>
 
-            {targetData && storeTarget && (() => {
-              const totalMet = storeTarget.byWeek.reduce((a, w) => a + w.metDays, 0);
-              const totalExceed = storeTarget.byWeek.reduce((a, w) => a + w.exceedDays, 0);
+            {weeklySummary.length > 0 && (() => {
+              const totalMet = weeklySummary.reduce((a, w) => a + w.metDays, 0);
+              const totalExceed = weeklySummary.reduce((a, w) => a + w.exceedDays, 0);
               return (
                 <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4">
                   <div className="mb-4 flex items-center gap-3 border-b border-slate-100 pb-3">
@@ -346,8 +375,7 @@ export default function StoreCalendarPage() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {targetData.weeks.map((w, i) => {
-                      const wk = storeTarget.byWeek[i] ?? { metDays: 0, exceedDays: 0, total: 0 };
+                    {weeklySummary.map((w) => {
                       const isOngoing = w.endYmd >= todayYmd && w.startYmd <= todayYmd;
                       const notStarted = w.startYmd > todayYmd;
                       return (
@@ -364,11 +392,11 @@ export default function StoreCalendarPage() {
                               <span className="rounded-full bg-slate-50 px-3 py-0.5 text-xs text-slate-400">尚未開始</span>
                             ) : (
                               <>
-                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${wk.metDays > 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-400"}`}>
-                                  達標 {wk.metDays}
+                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${w.metDays > 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-400"}`}>
+                                  達標 {w.metDays}
                                 </span>
-                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${wk.exceedDays > 0 ? "bg-purple-100 text-purple-600" : "bg-slate-50 text-slate-300"}`}>
-                                  超標 {wk.exceedDays}
+                                <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${w.exceedDays > 0 ? "bg-purple-100 text-purple-600" : "bg-slate-50 text-slate-300"}`}>
+                                  超標 {w.exceedDays}
                                 </span>
                                 {isOngoing && (
                                   <span className="rounded-full bg-blue-50 px-3 py-0.5 text-xs text-blue-500">進行中</span>
