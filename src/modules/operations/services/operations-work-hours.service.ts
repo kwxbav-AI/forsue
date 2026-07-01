@@ -1083,19 +1083,19 @@ export async function buildWorkHoursCalendar(input: {
         };
       });
 
-    // 試作員工：員工編號以 a / b 開頭，工時被替換為 -3h，需在 deductions 顯示
+    // 試作員工：員工編號以 a / b 開頭，工時已被 allocation engine 替換為 -3h（已含在 rawHours）
+    // 這裡只加顯示標籤，不再從 rawHours 扣（否則會 double-count）
     const trialCount = homeAtts.filter((a) => {
       if (workDateYmd(a.workDate) !== ymd) return false;
       const code = (a.employee.employeeCode ?? "").trim().toLowerCase();
       return code.startsWith("a") || code.startsWith("b");
     }).length;
-    const dayDeductions = [...(deductionsByDate.get(ymd) ?? [])];
-    for (let i = 0; i < trialCount; i++) {
-      dayDeductions.push({ label: "試作", hours: 3 });
-    }
+    const otherDeductions = deductionsByDate.get(ymd) ?? [];
+    const trialDeductionLabels: DeductionItem[] = Array.from({ length: trialCount }, () => ({ label: "試作", hours: 3 }));
+    const dayDeductions = [...otherDeductions, ...trialDeductionLabels];
 
-    // 用 rawHours - 所有扣項（含試作）重算工效比，確保與顯示的淨工時一致
-    const netHours = Math.max(0, eff.rawHours - dayDeductions.reduce((s, d) => s + d.hours, 0));
+    // rawHours 已含試作 -3h × n，淨工時只需再扣非試作的扣項
+    const netHours = Math.max(0, eff.rawHours - otherDeductions.reduce((s, d) => s + d.hours, 0));
     const correctedRatio = netHours > 0 && eff.revenue > 0 ? Math.round(eff.revenue / netHours) : eff.ratio;
     const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatio);
     const isSat = dow === 6;
@@ -1113,6 +1113,7 @@ export async function buildWorkHoursCalendar(input: {
       hasData: dateToEff.has(ymd),
       revenue: eff.revenue,
       rawHours: eff.rawHours,
+      netHours,
     };
   });
 

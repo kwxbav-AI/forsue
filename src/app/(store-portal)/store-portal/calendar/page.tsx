@@ -30,6 +30,7 @@ type CalDay = {
   hasData: boolean;
   revenue: number;
   rawHours: number;
+  netHours: number;
 };
 
 type CalData = {
@@ -268,7 +269,7 @@ export default function StoreCalendarPage() {
                             color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
                           }}
                         >
-                          {(day.rawHours - (day.deductions ?? []).reduce((s, d) => s + d.hours, 0)).toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
+                          {day.netHours.toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
                         </div>
                       )}
                       {!isRest && !isFuture && (
