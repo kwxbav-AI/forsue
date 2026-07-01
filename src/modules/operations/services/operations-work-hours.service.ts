@@ -1005,7 +1005,7 @@ export async function buildWorkHoursCalendar(input: {
   // 與每日工效比報表相同公式：逐日計算工效比與達標狀態
   // 門檻：平日(一~五) ≥ 4,000、週六 ≥ 5,500（與 isEfficiencyTargetMet 一致）
   const EXCEED_THRESHOLD = 6000;
-  type DayEff = { ratio: number | null; isAchieved: boolean; isExceed: boolean; revenue: number; laborHours: number; rawHours: number };
+  type DayEff = { ratio: number | null; ratioExact: number | null; isAchieved: boolean; isExceed: boolean; revenue: number; laborHours: number; rawHours: number };
   const dateToEff = new Map<string, DayEff>();
   await Promise.all(
     days.map(async (ymd) => {
@@ -1016,9 +1016,10 @@ export async function buildWorkHoursCalendar(input: {
       const rawH = m?.rawHours ?? 0;
       const revenue = m?.revenue ?? 0;
       const ratio = laborH > 0 ? Math.round(revenue / laborH) : null;
-      const isAchieved = isEfficiencyTargetMet(ymd, ratio);
+      const ratioExact = laborH > 0 ? revenue / laborH : null;
+      const isAchieved = isEfficiencyTargetMet(ymd, ratioExact);
       const isSat = parseDateOnlyUTC(ymd).getUTCDay() === 6;
-      dateToEff.set(ymd, { ratio, isAchieved, isExceed: !isSat && ratio != null && ratio >= EXCEED_THRESHOLD, revenue, laborHours: laborH, rawHours: rawH });
+      dateToEff.set(ymd, { ratio, ratioExact, isAchieved, isExceed: !isSat && ratioExact != null && ratioExact >= EXCEED_THRESHOLD, revenue, laborHours: laborH, rawHours: rawH });
     })
   );
 
@@ -1121,7 +1122,7 @@ export async function buildWorkHoursCalendar(input: {
 
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
-    const eff = dateToEff.get(ymd) ?? { ratio: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
+    const eff = dateToEff.get(ymd) ?? { ratio: null, ratioExact: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
 
     // 本店人員（若當日有調出到他店，標記 outgoingTo）
     const homeStaff = homeAtts
@@ -1184,9 +1185,10 @@ export async function buildWorkHoursCalendar(input: {
     // rawHours 已含試作 -3h × n 與工時異動正/負調整；淨工時只需再扣非試作的「負向」扣項
     const netHours = Math.max(0, eff.rawHours - otherDeductions.filter((d) => !d.isPositive).reduce((s, d) => s + d.hours, 0));
     const correctedRatio = netHours > 0 && eff.revenue > 0 ? Math.round(eff.revenue / netHours) : eff.ratio;
-    const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatio);
+    const correctedRatioExact = netHours > 0 && eff.revenue > 0 ? eff.revenue / netHours : eff.ratioExact;
+    const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatioExact ?? null);
     const isSat = dow === 6;
-    const correctedIsExceed = !isSat && correctedRatio != null && correctedRatio >= EXCEED_THRESHOLD;
+    const correctedIsExceed = !isSat && correctedRatioExact != null && correctedRatioExact >= EXCEED_THRESHOLD;
 
     return {
       date: ymd,
