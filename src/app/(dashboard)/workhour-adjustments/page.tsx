@@ -22,6 +22,7 @@ type Adjustment = {
 const ADJUSTMENT_TYPES = [
   { value: "MANAGER_MEETING", label: "店長會議" },
   { value: "PROMOTION_REVIEW", label: "晉升考核" },
+  { value: "OTHER", label: "其他" },
 ];
 
 const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {

@@ -951,7 +951,7 @@ export async function buildWorkHoursCalendar(input: {
       where: {
         workDate: { in: workDates },
         storeId: input.storeId,
-        adjustmentHours: { lt: 0 },
+        adjustmentHours: { not: 0 },
       },
       select: {
         workDate: true,
@@ -1023,7 +1023,8 @@ export async function buildWorkHoursCalendar(input: {
   );
 
   // 建立每日扣工時索引
-  type DeductionItem = { label: string; hours: number; note?: string | null };
+  // isPositive=true → 正向工時（月曆顯示綠色），false → 扣工時（紅色）
+  type DeductionItem = { label: string; hours: number; note?: string | null; isPositive?: boolean };
   const deductionsByDate = new Map<string, DeductionItem[]>();
   const pushDeduction = (ymd: string, item: DeductionItem) => {
     if (!deductionsByDate.has(ymd)) deductionsByDate.set(ymd, []);
@@ -1046,10 +1047,13 @@ export async function buildWorkHoursCalendar(input: {
   }
   for (const adj of workhourAdjs) {
     const ymd = workDateYmd(adj.workDate);
+    const h = Math.round(Number(adj.adjustmentHours) * 100) / 100;
+    const isPositive = h > 0;
     pushDeduction(ymd, {
       label: ADJUSTMENT_TYPE_LABEL[adj.adjustmentType] ?? adj.adjustmentType,
-      hours: Math.abs(Math.round(Number(adj.adjustmentHours) * 100) / 100),
+      hours: Math.abs(h),
       note: adj.note ?? (adj.employee ? adj.employee.name : null),
+      isPositive,
     });
   }
 
@@ -1177,8 +1181,8 @@ export async function buildWorkHoursCalendar(input: {
     const trialDeductionLabels: DeductionItem[] = Array.from({ length: trialCount }, () => ({ label: "試作", hours: 3 }));
     const dayDeductions = [...otherDeductions, ...trialDeductionLabels];
 
-    // rawHours 已含試作 -3h × n，淨工時只需再扣非試作的扣項
-    const netHours = Math.max(0, eff.rawHours - otherDeductions.reduce((s, d) => s + d.hours, 0));
+    // rawHours 已含試作 -3h × n 與工時異動正/負調整；淨工時只需再扣非試作的「負向」扣項
+    const netHours = Math.max(0, eff.rawHours - otherDeductions.filter((d) => !d.isPositive).reduce((s, d) => s + d.hours, 0));
     const correctedRatio = netHours > 0 && eff.revenue > 0 ? Math.round(eff.revenue / netHours) : eff.ratio;
     const correctedIsAchieved = isEfficiencyTargetMet(ymd, correctedRatio);
     const isSat = dow === 6;

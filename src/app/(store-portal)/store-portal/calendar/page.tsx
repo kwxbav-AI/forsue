@@ -17,7 +17,7 @@ type CalStaff = {
   newHireLabel?: string | null;
 };
 
-type CalDeduction = { label: string; hours: number; note?: string | null };
+type CalDeduction = { label: string; hours: number; note?: string | null; isPositive?: boolean };
 
 type CalDay = {
   date: string;
@@ -298,8 +298,8 @@ export default function StoreCalendarPage() {
                             </div>
                           )}
                           {(day?.deductions ?? []).map((ded, di) => (
-                            <div key={di} className="text-[10px] font-medium text-red-500">
-                              -{ded.hours}h {ded.label}{ded.note ? ` (${ded.note})` : ""}
+                            <div key={di} className={`text-[10px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
+                              {ded.isPositive ? "+" : "-"}{ded.hours}h {ded.label}{ded.note ? `（${ded.note}）` : ""}
                             </div>
                           ))}
                           {day?.efficiencyRatio != null && (
