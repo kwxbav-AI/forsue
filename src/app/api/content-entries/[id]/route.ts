@@ -5,6 +5,7 @@ import { totalDeductedMinutes } from "@/lib/content-deduction";
 import { z } from "zod";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import { hasModuleEffectivePermission } from "@/lib/permissions-db";
+import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,7 @@ export async function PUT(
         deductedMinutes,
       },
     });
+    await performanceEngineService.recalculateDailyPerformance(updated.workDate);
     const canSee = await canSeeDeductedMinutes(request);
     return NextResponse.json(canSee ? updated : maskDeductedMinutes(updated));
   } catch (e) {
@@ -120,7 +122,9 @@ export async function DELETE(
     );
 
     if (canApprove) {
+      const toDelete = await prisma.contentEntry.findUnique({ where: { id }, select: { workDate: true } });
       await prisma.contentEntry.delete({ where: { id } });
+      if (toDelete) await performanceEngineService.recalculateDailyPerformance(toDelete.workDate);
       return NextResponse.json({ success: true });
     }
 

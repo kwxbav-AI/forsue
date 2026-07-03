@@ -50,10 +50,11 @@ export async function performDeletionForTarget(
     case "CONTENT_ENTRY": {
       const existing = await prisma.contentEntry.findUnique({
         where: { id: targetId },
-        select: { id: true },
+        select: { id: true, workDate: true },
       });
       if (!existing) return { alreadyAbsent: true };
       await prisma.contentEntry.delete({ where: { id: targetId } });
+      await performanceEngineService.recalculateDailyPerformance(existing.workDate);
       return { alreadyAbsent: false };
     }
     case "WORKHOUR_ADJUSTMENT": {

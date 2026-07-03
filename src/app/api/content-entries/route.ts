@@ -10,6 +10,7 @@ import {
   formatFilledAtTaipei,
   resolveCreatorNamesByCode,
 } from "@/lib/record-creator-meta";
+import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 
 export const dynamic = "force-dynamic";
 
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
         createdBy: session?.username?.trim() || null,
       },
     });
+    await performanceEngineService.recalculateDailyPerformance(d);
     const canSee = await canSeeDeductedMinutes(request);
     const nameByCode = await resolveCreatorNamesByCode(
       created.createdBy ? [created.createdBy] : []

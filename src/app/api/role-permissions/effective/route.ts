@@ -42,6 +42,15 @@ export async function GET(req: NextRequest) {
       { pathPattern: "/api/store-hour-deductions", method: null },
       { pathPattern: "/api/store-hour-deductions/", method: null },
     ];
+    // 有門市存取權（督導或門市人員）的帳號，同步開放 store-portal 寫入操作
+    const extraApiWrite = [
+      { pathPattern: "/api/dispatches", method: null },
+      { pathPattern: "/api/dispatches/", method: null },
+      { pathPattern: "/api/content-entries", method: null },
+      { pathPattern: "/api/content-entries/", method: null },
+      { pathPattern: "/api/store-hour-deductions", method: null },
+      { pathPattern: "/api/store-hour-deductions/", method: null },
+    ];
     return NextResponse.json({
       ...effective,
       allowedPagePathPatterns: [
@@ -52,6 +61,12 @@ export async function GET(req: NextRequest) {
         ...effective.allowedApiReadPatterns,
         ...extraApiRead.filter(
           (e) => !effective.allowedApiReadPatterns.some((x) => x.pathPattern === e.pathPattern)
+        ),
+      ],
+      allowedApiWritePatterns: [
+        ...effective.allowedApiWritePatterns,
+        ...extraApiWrite.filter(
+          (e) => !effective.allowedApiWritePatterns.some((x) => x.pathPattern === e.pathPattern)
         ),
       ],
     });

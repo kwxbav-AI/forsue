@@ -108,31 +108,21 @@ export default function StoreCalendarPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [calData, setCalData] = useState<CalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retailStoreId, setRetailStoreId] = useState<string | null>(null);
 
   const load = useCallback(
     async (y: number, m: number) => {
       setLoading(true);
       setError(null);
       try {
-        let storeCtx = ctx;
-        let rsId = retailStoreId;
-        if (!storeCtx) {
-          const ctxUrl = adminStoreId
-            ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
-            : "/api/store-portal/context";
-          const res = await fetch(ctxUrl);
-          if (!res.ok) throw new Error("無法取得門市資訊");
-          const data = await res.json();
-          storeCtx = data as StoreContext;
-          rsId = (data as { retailStoreId: string }).retailStoreId;
-          setCtx(storeCtx);
-          setRetailStoreId(rsId);
-        }
+        const ctxUrl = adminStoreId
+          ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
+          : "/api/store-portal/context";
+        const res = await fetch(ctxUrl);
+        if (!res.ok) throw new Error("無法取得門市資訊");
+        const storeCtx = (await res.json()) as StoreContext;
         if (!storeCtx.performanceStoreId) throw new Error("找不到對應績效門市");
 
         const calRes = await fetch(
@@ -146,12 +136,12 @@ export default function StoreCalendarPage() {
         setLoading(false);
       }
     },
-    [ctx, retailStoreId]
+    [adminStoreId]
   );
 
   useEffect(() => {
     void load(year, month);
-  }, [year, month]);
+  }, [year, month, load]);
 
   function goMonth(y: number, m: number) {
     setYear(y);
