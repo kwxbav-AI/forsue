@@ -71,6 +71,40 @@ function fmtMd(ymd: string): string {
   return `${Number(m[2])}/${Number(m[3])}`;
 }
 
+function fmtWan(n: number): string {
+  return `$${Math.round(n / 10000)}萬`;
+}
+
+const QUARTER_MILESTONES = [
+  { target: 8_000_000, wan: 800, label: "第一門檻", bg: "#FAEEDA", text: "#633806", sub: "#854F0B", trackColor: "#BA7517" },
+  { target: 10_000_000, wan: 1000, label: "第二門檻", bg: "#E6F1FB", text: "#0C447C", sub: "#185FA5", trackColor: "#378ADD" },
+  { target: 12_000_000, wan: 1200, label: "第三門檻", bg: "#EEEDFE", text: "#3C3489", sub: "#534AB7", trackColor: "#7F77DD" },
+] as const;
+
+const MAX_MILESTONE = 12_000_000;
+
+type QuarterRange = {
+  startYmd: string;
+  endYmd: string;
+  label: string;
+  totalDays: number;
+  elapsedDays: number;
+};
+
+function getCurrentQuarterRange(now: Date): QuarterRange {
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  let qStart: Date, qEnd: Date, label: string;
+  if (m <= 3)       { qStart = new Date(Date.UTC(y, 0, 1));  qEnd = new Date(Date.UTC(y, 2, 31)); label = "1–3月"; }
+  else if (m <= 6)  { qStart = new Date(Date.UTC(y, 3, 1));  qEnd = new Date(Date.UTC(y, 5, 30)); label = "4–6月"; }
+  else if (m <= 9)  { qStart = new Date(Date.UTC(y, 6, 1));  qEnd = new Date(Date.UTC(y, 8, 30)); label = "7–9月"; }
+  else              { qStart = new Date(Date.UTC(y, 9, 1));  qEnd = new Date(Date.UTC(y, 11, 31)); label = "10–12月"; }
+  const totalDays = Math.round((qEnd.getTime() - qStart.getTime()) / 86_400_000) + 1;
+  const todayUtc = new Date(Date.UTC(y, now.getMonth(), now.getDate()));
+  const elapsedDays = Math.min(Math.round((todayUtc.getTime() - qStart.getTime()) / 86_400_000) + 1, totalDays);
+  return { startYmd: toYmd(qStart), endYmd: toYmd(qEnd), label, totalDays, elapsedDays };
+}
+
 export default function StoreOverviewPage() {
   const searchParams = useSearchParams();
   const adminStoreId = searchParams.get("storeId");
@@ -82,8 +116,11 @@ export default function StoreOverviewPage() {
   const [ctx, setCtx] = useState<StoreContext | null>(null);
   const [metrics, setMetrics] = useState<DashMetrics | null>(null);
   const [target, setTarget] = useState<TargetData | null>(null);
+  const [quarterRevenue, setQuarterRevenue] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const quarterRange = getCurrentQuarterRange(now);
 
   const isCurrentMonth =
     selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
@@ -116,6 +153,7 @@ export default function StoreOverviewPage() {
     setError(null);
     setMetrics(null);
     setTarget(null);
+    setQuarterRevenue(null);
     try {
       const ctxUrl = adminStoreId
         ? `/api/store-portal/context?storeId=${encodeURIComponent(adminStoreId)}`
@@ -125,13 +163,21 @@ export default function StoreOverviewPage() {
       const ctxData = (await ctxRes.json()) as StoreContext;
       setCtx(ctxData);
 
-      const [dashRes, targetRes] = await Promise.all([
+      const qr = getCurrentQuarterRange(now);
+      const todayYmd = toYmd(now);
+
+      const [dashRes, targetRes, quarterRes] = await Promise.all([
         ctxData.performanceStoreId
           ? fetch(
               `/api/operations/dashboard?storeId=${encodeURIComponent(ctxData.performanceStoreId)}&startDate=${startDate}&endDate=${endDate}`
             )
           : Promise.resolve(null),
         fetch(`/api/reports/store-target-card?month=${encodeURIComponent(monthStr)}`),
+        ctxData.performanceStoreId
+          ? fetch(
+              `/api/operations/dashboard?storeId=${encodeURIComponent(ctxData.performanceStoreId)}&startDate=${qr.startYmd}&endDate=${todayYmd}`
+            )
+          : Promise.resolve(null),
       ]);
 
       if (dashRes && dashRes.ok) {
@@ -142,6 +188,12 @@ export default function StoreOverviewPage() {
 
       if (targetRes.ok) {
         setTarget((await targetRes.json()) as TargetData);
+      }
+
+      if (quarterRes && quarterRes.ok) {
+        const qd = await quarterRes.json();
+        const rev = (qd.filteredMetrics as DashMetrics | undefined)?.revenueAchievement ?? 0;
+        setQuarterRevenue(rev);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "載入失敗");
@@ -225,8 +277,8 @@ export default function StoreOverviewPage() {
           <p className="text-sm text-slate-400">載入中…</p>
         ) : (
           <>
-            {/* 五張指標卡：單排 */}
-            <div className="mb-3 grid grid-cols-5 gap-2">
+            {/* 四張指標卡：單排（移除工效比） */}
+            <div className="mb-3 grid grid-cols-4 gap-2">
               <div className="rounded-xl p-3" style={{ background: "#E1F5EE" }}>
                 <p className="mb-1 text-[17px] font-bold" style={{ color: "#0F6E56" }}>本月營業額</p>
                 <p className="text-2xl font-medium" style={{ color: "#085041" }}>
@@ -286,16 +338,6 @@ export default function StoreOverviewPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl p-3" style={{ background: "#E6F1FB" }}>
-                <p className="mb-1 text-[17px] font-bold" style={{ color: "#185FA5" }}>工效比</p>
-                <p className="text-2xl font-medium" style={{ color: "#0C447C" }}>
-                  {metrics?.efficiencyRatio != null
-                    ? `$${Math.round(metrics.efficiencyRatio).toLocaleString()}`
-                    : "—"}
-                </p>
-                <p className="mt-1 text-[11px]" style={{ color: "#185FA5" }}>元 / hr</p>
-              </div>
-
               <div className="rounded-xl p-3" style={{ background: "#FAEEDA" }}>
                 <p className="mb-1 text-[17px] font-bold" style={{ color: "#854F0B" }}>達標天數</p>
                 <p className="text-2xl font-medium" style={{ color: "#633806" }}>
@@ -321,6 +363,149 @@ export default function StoreOverviewPage() {
                 <p className="mt-1 text-[11px] text-slate-400">本月累計</p>
               </div>
             </div>
+
+            {/* 季營業額打拼獎金卡 */}
+            {(() => {
+              const rev = quarterRevenue ?? 0;
+              const { elapsedDays, totalDays, label: qLabel, startYmd: qStart } = quarterRange;
+              const daysRemaining = totalDays - elapsedDays;
+              const dailyAvg = elapsedDays > 0 ? rev / elapsedDays : 0;
+              const projected = Math.round(dailyAvg * totalDays);
+              const projectedPct = Math.min((projected / MAX_MILESTONE) * 100, 105);
+              const actualPct = Math.min((rev / MAX_MILESTONE) * 100, 100);
+
+              // 找出第一個「預估不到」的門檻 index
+              const firstUnmetIdx = QUARTER_MILESTONES.findIndex((ms) => projected < ms.target);
+
+              return (
+                <div className="mb-3 rounded-xl bg-white p-4" style={{ border: "0.5px solid #e2e8f0" }}>
+                  <div className="mb-1 flex items-baseline justify-between">
+                    <p className="text-[15px] font-bold text-slate-700">Q 季營業額</p>
+                    <span className="text-[11px] text-slate-400">{qStart.slice(0, 4)}年 {qLabel}（打拼獎金）</span>
+                  </div>
+                  <div className="mb-3 flex items-baseline gap-2">
+                    <span className="text-[26px] font-medium" style={{ color: "#0F6E56" }}>
+                      {quarterRevenue != null ? fmtWan(rev) : "—"}
+                    </span>
+                    {elapsedDays > 0 && dailyAvg > 0 && (
+                      <span className="text-[12px] text-slate-400">日均 {fmtWan(dailyAvg)}／已過 {elapsedDays} 天</span>
+                    )}
+                  </div>
+
+                  {/* 進度軌道 */}
+                  <div className="relative mb-7" style={{ height: "8px" }}>
+                    <div className="absolute inset-0 rounded-full bg-slate-100" style={{ border: "0.5px solid #e2e8f0" }} />
+                    {/* 實際進度 */}
+                    {actualPct > 0 && (
+                      <div
+                        className="absolute left-0 top-0 h-full rounded-l-full"
+                        style={{ width: `${actualPct}%`, background: "#1D9E75", borderRadius: projected > rev ? "4px 0 0 4px" : "4px" }}
+                      />
+                    )}
+                    {/* 預估延伸 */}
+                    {projected > rev && projectedPct > actualPct && (
+                      <div
+                        className="absolute top-[2px]"
+                        style={{
+                          left: `${actualPct}%`,
+                          width: `${Math.min(projectedPct - actualPct, 100 - actualPct)}%`,
+                          height: "4px",
+                          background: "#9FE1CB",
+                          borderRadius: "0 4px 4px 0",
+                        }}
+                      />
+                    )}
+                    {/* 預估終點圓點 */}
+                    {projected > 0 && projectedPct < 102 && (
+                      <div
+                        className="absolute"
+                        style={{
+                          left: `calc(${Math.min(projectedPct, 100)}% - 5px)`,
+                          top: "-1px",
+                          width: "10px",
+                          height: "10px",
+                          background: "#0F6E56",
+                          borderRadius: "50%",
+                          border: "2px solid white",
+                        }}
+                      />
+                    )}
+                    {/* 三個門檻標記 */}
+                    {QUARTER_MILESTONES.map((ms, i) => {
+                      const pct = (ms.target / MAX_MILESTONE) * 100;
+                      return (
+                        <div key={i}>
+                          <div
+                            className="absolute"
+                            style={{ left: `${pct}%`, top: "-3px", width: "2px", height: "14px", background: ms.trackColor, borderRadius: "1px" }}
+                          />
+                          <div
+                            className="absolute whitespace-nowrap text-[9px] font-medium"
+                            style={{ left: `${pct}%`, top: "16px", transform: "translateX(-50%)", color: ms.sub }}
+                          >
+                            {ms.wan}萬
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* 預估標籤 */}
+                    {projected > 0 && projectedPct < 98 && (
+                      <div
+                        className="absolute whitespace-nowrap text-[9px] font-medium"
+                        style={{ left: `${Math.min(projectedPct, 97)}%`, top: "16px", transform: "translateX(-50%)", color: "#0F6E56" }}
+                      >
+                        預估 {fmtWan(projected)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 三個門檻色塊 */}
+                  <div className="mt-1 grid grid-cols-3 gap-2">
+                    {QUARTER_MILESTONES.map((ms, i) => {
+                      const alreadyReached = rev >= ms.target;
+                      const projectedToReach = !alreadyReached && projected >= ms.target;
+                      const isNearestUnmet = !alreadyReached && i === firstUnmetIdx;
+                      const isFaded = !alreadyReached && !isNearestUnmet;
+
+                      if (alreadyReached) {
+                        return (
+                          <div key={i} className="rounded-lg p-2" style={{ background: "#E1F5EE", border: "1px solid #5DCAA5" }}>
+                            <div className="text-[10px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 已達成</div>
+                            <div className="mt-1 text-[13px] font-medium" style={{ color: "#085041" }}>超過 {fmtWan(rev - ms.target)}</div>
+                          </div>
+                        );
+                      }
+                      if (projectedToReach) {
+                        return (
+                          <div key={i} className="rounded-lg p-2" style={{ background: "#E1F5EE", border: "1px solid #9FE1CB" }}>
+                            <div className="text-[10px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 預計可達</div>
+                            <div className="mt-1 text-[13px] font-medium" style={{ color: "#085041" }}>還差 {fmtWan(ms.target - rev)}</div>
+                          </div>
+                        );
+                      }
+                      if (isNearestUnmet) {
+                        const neededDaily = daysRemaining > 0 ? (ms.target - rev) / daysRemaining : null;
+                        return (
+                          <div key={i} className="rounded-lg p-2" style={{ background: ms.bg }}>
+                            <div className="text-[10px] font-medium" style={{ color: ms.sub }}>達 {ms.wan}萬 需日均</div>
+                            <div className="mt-1 text-[13px] font-medium" style={{ color: ms.text }}>
+                              {neededDaily != null ? fmtWan(neededDaily) : "—"}
+                            </div>
+                          </div>
+                        );
+                      }
+                      // faded
+                      return (
+                        <div key={i} className="rounded-lg p-2" style={{ background: "#f8fafc", opacity: 0.45 }}>
+                          <div className="text-[10px]" style={{ color: "#94a3b8" }}>{ms.label}</div>
+                          <div className="mt-1 text-[13px] font-medium text-slate-400">{ms.wan}萬</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 月目標進度 + 工時明細：並排 2/3 + 1/3 */}
             <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: "2fr 1fr" }}>

@@ -61,6 +61,7 @@ export default function DispatchesPage() {
   const [list, setList] = useState<DispatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
   const [perm, setPerm] = useState({ canReadPending: false, canApprove: false });
   const [pendingRefresh, setPendingRefresh] = useState(0);
   const [employeeQuery, setEmployeeQuery] = useState("");
@@ -204,8 +205,10 @@ export default function DispatchesPage() {
 
   async function submit() {
     setMessage(null);
+    setMessageIsError(false);
     if (!form.employeeId || !form.toStoreId || !form.startDate || !form.endDate || !form.startTime || !form.endTime || !form.reason) {
       setMessage("尚有欄位未填寫");
+      setMessageIsError(true);
       return;
     }
     const res = await fetch("/api/dispatches", {
@@ -226,6 +229,7 @@ export default function DispatchesPage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setMessage(data.error || "送出失敗");
+      setMessageIsError(true);
       return;
     }
     setMessage(`已建立調度：${data.createdCount ?? 0} 筆`);
@@ -281,15 +285,18 @@ export default function DispatchesPage() {
     const actual = editActualHours.trim() ? parseFloat(editActualHours) : null;
     if (editActualHours.trim() && (Number.isNaN(actual) || actual! < 0)) {
       setMessage("實際時數請輸入大於等於 0 的數字");
+      setMessageIsError(true);
       return;
     }
     const isBackoffice = (editRow.remark ?? "").trim().startsWith("後勤支援門市");
     if (isBackoffice && editConfirmStatus === "已確認" && (actual == null || actual <= 0)) {
       setMessage("後勤支援門市在「已確認」時必須填寫調度工時（> 0）");
+      setMessageIsError(true);
       return;
     }
     setEditSaving(true);
     setMessage(null);
+    setMessageIsError(false);
     const res = await fetch(`/api/dispatches/${editRow.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -303,6 +310,7 @@ export default function DispatchesPage() {
     setEditSaving(false);
     if (!res.ok) {
       setMessage(data.error || "更新失敗");
+      setMessageIsError(true);
       return;
     }
     setEditRow(null);
@@ -499,7 +507,11 @@ export default function DispatchesPage() {
           </button>
         </div>
 
-        {message && <p className="mt-2 text-sm text-slate-700">{message}</p>}
+        {message && (
+          <p className={`mt-2 font-bold ${messageIsError ? "text-2xl text-red-600" : "text-sm text-slate-700"}`}>
+            {message}
+          </p>
+        )}
       </div>
 
       <p className="mb-3 text-sm text-slate-500">
