@@ -93,79 +93,87 @@ function listDaysInRange(startYmd: string, endYmd: string): string[] {
   return out;
 }
 
-function HoursDetailPopover({
+function HoursDetailModal({
   detail,
   loading,
   storeName,
   periodLabel,
-  anchorRect,
+  onClose,
 }: {
   detail: StoreDetailPayload | null;
   loading: boolean;
   storeName: string;
   periodLabel: string;
-  anchorRect: DOMRect | null;
+  onClose: () => void;
 }) {
-  if (!anchorRect || typeof document === "undefined") return null;
-
-  const top = Math.min(anchorRect.bottom + 6, window.innerHeight - 300);
-  const left = Math.min(
-    anchorRect.right + 8,
-    window.innerWidth - Math.min(400, window.innerWidth * 0.92) - 8
-  );
+  if (typeof document === "undefined") return null;
 
   const panel = (
     <div
-      className="pointer-events-none max-h-[min(300px,50vh)] w-[min(400px,92vw)] overflow-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl"
-      style={{ position: "fixed", top, left, zIndex: 9999 }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+      onClick={onClose}
     >
-      {loading ?
-        <p className="px-2 py-3 text-xs text-slate-500">載入工時明細…</p>
-      : !detail?.rows?.length ?
-        <p className="px-2 py-3 text-xs text-slate-500">
-          {storeName} · {periodLabel} 無工時明細
-        </p>
-      : <>
-          <p className="sticky top-0 z-10 border-b border-slate-100 bg-white px-2 py-1.5 text-xs font-semibold leading-snug text-slate-800">
-            {storeName}
-            <span className="block font-normal text-slate-500">{periodLabel} 工時明細</span>
-          </p>
-          <table className="mt-1 w-full table-fixed text-xs">
-            <thead>
-              <tr className="text-left text-slate-500">
-                <th className="w-[38%] py-1 pl-1 pr-1">員工</th>
-                <th className="w-[18%] py-1 pr-1 text-right">時數</th>
-                <th className="w-[44%] py-1 pr-1">說明</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.rows
-                .filter((r) => r.type !== "subtotal")
-                .map((r) => (
-                  <tr key={r.id} className="border-t border-slate-50 align-top">
-                    <td className="py-1 pl-1 pr-1">
-                      <div className="truncate" title={`${r.name} ${r.employeeCode}`}>
-                        {r.name}
-                      </div>
-                      <div className="truncate text-[10px] text-slate-400">{r.employeeCode}</div>
-                    </td>
-                    <td
-                      className={`py-1 pr-1 text-right tabular-nums whitespace-nowrap ${
-                        r.workHours < 0 ? "text-red-700" : "text-slate-800"
-                      }`}
-                    >
-                      {Number(r.workHours).toFixed(2)}
-                    </td>
-                    <td className="break-words py-1 pr-1 leading-snug text-slate-600">
-                      <span className="text-slate-400">[{detailTypeLabel(r.type)}]</span>{" "}
-                      {r.adjustmentReason ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </>
-      }
+      <div
+        className="mx-4 flex max-h-[80vh] w-full max-w-md flex-col rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">{storeName}</p>
+            <p className="text-xs text-slate-500">{periodLabel} 工時明細</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-4 mt-0.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="overflow-y-auto p-2">
+          {loading ?
+            <p className="px-2 py-4 text-xs text-slate-500">載入工時明細…</p>
+          : !detail?.rows?.length ?
+            <p className="px-2 py-4 text-xs text-slate-500">
+              {storeName} · {periodLabel} 無工時明細
+            </p>
+          : <table className="w-full table-fixed text-xs">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="w-[38%] py-1 pl-1 pr-1">員工</th>
+                  <th className="w-[18%] py-1 pr-1 text-right">時數</th>
+                  <th className="w-[44%] py-1 pr-1">說明</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.rows
+                  .filter((r) => r.type !== "subtotal")
+                  .map((r) => (
+                    <tr key={r.id} className="border-t border-slate-50 align-top">
+                      <td className="py-1 pl-1 pr-1">
+                        <div className="truncate" title={`${r.name} ${r.employeeCode}`}>
+                          {r.name}
+                        </div>
+                        <div className="truncate text-[10px] text-slate-400">{r.employeeCode}</div>
+                      </td>
+                      <td
+                        className={`py-1 pr-1 text-right tabular-nums whitespace-nowrap ${
+                          r.workHours < 0 ? "text-red-700" : "text-slate-800"
+                        }`}
+                      >
+                        {Number(r.workHours).toFixed(2)}
+                      </td>
+                      <td className="break-words py-1 pr-1 leading-snug text-slate-600">
+                        <span className="text-slate-400">[{detailTypeLabel(r.type)}]</span>{" "}
+                        {r.adjustmentReason ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          }
+        </div>
+      </div>
     </div>
   );
 
@@ -185,7 +193,6 @@ export default function PerformanceDailyPage() {
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [hoverDetail, setHoverDetail] = useState<StoreDetailPayload | null>(null);
   const [hoverLoading, setHoverLoading] = useState(false);
-  const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const detailFetchRef = useRef(0);
   const [sortKey, setSortKey] = useState<SortKey>("storeName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -303,10 +310,9 @@ export default function PerformanceDailyPage() {
     [sortDir, sortKey]
   );
 
-  const loadHoverDetail = useCallback((row: DailyRow, anchor: DOMRect) => {
+  const loadHoverDetail = useCallback((row: DailyRow) => {
     const key = `${row.periodStart ?? row.workDate}|${row.periodEnd ?? row.workDate}|${row.storeId}`;
     setHoverKey(key);
-    setPopoverAnchor(anchor);
     const reqId = ++detailFetchRef.current;
     setHoverLoading(true);
     setHoverDetail(null);
@@ -366,7 +372,6 @@ export default function PerformanceDailyPage() {
     setHoverKey(null);
     setHoverDetail(null);
     setHoverLoading(false);
-    setPopoverAnchor(null);
   }, []);
 
   return (
@@ -518,11 +523,8 @@ export default function PerformanceDailyPage() {
                 return (
                   <tr
                     key={row.id}
-                    className={`border-b border-slate-100 ${isHovered ? "bg-sky-50/80" : ""}`}
-                    onMouseEnter={(e) =>
-                      loadHoverDetail(row, e.currentTarget.getBoundingClientRect())
-                    }
-                    onMouseLeave={clearHover}
+                    className={`cursor-pointer border-b border-slate-100 ${isHovered ? "bg-sky-50/80" : "hover:bg-slate-50"}`}
+                    onClick={() => loadHoverDetail(row)}
                   >
                     {showDateColumn ?
                       <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.workDate}</td>
@@ -570,8 +572,8 @@ export default function PerformanceDailyPage() {
           </table>
         </div>
       )}
-      {hoverKey && popoverAnchor ?
-        <HoursDetailPopover
+      {hoverKey ?
+        <HoursDetailModal
           detail={hoverDetail}
           loading={hoverLoading}
           storeName={sortedList.find((r) => {
@@ -584,7 +586,7 @@ export default function PerformanceDailyPage() {
               return k === hoverKey;
             })?.workDate ?? ""
           }
-          anchorRect={popoverAnchor}
+          onClose={clearHover}
         />
       : null}
     </div>
