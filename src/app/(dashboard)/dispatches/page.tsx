@@ -204,6 +204,10 @@ export default function DispatchesPage() {
 
   async function submit() {
     setMessage(null);
+    if (!form.employeeId || !form.toStoreId || !form.startDate || !form.endDate || !form.startTime || !form.endTime || !form.reason) {
+      setMessage("尚有欄位未填寫");
+      return;
+    }
     const res = await fetch("/api/dispatches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
