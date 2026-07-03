@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
     string,
     {
       workHours: number;
+      originalStoreId: string | null;
       locationMatchStatus: string | null;
       clockInStoreText: string | null;
       clockOutStoreText: string | null;
@@ -162,6 +163,7 @@ export async function GET(request: NextRequest) {
         workDate: true,
         employeeId: true,
         workHours: true,
+        originalStoreId: true,
         locationMatchStatus: true,
         clockInStoreText: true,
         clockOutStoreText: true,
@@ -176,6 +178,7 @@ export async function GET(request: NextRequest) {
       attendanceByKey.set(key, {
         workHours: nextHours,
         // 多筆時狀態/地點資訊可能不一致，避免誤導：維持第一筆（最新）顯示即可
+        originalStoreId: prev?.originalStoreId ?? a.originalStoreId ?? null,
         locationMatchStatus: prev?.locationMatchStatus ?? a.locationMatchStatus ?? null,
         clockInStoreText: prev?.clockInStoreText ?? a.clockInStoreText ?? null,
         clockOutStoreText: prev?.clockOutStoreText ?? a.clockOutStoreText ?? null,
@@ -225,9 +228,12 @@ export async function GET(request: NextRequest) {
             (creatorNameByCode.get(createdByCode) ?? createdByCode)
           : null,
         filledAt,
-        fromStoreId: d.fromStoreId,
+        fromStoreId: d.fromStoreId ?? attendanceByKey.get(`${workDateStr}_${d.employeeId}`)?.originalStoreId ?? null,
         toStoreId: d.toStoreId,
-        fromStoreName: d.fromStoreId ? storeNameById.get(d.fromStoreId) ?? null : null,
+        fromStoreName: (() => {
+          const fid = d.fromStoreId ?? attendanceByKey.get(`${workDateStr}_${d.employeeId}`)?.originalStoreId ?? null;
+          return fid ? (storeNameById.get(fid) ?? null) : null;
+        })(),
         toStoreName: storeNameById.get(d.toStoreId) ?? null,
         dispatchHours: planned,
         actualHours: actual,
