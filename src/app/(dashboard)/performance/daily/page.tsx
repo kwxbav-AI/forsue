@@ -93,7 +93,7 @@ function listDaysInRange(startYmd: string, endYmd: string): string[] {
   return out;
 }
 
-function HoursDetailModal({
+function HoursDetailDrawer({
   detail,
   loading,
   storeName,
@@ -109,70 +109,62 @@ function HoursDetailModal({
   if (typeof document === "undefined") return null;
 
   const panel = (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="mx-4 flex max-h-[80vh] w-full max-w-md flex-col rounded-xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-800">{storeName}</p>
-            <p className="text-xs text-slate-500">{periodLabel} 工時明細</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-4 mt-0.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            ✕
-          </button>
+    <div className="fixed inset-y-0 right-0 z-[9999] flex w-[min(320px,90vw)] flex-col border-l border-slate-200 bg-white shadow-xl">
+      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">{storeName}</p>
+          <p className="text-xs text-slate-500">{periodLabel} 工時明細</p>
         </div>
-        <div className="overflow-y-auto p-2">
-          {loading ?
-            <p className="px-2 py-4 text-xs text-slate-500">載入工時明細…</p>
-          : !detail?.rows?.length ?
-            <p className="px-2 py-4 text-xs text-slate-500">
-              {storeName} · {periodLabel} 無工時明細
-            </p>
-          : <table className="w-full table-fixed text-xs">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="w-[38%] py-1 pl-1 pr-1">員工</th>
-                  <th className="w-[18%] py-1 pr-1 text-right">時數</th>
-                  <th className="w-[44%] py-1 pr-1">說明</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.rows
-                  .filter((r) => r.type !== "subtotal")
-                  .map((r) => (
-                    <tr key={r.id} className="border-t border-slate-50 align-top">
-                      <td className="py-1 pl-1 pr-1">
-                        <div className="truncate" title={`${r.name} ${r.employeeCode}`}>
-                          {r.name}
-                        </div>
-                        <div className="truncate text-[10px] text-slate-400">{r.employeeCode}</div>
-                      </td>
-                      <td
-                        className={`py-1 pr-1 text-right tabular-nums whitespace-nowrap ${
-                          r.workHours < 0 ? "text-red-700" : "text-slate-800"
-                        }`}
-                      >
-                        {Number(r.workHours).toFixed(2)}
-                      </td>
-                      <td className="break-words py-1 pr-1 leading-snug text-slate-600">
-                        <span className="text-slate-400">[{detailTypeLabel(r.type)}]</span>{" "}
-                        {r.adjustmentReason ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          }
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-4 mt-0.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="overflow-y-auto p-2">
+        {loading ?
+          <p className="px-2 py-4 text-xs text-slate-500">載入工時明細…</p>
+        : !detail?.rows?.length ?
+          <p className="px-2 py-4 text-xs text-slate-500">
+            {storeName} · {periodLabel} 無工時明細
+          </p>
+        : <table className="w-full table-fixed text-xs">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="w-[38%] py-1 pl-1 pr-1">員工</th>
+                <th className="w-[18%] py-1 pr-1 text-right">時數</th>
+                <th className="w-[44%] py-1 pr-1">說明</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.rows
+                .filter((r) => r.type !== "subtotal")
+                .map((r) => (
+                  <tr key={r.id} className="border-t border-slate-50 align-top">
+                    <td className="py-1 pl-1 pr-1">
+                      <div className="truncate" title={`${r.name} ${r.employeeCode}`}>
+                        {r.name}
+                      </div>
+                      <div className="truncate text-[10px] text-slate-400">{r.employeeCode}</div>
+                    </td>
+                    <td
+                      className={`py-1 pr-1 text-right tabular-nums whitespace-nowrap ${
+                        r.workHours < 0 ? "text-red-700" : "text-slate-800"
+                      }`}
+                    >
+                      {Number(r.workHours).toFixed(2)}
+                    </td>
+                    <td className="break-words py-1 pr-1 leading-snug text-slate-600">
+                      <span className="text-slate-400">[{detailTypeLabel(r.type)}]</span>{" "}
+                      {r.adjustmentReason ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        }
       </div>
     </div>
   );
@@ -573,7 +565,7 @@ export default function PerformanceDailyPage() {
         </div>
       )}
       {hoverKey ?
-        <HoursDetailModal
+        <HoursDetailDrawer
           detail={hoverDetail}
           loading={hoverLoading}
           storeName={sortedList.find((r) => {
