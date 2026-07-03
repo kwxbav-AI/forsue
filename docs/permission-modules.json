@@ -563,6 +563,18 @@
       ]
     },
     {
+      "key": "operations-north-dashboard",
+      "label": "北區 Dashboard",
+      "description": "台北區四間門市專屬總覽與績效分析",
+      "group": "營運分析",
+      "sortOrder": 712,
+      "parentKey": "operations-dashboard",
+      "patterns": [
+        { "kind": "PAGE", "pathPattern": "/operations/north", "method": null },
+        { "kind": "PAGE", "pathPattern": "/operations/north/analysis", "method": null }
+      ]
+    },
+    {
       "key": "operations-supervisors",
       "label": "督導設定",
       "description": "督導帳號與負責門市",
