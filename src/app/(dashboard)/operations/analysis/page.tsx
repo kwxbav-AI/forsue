@@ -357,7 +357,7 @@ function AchievementBucketCard({
   );
 }
 
-export default function OperationsAnalysisPage() {
+export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: string } = {}) {
   const searchParams = useSearchParams();
   const today = formatLocalDateInput();
 
@@ -377,7 +377,7 @@ export default function OperationsAnalysisPage() {
 
   const [startDate, setStartDate] = useState(currentMonthStartYmdLocal);
   const [endDate, setEndDate] = useState(today);
-  const [region, setRegion] = useState("");
+  const [region, setRegion] = useState(fixedRegion ?? "");
   const [storeId, setStoreId] = useState("");
 
   const didInitSelection = useRef(false);
@@ -421,18 +421,21 @@ export default function OperationsAnalysisPage() {
     }
     if (!didInitSelection.current) {
       didInitSelection.current = true;
-      const first = meta.stores[0];
+      const first = fixedRegion
+        ? (meta.stores.find((s) => s.region === fixedRegion) ?? meta.stores[0])
+        : meta.stores[0];
       setStoreId(first.id);
-      if (first.region) setRegion(first.region);
+      if (first.region) setRegion(fixedRegion ?? first.region);
     }
-  }, [meta, searchParams]);
+  }, [meta, searchParams, fixedRegion]);
 
   const regionOptions = useMemo(() => {
+    if (fixedRegion) return [fixedRegion];
     const opsRegions = DUAL_OPS_REGIONS as readonly string[];
     const fromApi = (meta?.regions ?? []).filter((r) => opsRegions.includes(r));
     if (fromApi.length >= OPS_FILTER_REGIONS.length) return fromApi;
     return [...OPS_FILTER_REGIONS];
-  }, [meta?.regions]);
+  }, [meta?.regions, fixedRegion]);
 
   const handleRefresh = useCallback(async () => {
     setMessage(null);
@@ -615,6 +618,7 @@ export default function OperationsAnalysisPage() {
         storeId={storeId}
         stores={meta?.stores ?? []}
         regionOptions={regionOptions}
+        fixedRegion={fixedRegion}
         loading={loading}
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}

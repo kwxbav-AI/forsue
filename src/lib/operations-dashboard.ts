@@ -80,6 +80,14 @@ export const OPS_REGION_CATALOG: ReadonlyArray<{
 
   },
 
+  {
+
+    region: "台北區",
+
+    storeNames: ["嘉興", "虎林", "萬隆", "福德"],
+
+  },
+
 ] as const;
 
 

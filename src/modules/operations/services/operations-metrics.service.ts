@@ -217,6 +217,16 @@ export async function fetchDualRegionChartTotals(
   return sumChartRows(rows);
 }
 
+export async function fetchRegionChartTotals(
+  startDate: string,
+  endDate: string,
+  region: string,
+): Promise<PerformanceAggregate> {
+  const perStore = await fetchChartsPerStore(startDate, endDate);
+  const rows = filterChartsByCatalogRegions(perStore, [region]);
+  return sumChartRows(rows);
+}
+
 /** 桃園＋宜蘭營收範圍門市 ID（含已閉店如大業；不含 hideInReports） */
 export async function listDualRegionStoreIdsForRevenue(): Promise<string[]> {
   const stores = await prisma.store.findMany({

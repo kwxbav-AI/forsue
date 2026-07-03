@@ -16,6 +16,7 @@ import {
 import {
   fetchChartsPerStore,
   fetchDualRegionChartTotals,
+  fetchRegionChartTotals,
   fetchDualRegionRevenueTotal,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
@@ -137,7 +138,7 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string, regi
   const scopedStoreIds = scopedStores.map((s) => s.id);
 
   const [dualCurrent, currentRevenue, priorRevenue, targetByMonth] = await Promise.all([
-    fetchDualRegionChartTotals(startYmd, endYmd),
+    region ? fetchRegionChartTotals(startYmd, endYmd, region) : fetchDualRegionChartTotals(startYmd, endYmd),
     region
       ? fetchRevenueForStoreIds(scopedStoreIds, startYmd, endYmd)
       : fetchDualRegionRevenueTotal(startYmd, endYmd),

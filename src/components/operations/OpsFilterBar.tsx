@@ -11,6 +11,7 @@ export type OpsFilterBarProps = {
   storeId: string;
   stores: OpsStoreOption[];
   regionOptions?: string[];
+  fixedRegion?: string;
   loading?: boolean;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
@@ -26,6 +27,7 @@ export function OpsFilterBar({
   storeId,
   stores,
   regionOptions,
+  fixedRegion,
   loading = false,
   onStartDateChange,
   onEndDateChange,
@@ -34,7 +36,8 @@ export function OpsFilterBar({
   onRefresh,
 }: OpsFilterBarProps) {
   const regions =
-    regionOptions && regionOptions.length >= OPS_FILTER_REGIONS.length
+    fixedRegion ? [fixedRegion]
+    : regionOptions && regionOptions.length >= OPS_FILTER_REGIONS.length
       ? regionOptions
       : [...OPS_FILTER_REGIONS];
 
@@ -61,25 +64,27 @@ export function OpsFilterBar({
           className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
         />
       </label>
-      <label className="text-sm">
-        <span className="mb-1 block text-xs text-slate-500">區域</span>
-        <select
-          value={region}
-          onChange={(e) => {
-            const newRegion = e.target.value;
-            const first = stores.find((s) => s.region === newRegion);
-            onRegionChange(newRegion, first?.id ?? "");
-          }}
-          className="min-w-[110px] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
-        >
-          <option value="">全部區域</option>
-          {regions.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!fixedRegion && (
+        <label className="text-sm">
+          <span className="mb-1 block text-xs text-slate-500">區域</span>
+          <select
+            value={region}
+            onChange={(e) => {
+              const newRegion = e.target.value;
+              const first = stores.find((s) => s.region === newRegion);
+              onRegionChange(newRegion, first?.id ?? "");
+            }}
+            className="min-w-[110px] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+          >
+            <option value="">全部區域</option>
+            {regions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="text-sm">
         <span className="mb-1 block text-xs text-slate-500">門市</span>
         <select

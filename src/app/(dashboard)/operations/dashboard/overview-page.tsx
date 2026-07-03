@@ -247,11 +247,11 @@ function StoreStatusTooltip({
   );
 }
 
-export default function OperationsOverviewPage() {
+export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: string } = {}) {
   const today = formatLocalDateInput();
   const [startDate, setStartDate] = useState(defaultOverviewStartDate);
   const [endDate, setEndDate] = useState(today);
-  const [region, setRegion] = useState("");
+  const [region, setRegion] = useState(fixedRegion ?? "");
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [kpi, setKpi] = useState<KpiMetrics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -408,18 +408,20 @@ export default function OperationsOverviewPage() {
               className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
             />
           </label>
-          <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            <option value="">全部區域</option>
-            {OPS_FILTER_REGIONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+          {!fixedRegion && (
+            <select
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">全部區域</option>
+              {OPS_FILTER_REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          )}
           {overview && workingDays > 0 ?
             <span
               className="self-end rounded-lg border px-2.5 py-1.5 text-xs font-medium tabular-nums"
@@ -451,21 +453,21 @@ export default function OperationsOverviewPage() {
             <KpiCard
               title="全公司營收目標值"
               value={formatMoney(kpi?.totalTarget ?? overview.summary.totalTarget)}
-              sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
+              sub={`${overview.startDate} ~ ${overview.endDate} · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
               icon={<Target className="h-5 w-5" />}
               theme={OPS_COLORS.achievement}
             />
             <KpiCard
               title="全公司營收達成值"
               value={formatMoney(kpi?.totalRevenue ?? 0)}
-              sub={`${overview.startDate} ~ ${overview.endDate} · 桃園+宜蘭`}
+              sub={`${overview.startDate} ~ ${overview.endDate} · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
               icon={<Store className="h-5 w-5" />}
               theme={OPS_COLORS.revenue}
             />
             <KpiCard
               title="區間達成率"
               value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
-              sub="營收達成值 ÷ 營收目標值 · 桃園+宜蘭"
+              sub={`營收達成值 ÷ 營收目標值 · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
               icon={<Target className="h-5 w-5" />}
               theme={OPS_COLORS.achievement}
             />
@@ -477,7 +479,7 @@ export default function OperationsOverviewPage() {
                 : "—"
               }
               valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
-              sub="較去年同期同區間 · 桃園+宜蘭"
+              sub={`較去年同期同區間 · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
               icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard
@@ -487,7 +489,7 @@ export default function OperationsOverviewPage() {
                   Math.round(kpi.efficiencyRatio).toLocaleString("zh-TW")
                 : "—"
               }
-              sub="元 / hr · 桃園+宜蘭"
+              sub={`元 / hr · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
               icon={<Activity className="h-5 w-5" />}
               theme={OPS_COLORS.hours}
             />
@@ -667,7 +669,7 @@ export default function OperationsOverviewPage() {
               </ResponsiveContainer>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            {!fixedRegion && <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-700 mb-1">桃園／宜蘭實際營收占比</h2>
               <p className="text-xs text-slate-500 mb-3">
                 {overview.startDate} ~ {overview.endDate} · 桃園＋宜蘭實際營收結構
@@ -710,7 +712,7 @@ export default function OperationsOverviewPage() {
                   </div>
                 </>
               : <p className="text-sm text-slate-500 py-8 text-center">區間無營收資料</p>}
-            </div>
+            </div>}
           </div>
 
           {/* 第五層：門市營收達成分佈 1/3、門市狀況一覽 2/3 */}
