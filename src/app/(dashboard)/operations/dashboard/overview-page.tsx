@@ -131,6 +131,7 @@ type KpiMetrics = {
   totalLaborHours: number;
   efficiencyRatio: number | null;
   yoyGrowthRate: number | null;
+  regionLabel?: string;
   periodStartDate?: string;
   periodEndDate?: string;
 };
@@ -523,7 +524,7 @@ export default function OperationsOverviewPage() {
                 : "—"
               }
               valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
-              sub="較去年同期 · 全公司桃園+宜蘭"
+              sub={`較去年同期 · ${kpi?.regionLabel ?? "宜蘭區 + 桃園區"}`}
               icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard

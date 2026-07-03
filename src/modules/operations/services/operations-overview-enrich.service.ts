@@ -1,7 +1,8 @@
 import { countTargetMetDaysByStore } from "@/modules/performance/services/target-summary.service";
 import { aggregateCustomerMetricsForRetailIds } from "@/modules/operations/services/operations-customer-metrics.service";
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
-import { formatDateOnly, parseDateOnlyUTC } from "@/lib/date";
+import { formatDateOnly, parseDateOnlyUTC, toDateRange } from "@/lib/date";
+import { prisma } from "@/lib/prisma";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { yoyGrowthRate } from "@/lib/operations-yoy";
 import { buildDashboardFilterResult } from "@/modules/operations/services/operations-dashboard-filter.service";
@@ -125,26 +126,33 @@ let ytdTrendCache: {
 
 const YTD_TREND_CACHE_MS = 10 * 60 * 1000;
 
-async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
+async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string, region?: string) {
   const priorStart = shiftYear(startYmd, -1);
   const priorEnd = shiftYear(endYmd, -1);
 
   const filterStores = await listPerformanceStoresForFilter();
-  const dualStoreIds = filterStores
-    .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
-    .map((s) => s.id);
+  const scopedStores = region
+    ? filterStores.filter((s) => s.region === region)
+    : filterStores.filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region));
+  const scopedStoreIds = scopedStores.map((s) => s.id);
 
   const [dualCurrent, currentRevenue, priorRevenue, targetByMonth] = await Promise.all([
     fetchDualRegionChartTotals(startYmd, endYmd),
-    fetchDualRegionRevenueTotal(startYmd, endYmd),
-    fetchDualRegionRevenueTotal(priorStart, priorEnd),
-    sumTargetByMonthForPerformanceStores(startYmd, endYmd, dualStoreIds),
+    region
+      ? fetchRevenueForStoreIds(scopedStoreIds, startYmd, endYmd)
+      : fetchDualRegionRevenueTotal(startYmd, endYmd),
+    region
+      ? fetchRevenueForStoreIds(scopedStoreIds, priorStart, priorEnd)
+      : fetchDualRegionRevenueTotal(priorStart, priorEnd),
+    sumTargetByMonthForPerformanceStores(startYmd, endYmd, scopedStoreIds),
   ]);
 
   const totalTarget = [...targetByMonth.values()].reduce((a, b) => a + b, 0);
   const totalRevenue = currentRevenue;
   const revenueAchievementRate =
     totalTarget > 0 ? Math.round((totalRevenue / totalTarget) * 1000) / 10 : null;
+
+  const regionLabel = region || "宜蘭區 + 桃園區";
 
   return {
     totalRevenue,
@@ -154,20 +162,36 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string) {
     efficiencyRatio: dualCurrent.efficiencyRatio,
     yoyGrowthRate: yoyGrowthRate(currentRevenue, priorRevenue),
     priorYearRevenue: priorRevenue,
-    regionLabel: "宜蘭區 + 桃園區",
+    regionLabel,
     periodStartDate: startYmd,
     periodEndDate: endYmd,
   };
 }
 
-/** 宜蘭+桃園 KPI：依篩選日期區間累計（5 分鐘快取） */
-export async function buildOpsKpiMetrics(startYmd: string, endYmd: string) {
-  const key = `${startYmd}|${endYmd}`;
+/** 指定門市 ID 列表的區間營收加總（供 YoY 區域篩選使用） */
+async function fetchRevenueForStoreIds(
+  storeIds: string[],
+  startYmd: string,
+  endYmd: string
+): Promise<number> {
+  if (storeIds.length === 0) return 0;
+  const { start, end } = toDateRange(startYmd, endYmd);
+  const grouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: { storeId: { in: storeIds }, revenueDate: { gte: start, lte: end } },
+    _sum: { revenueAmount: true },
+  });
+  return grouped.reduce((acc, g) => acc + Number(g._sum.revenueAmount ?? 0), 0);
+}
+
+/** KPI 指標：依篩選日期區間與區域累計（5 分鐘快取） */
+export async function buildOpsKpiMetrics(startYmd: string, endYmd: string, region?: string) {
+  const key = `${startYmd}|${endYmd}|${region ?? ""}`;
   const now = Date.now();
   if (kpiMetricsCache && kpiMetricsCache.key === key && kpiMetricsCache.expiresAt > now) {
     return kpiMetricsCache.data;
   }
-  const data = await buildOpsKpiMetricsUncached(startYmd, endYmd);
+  const data = await buildOpsKpiMetricsUncached(startYmd, endYmd, region);
   kpiMetricsCache = { key, expiresAt: now + KPI_METRICS_CACHE_MS, data };
   return data;
 }

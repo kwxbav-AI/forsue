@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       overviewBundlePromise,
       includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
       includeKpi ?
-        buildOpsKpiMetrics(effective.startDate, effective.endDate)
+        buildOpsKpiMetrics(effective.startDate, effective.endDate, region || undefined)
       : Promise.resolve(null),
     ]);
 
