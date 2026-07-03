@@ -380,8 +380,8 @@ export default function StoreOverviewPage() {
               return (
                 <div className="mb-3 rounded-xl bg-white p-4" style={{ border: "0.5px solid #e2e8f0" }}>
                   <div className="mb-1 flex items-baseline justify-between">
-                    <p className="text-[15px] font-bold text-slate-700">Q 季營業額</p>
-                    <span className="text-[11px] text-slate-400">{qStart.slice(0, 4)}年 {qLabel}（打拼獎金）</span>
+                    <p className="text-[15px] font-bold text-slate-700">Q3 季營業額</p>
+                    <span className="text-[11px] text-slate-400">{qStart.slice(0, 4)}年 {qLabel}</span>
                   </div>
                   <div className="mb-3 flex items-baseline gap-2">
                     <span className="text-[26px] font-medium" style={{ color: "#0F6E56" }}>
@@ -469,26 +469,26 @@ export default function StoreOverviewPage() {
 
                       if (alreadyReached) {
                         return (
-                          <div key={i} className="rounded-lg p-2" style={{ background: "#E1F5EE", border: "1px solid #5DCAA5" }}>
-                            <div className="text-[10px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 已達成</div>
-                            <div className="mt-1 text-[13px] font-medium" style={{ color: "#085041" }}>超過 {fmtWan(rev - ms.target)}</div>
+                          <div key={i} className="rounded-lg p-3" style={{ background: "#E1F5EE", border: "1px solid #5DCAA5" }}>
+                            <div className="text-[20px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 已達成</div>
+                            <div className="mt-1 text-[26px] font-medium" style={{ color: "#085041" }}>超過 {fmtWan(rev - ms.target)}</div>
                           </div>
                         );
                       }
                       if (projectedToReach) {
                         return (
-                          <div key={i} className="rounded-lg p-2" style={{ background: "#E1F5EE", border: "1px solid #9FE1CB" }}>
-                            <div className="text-[10px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 預計可達</div>
-                            <div className="mt-1 text-[13px] font-medium" style={{ color: "#085041" }}>還差 {fmtWan(ms.target - rev)}</div>
+                          <div key={i} className="rounded-lg p-3" style={{ background: "#E1F5EE", border: "1px solid #9FE1CB" }}>
+                            <div className="text-[20px] font-medium" style={{ color: "#0F6E56" }}>{ms.wan}萬 ✓ 預計可達</div>
+                            <div className="mt-1 text-[26px] font-medium" style={{ color: "#085041" }}>還差 {fmtWan(ms.target - rev)}</div>
                           </div>
                         );
                       }
                       if (isNearestUnmet) {
                         const neededDaily = daysRemaining > 0 ? (ms.target - rev) / daysRemaining : null;
                         return (
-                          <div key={i} className="rounded-lg p-2" style={{ background: ms.bg }}>
-                            <div className="text-[10px] font-medium" style={{ color: ms.sub }}>達 {ms.wan}萬 需日均</div>
-                            <div className="mt-1 text-[13px] font-medium" style={{ color: ms.text }}>
+                          <div key={i} className="rounded-lg p-3" style={{ background: ms.bg }}>
+                            <div className="text-[20px] font-medium" style={{ color: ms.sub }}>達 {ms.wan}萬 需日均</div>
+                            <div className="mt-1 text-[26px] font-medium" style={{ color: ms.text }}>
                               {neededDaily != null ? fmtWan(neededDaily) : "—"}
                             </div>
                           </div>
@@ -496,9 +496,9 @@ export default function StoreOverviewPage() {
                       }
                       // faded
                       return (
-                        <div key={i} className="rounded-lg p-2" style={{ background: "#f8fafc", opacity: 0.45 }}>
-                          <div className="text-[10px]" style={{ color: "#94a3b8" }}>{ms.label}</div>
-                          <div className="mt-1 text-[13px] font-medium text-slate-400">{ms.wan}萬</div>
+                        <div key={i} className="rounded-lg p-3" style={{ background: "#f8fafc", opacity: 0.45 }}>
+                          <div className="text-[20px]" style={{ color: "#94a3b8" }}>{ms.label}</div>
+                          <div className="mt-1 text-[26px] font-medium text-slate-400">{ms.wan}萬</div>
                         </div>
                       );
                     })}
@@ -513,7 +513,7 @@ export default function StoreOverviewPage() {
                 <div className="rounded-xl bg-slate-50 p-4">
                   <p className="mb-3 text-sm font-bold text-slate-700">月目標進度</p>
                   <div className="mb-3">
-                    <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
+                    <div className="mb-1.5 flex justify-between text-[22px] text-slate-500">
                       <span>營業額</span>
                       <span className="font-medium">
                         {fmt(metrics.revenueAchievement)} / {fmt(metrics.revenueForecast)}
@@ -531,7 +531,7 @@ export default function StoreOverviewPage() {
                   </div>
                   {totalWd > 0 && (
                     <div>
-                      <div className="mb-1.5 flex justify-between text-[11px] text-slate-500">
+                      <div className="mb-1.5 flex justify-between text-[22px] text-slate-500">
                         <span>達標天數</span>
                         <span className="font-medium">{totalMet + totalOver} 天 / {totalWd} 天</span>
                       </div>
