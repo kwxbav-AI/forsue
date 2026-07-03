@@ -74,6 +74,7 @@ export default function DispatchesPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(() => new Set());
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
@@ -203,7 +204,7 @@ export default function DispatchesPage() {
       .slice(0, 50);
   }, [employees, employeeQuery]);
 
-  async function submit() {
+  function submit() {
     setMessage(null);
     setMessageIsError(false);
     if (!form.employeeId || !form.toStoreId || !form.startDate || !form.endDate || !form.startTime || !form.endTime || !form.reason) {
@@ -211,6 +212,11 @@ export default function DispatchesPage() {
       setMessageIsError(true);
       return;
     }
+    setConfirmSubmit(true);
+  }
+
+  async function confirmSubmitDispatch() {
+    setConfirmSubmit(false);
     const res = await fetch("/api/dispatches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -777,6 +783,45 @@ export default function DispatchesPage() {
           </div>
         </div>
       )}
+
+      {/* 新增調度確認 Modal */}
+      {confirmSubmit && (() => {
+        const toStore = stores.find((s) => s.id === form.toStoreId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+              <h3 className="mb-2 text-base font-semibold text-slate-800">確認送出調度</h3>
+              <p className="mb-4 text-sm text-slate-600">
+                確定要送出以下調度紀錄嗎？<br />
+                <span className="text-xs text-slate-400">送出後調度紀錄將立即建立。</span>
+              </p>
+              <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex flex-col gap-1.5">
+                <div className="flex gap-3"><span className="w-12 text-slate-400">員工</span><span className="font-medium">{selectedEmployee?.name ?? "—"}</span></div>
+                <div className="flex gap-3"><span className="w-12 text-slate-400">日期</span><span>{form.startDate}{form.startDate !== form.endDate ? ` ～ ${form.endDate}` : ""}</span></div>
+                <div className="flex gap-3"><span className="w-12 text-slate-400">時段</span><span>{form.startTime} ～ {form.endTime}</span></div>
+                <div className="flex gap-3"><span className="w-12 text-slate-400">調往</span><span>{toStore?.name ?? "—"}</span></div>
+                <div className="flex gap-3"><span className="w-12 text-slate-400">事由</span><span>{form.reason}{form.note ? ` / ${form.note}` : ""}</span></div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmSubmit(false)}
+                  className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSubmitDispatch}
+                  className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+                >
+                  確認送出
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 刪除確認 Modal */}
       {confirmDeleteId && (() => {
