@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { toStartOfDay } from "@/lib/date";
+import { toStartOfDay, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 import { performanceEngineService } from "@/modules/performance/services/performance-engine.service";
 import { z } from "zod";
 
@@ -19,14 +19,14 @@ const bodySchema = z.object({
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date");
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
   const storeId = searchParams.get("storeId");
   const employeeId = searchParams.get("employeeId");
   const latest = searchParams.get("latest");
   const takeParam = searchParams.get("take");
-  const isLatestMode = !date && latest === "1";
-  if (!date && !isLatestMode) {
-    return NextResponse.json({ error: "請提供 date (YYYY-MM-DD)" }, { status: 400 });
-  }
+  const hasRange = Boolean(startDate && endDate);
+  const isLatestMode = !date && !hasRange && latest === "1";
 
   const takeRequested = takeParam ? parseInt(takeParam, 10) : NaN;
   const take =
@@ -36,18 +36,24 @@ export async function GET(request: NextRequest) {
         ? 50
         : undefined;
 
-  const where: { workDate?: Date; storeId?: string; employeeId?: string } = {};
-  if (date) where.workDate = toStartOfDay(date);
+  const where: { workDate?: Date | { gte: Date; lte: Date }; storeId?: string; employeeId?: string } = {};
+  if (hasRange) {
+    where.workDate = { gte: parseDateOnlyUTC(startDate as string), lte: parseDateOnlyUTC(endDate as string) };
+  } else if (date) {
+    where.workDate = toStartOfDay(date);
+  }
   if (storeId) where.storeId = storeId;
   if (employeeId) where.employeeId = employeeId;
 
   const list = await prisma.workhourAdjustment.findMany({
     where,
     include: { employee: true },
-    orderBy: isLatestMode ? [{ workDate: "desc" }, { createdAt: "desc" }] : [{ employeeId: "asc" }, { createdAt: "asc" }],
+    orderBy: isLatestMode || hasRange ? [{ workDate: "desc" }, { createdAt: "desc" }] : [{ employeeId: "asc" }, { createdAt: "asc" }],
     ...(take ? { take } : {}),
   });
-  return NextResponse.json(list);
+  return NextResponse.json(
+    list.map((a) => ({ ...a, workDate: formatDateOnly(a.workDate) }))
+  );
 }
 
 export async function POST(request: NextRequest) {

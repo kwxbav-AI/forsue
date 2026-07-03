@@ -36,13 +36,15 @@ const ADJUSTMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function WorkhourAdjustmentsPage() {
-  const [date, setDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [storeId, setStoreId] = useState("");
   const [stores, setStores] = useState<Store[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<"add" | null>(null);
+  const [addDate, setAddDate] = useState<string>(formatLocalDateInput());
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
   const [employeeWorkHours, setEmployeeWorkHours] = useState<number | null>(null);
@@ -67,13 +69,15 @@ export default function WorkhourAdjustmentsPage() {
   }, []);
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
-    const hasDate = Boolean(date);
-    let url = hasDate ? `/api/workhour-adjustments?date=${date}` : `/api/workhour-adjustments?latest=1&take=50`;
+    const hasRange = Boolean(startDate && endDate);
+    let url = hasRange
+      ? `/api/workhour-adjustments?startDate=${startDate}&endDate=${endDate}`
+      : `/api/workhour-adjustments?latest=1&take=50`;
     if (storeId) url += `&storeId=${storeId}`;
     const res = await fetch(url);
     if (res.ok) setAdjustments(await res.json());
     setLoading(false);
-  }, [date, storeId]);
+  }, [startDate, endDate, storeId]);
 
   useEffect(() => {
     fetchStores();
@@ -130,7 +134,7 @@ export default function WorkhourAdjustmentsPage() {
   );
 
   useEffect(() => {
-    if (modal !== "add" || !date || !form.employeeId) {
+    if (modal !== "add" || !addDate || !form.employeeId) {
       setEmployeeWorkHours(null);
       setEmployeeClock(null);
       return;
@@ -138,7 +142,7 @@ export default function WorkhourAdjustmentsPage() {
     let cancelled = false;
     (async () => {
       const res = await fetch(
-        `/api/performance/daily/employee-hours?date=${date}&employeeId=${form.employeeId}`
+        `/api/performance/daily/employee-hours?date=${addDate}&employeeId=${form.employeeId}`
       );
       if (!res.ok || cancelled) return;
       const data = await res.json();
@@ -155,14 +159,14 @@ export default function WorkhourAdjustmentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [modal, date, form.employeeId]);
+  }, [modal, addDate, form.employeeId]);
 
   async function submitAdd() {
     const res = await fetch("/api/workhour-adjustments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        workDate: date,
+        workDate: addDate,
         employeeId: form.employeeId,
         storeId: form.storeId || null,
         adjustmentType: form.adjustmentType,
@@ -222,8 +226,15 @@ export default function WorkhourAdjustmentsPage() {
           <span className="text-sm text-slate-600">日期</span>
           <input
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+          />
+          <span className="text-slate-500">～</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1.5 text-sm"
           />
         </label>
@@ -246,6 +257,7 @@ export default function WorkhourAdjustmentsPage() {
           type="button"
           onClick={() => {
             setModal("add");
+            setAddDate(formatLocalDateInput());
             setEmployeeSearch("");
             setEmployeeDropdownOpen(false);
           }}
@@ -260,6 +272,15 @@ export default function WorkhourAdjustmentsPage() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h2 className="mb-4 font-medium text-slate-800">新增工時異動</h2>
             <div className="space-y-3">
+              <label className="block">
+                <span className="text-sm text-slate-600">日期</span>
+                <input
+                  type="date"
+                  value={addDate}
+                  onChange={(e) => setAddDate(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </label>
               <label className="block">
                 <span className="text-sm text-slate-600">員工</span>
                 <div className="relative mt-1">
@@ -403,18 +424,21 @@ export default function WorkhourAdjustmentsPage() {
         {loading ? (
           <p className="p-4 text-sm text-slate-500">載入中…</p>
         ) : adjustments.length === 0 ? (
-          <p className="p-4 text-sm text-slate-500">此日期無工時異動</p>
+          <p className="p-4 text-sm text-slate-500">此區間無工時異動</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
-                <th className="sticky left-0 z-20 w-[200px] min-w-[200px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                <th className="sticky left-0 z-20 w-[110px] min-w-[110px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                  日期
+                </th>
+                <th className="sticky left-[110px] z-20 w-[200px] min-w-[200px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                   員工
                 </th>
-                <th className="sticky left-[200px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                <th className="sticky left-[310px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                   門市
                 </th>
-                <th className="sticky left-[340px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
+                <th className="sticky left-[450px] z-20 w-[140px] min-w-[140px] bg-slate-50 px-4 py-2 text-left font-medium text-slate-700">
                   類型
                 </th>
                 <th className="px-4 py-2 text-right font-medium text-slate-700">調整時數</th>
@@ -425,13 +449,16 @@ export default function WorkhourAdjustmentsPage() {
             <tbody>
               {adjustments.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
-                  <td className="sticky left-0 z-[5] w-[200px] min-w-[200px] bg-white px-4 py-2">
+                  <td className="sticky left-0 z-[5] w-[110px] min-w-[110px] bg-white px-4 py-2">
+                    {a.workDate}
+                  </td>
+                  <td className="sticky left-[110px] z-[5] w-[200px] min-w-[200px] bg-white px-4 py-2">
                     {a.employee.employeeCode} {a.employee.name}
                   </td>
-                  <td className="sticky left-[200px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
+                  <td className="sticky left-[310px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                     {a.storeId ? storeNameById.get(a.storeId) ?? a.storeId : "—"}
                   </td>
-                  <td className="sticky left-[340px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
+                  <td className="sticky left-[450px] z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                     {ADJUSTMENT_TYPE_LABELS[a.adjustmentType] ?? a.adjustmentType}
                   </td>
                   <td className="px-4 py-2 text-right">{a.adjustmentHours}</td>
