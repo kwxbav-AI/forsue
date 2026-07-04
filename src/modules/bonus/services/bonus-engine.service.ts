@@ -220,6 +220,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         : FULL_HOURS;
       const shiftType = attList[0].shiftType;
       const originalStoreId = attList[0].originalStoreId;
+      const empNhRatio = newHireRatio(employeeMap.get(employeeId)?.hireDate ?? null, yearMonth);
 
       const calcH = calcBonusHours(totalActual, scheduledHours);
 
@@ -343,6 +344,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       if (dispatchNote === "調店×1.5") {
         dailyBonus = dailyBonus.mul(1.5);
       }
+      // 新人比例：逐日套用，避免月中到職／跨月時整月只套一次比例造成的偏差
+      dailyBonus = dailyBonus.mul(empNhRatio);
 
       const detail: BonusDailyDetail = {
         workDate: dateStr,
@@ -425,12 +428,13 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
 
     const totalCalcHours = details.reduce((s, d) => s + d.calcHours, 0);
+    // 新人比例已於逐日計算 dailyBonus 時套用（見上方迴圈），此處加總即為套用後金額
     const targetBonus = details.reduce((s, d) => s + d.dailyBonus, 0);
     const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;
 
-    // 新人比例：只套用在達標獎金，營運成果不乘比例
+    // 新人比例：僅用於顯示（新人%欄位）與新店保障金額計算，實際達標獎金已逐日套用
     const nhRatio = newHireRatio(emp.hireDate, yearMonth);
-    let subtotalBonus = new Decimal(targetBonus).mul(nhRatio).add(operationsBonus);
+    let subtotalBonus = new Decimal(targetBonus).add(operationsBonus);
 
     // 新店保障：優先用 defaultStoreId，若為 null 則從出勤記錄推算最常出現的門市
     let homeStoreId = emp.defaultStoreId ?? "";

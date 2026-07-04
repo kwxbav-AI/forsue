@@ -5,6 +5,8 @@ import { parseEffectiveFrom } from "@/lib/reserve-staff-periods";
 
 export const dynamic = "force-dynamic";
 
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -12,14 +14,65 @@ export async function PATCH(
   const { id } = params;
   try {
     const body = await request.json().catch(() => ({}));
+
+    // 所屬門市／到職日／離職日：一般欄位，不做期間追蹤，直接覆蓋
+    const plainUpdateData: { defaultStoreId?: string | null; hireDate?: Date | null; leaveDate?: Date | null } = {};
+    if (Object.prototype.hasOwnProperty.call(body, "defaultStoreId")) {
+      const v = body.defaultStoreId;
+      plainUpdateData.defaultStoreId = typeof v === "string" && v.trim() !== "" ? v : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "hireDate")) {
+      const v = body.hireDate;
+      if (v === null || v === "") {
+        plainUpdateData.hireDate = null;
+      } else if (typeof v === "string" && DATE_ONLY_RE.test(v)) {
+        plainUpdateData.hireDate = parseDateOnlyUTC(v);
+      } else {
+        return NextResponse.json({ error: "到職日格式錯誤（需 YYYY-MM-DD）" }, { status: 400 });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "leaveDate")) {
+      const v = body.leaveDate;
+      if (v === null || v === "") {
+        plainUpdateData.leaveDate = null;
+      } else if (typeof v === "string" && DATE_ONLY_RE.test(v)) {
+        plainUpdateData.leaveDate = parseDateOnlyUTC(v);
+      } else {
+        return NextResponse.json({ error: "離職日格式錯誤（需 YYYY-MM-DD）" }, { status: 400 });
+      }
+    }
+
     const isReserveStaff =
       typeof body.isReserveStaff === "boolean" ? body.isReserveStaff : undefined;
+
     if (isReserveStaff === undefined) {
-      return NextResponse.json(
-        { error: "請提供是否為儲備人力" },
-        { status: 400 }
-      );
+      // 未提供儲備人力設定：僅更新所屬門市／到職日等一般欄位
+      if (Object.keys(plainUpdateData).length === 0) {
+        return NextResponse.json({ error: "沒有可更新的欄位" }, { status: 400 });
+      }
+      const updated = await prisma.employee.update({
+        where: { id },
+        data: plainUpdateData,
+        select: {
+          id: true,
+          employeeCode: true,
+          name: true,
+          defaultStoreId: true,
+          hireDate: true,
+          leaveDate: true,
+          isReserveStaff: true,
+          reserveWorkPercent: true,
+        },
+      });
+      return NextResponse.json({
+        ...updated,
+        hireDate: updated.hireDate ? formatDateOnly(updated.hireDate) : null,
+        leaveDate: updated.leaveDate ? formatDateOnly(updated.leaveDate) : null,
+        reserveWorkPercent:
+          updated.reserveWorkPercent == null ? null : Number(updated.reserveWorkPercent),
+      });
     }
+
     const reserveWorkPercentRaw = body.reserveWorkPercent;
     let effectiveFrom: Date;
     try {
@@ -91,11 +144,15 @@ export async function PATCH(
         data: {
           isReserveStaff: nextIsReserveStaff,
           reserveWorkPercent: nextReserveWorkPercent,
+          ...plainUpdateData,
         },
         select: {
           id: true,
           employeeCode: true,
           name: true,
+          defaultStoreId: true,
+          hireDate: true,
+          leaveDate: true,
           isReserveStaff: true,
           reserveWorkPercent: true,
         },
@@ -105,6 +162,8 @@ export async function PATCH(
     return NextResponse.json({
       ...updated,
       effectiveFrom: effectiveFromStr,
+      hireDate: updated.hireDate ? formatDateOnly(updated.hireDate) : null,
+      leaveDate: updated.leaveDate ? formatDateOnly(updated.leaveDate) : null,
       reserveWorkPercent:
         updated.reserveWorkPercent == null ? null : Number(updated.reserveWorkPercent),
     });

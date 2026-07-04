@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { formatDateOnly } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,8 @@ export async function GET(request: NextRequest) {
       name: e.name,
       defaultStoreId: e.defaultStoreId,
       defaultStore: e.defaultStore ?? fallbackStoreByEmployee.get(e.id) ?? null,
+      hireDate: e.hireDate ? formatDateOnly(e.hireDate) : null,
+      leaveDate: e.leaveDate ? formatDateOnly(e.leaveDate) : null,
       position: e.position,
       isReserveStaff: e.isReserveStaff,
       reserveWorkPercent: e.reserveWorkPercent == null ? null : Number(e.reserveWorkPercent),

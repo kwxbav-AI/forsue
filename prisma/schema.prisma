@@ -82,6 +82,7 @@ model Employee {
   defaultStoreId   String?
   position         String?
   hireDate         DateTime?            // 到職日（新進員工工時折算用）
+  leaveDate        DateTime?            // 離職日（已過期則於清單中排到最下面）
   isReserveStaff   Boolean              @default(false)
   reserveWorkPercent Decimal?           @db.Decimal(5, 2) // 0~100，僅儲備人力使用
   isActive         Boolean              @default(true)

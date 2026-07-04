@@ -4,18 +4,29 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type Store = { id: string; name: string; code: string | null; department: string | null } | null;
+type StoreOption = { id: string; name: string; isActive?: boolean };
 
 type EmployeeRow = {
   id: string;
   employeeCode: string;
   name: string;
   position: string | null;
+  defaultStoreId: string | null;
   defaultStore: Store;
+  hireDate: string | null;
+  leaveDate: string | null;
   isReserveStaff: boolean;
   reserveWorkPercent: number | null;
 };
 
-type DraftRow = { isReserveStaff: boolean; reserveWorkPercent: string; effectiveFrom: string };
+type DraftRow = {
+  isReserveStaff: boolean;
+  reserveWorkPercent: string;
+  effectiveFrom: string;
+  defaultStoreId: string;
+  hireDate: string;
+  leaveDate: string;
+};
 
 function todayInputValue(): string {
   const d = new Date();
@@ -27,6 +38,7 @@ function todayInputValue(): string {
 
 export default function ReserveStaffPage() {
   const [list, setList] = useState<EmployeeRow[]>([]);
+  const [stores, setStores] = useState<StoreOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -43,7 +55,13 @@ export default function ReserveStaffPage() {
 
   useEffect(() => {
     refresh();
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((d) => setStores(Array.isArray(d) ? d : []))
+      .catch(() => setStores([]));
   }, []);
+
+  const activeStores = useMemo(() => stores.filter((s) => s.isActive !== false), [stores]);
 
   useEffect(() => {
     // 初始化 draft
@@ -54,6 +72,9 @@ export default function ReserveStaffPage() {
         isReserveStaff: !!e.isReserveStaff,
         reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
         effectiveFrom: today,
+        defaultStoreId: e.defaultStoreId ?? "",
+        hireDate: e.hireDate ?? "",
+        leaveDate: e.leaveDate ?? "",
       };
     }
     setDraft(next);
@@ -72,6 +93,13 @@ export default function ReserveStaffPage() {
       );
     });
   }, [list, q]);
+
+  // 已離職（離職日已過）的員工排到最下面，其餘維持原順序
+  const sorted = useMemo(() => {
+    const today = todayInputValue();
+    const hasLeft = (e: EmployeeRow) => Boolean(e.leaveDate) && e.leaveDate! < today;
+    return [...filtered].sort((a, b) => Number(hasLeft(a)) - Number(hasLeft(b)));
+  }, [filtered]);
 
   async function save(id: string) {
     setMessage(null);
@@ -102,6 +130,9 @@ export default function ReserveStaffPage() {
         isReserveStaff: d.isReserveStaff,
         reserveWorkPercent: d.isReserveStaff ? Number(d.reserveWorkPercent) : null,
         effectiveFrom: d.effectiveFrom,
+        defaultStoreId: d.defaultStoreId || null,
+        hireDate: d.hireDate || null,
+        leaveDate: d.leaveDate || null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -110,7 +141,7 @@ export default function ReserveStaffPage() {
       setMessage(data.error || "更新失敗");
       return;
     }
-    setMessage("已更新儲備人力設定；生效日前的歷史資料不會被此設定覆蓋");
+    setMessage("已更新；儲備人力生效日前的歷史資料不會被覆蓋，所屬門市／到職日為立即生效");
     refresh();
   }
 
@@ -169,7 +200,9 @@ export default function ReserveStaffPage() {
                   姓名
                 </th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">職稱</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">門市</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">所屬門市</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">到職日</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">離職日</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">儲備人力</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">工時計算%</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-medium text-slate-700">生效日期</th>
@@ -177,23 +210,73 @@ export default function ReserveStaffPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => {
+              {sorted.map((e) => {
                 const d = draft[e.id] ?? {
                   isReserveStaff: e.isReserveStaff,
                   reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
                   effectiveFrom: todayInputValue(),
+                  defaultStoreId: e.defaultStoreId ?? "",
+                  hireDate: e.hireDate ?? "",
+                  leaveDate: e.leaveDate ?? "",
                 };
+                const hasLeft = Boolean(e.leaveDate) && e.leaveDate! < todayInputValue();
+                const rowBg = hasLeft ? "bg-slate-50" : "bg-white";
                 return (
-                  <tr key={e.id} className="border-b border-slate-100">
-                    <td className="sticky left-0 z-[5] w-[120px] min-w-[120px] whitespace-nowrap bg-white px-3 py-2 font-medium text-slate-800">
+                  <tr key={e.id} className={`border-b border-slate-100 ${rowBg} ${hasLeft ? "text-slate-400" : ""}`}>
+                    <td className={`sticky left-0 z-[5] w-[120px] min-w-[120px] whitespace-nowrap ${rowBg} px-3 py-2 font-medium text-slate-800`}>
                       {e.employeeCode}
                     </td>
-                    <td className="sticky left-[120px] z-[5] w-[140px] min-w-[140px] whitespace-nowrap bg-white px-3 py-2 text-slate-800">
+                    <td className={`sticky left-[120px] z-[5] w-[140px] min-w-[140px] whitespace-nowrap ${rowBg} px-3 py-2 text-slate-800`}>
                       {e.name}
+                      {hasLeft && (
+                        <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-500">已離職</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">{e.position || "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                      {e.defaultStore ? e.defaultStore.name : "—"}
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <select
+                        value={d.defaultStoreId}
+                        onChange={(ev) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            [e.id]: { ...d, defaultStoreId: ev.target.value },
+                          }))
+                        }
+                        className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                      >
+                        <option value="">—</option>
+                        {activeStores.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <input
+                        type="date"
+                        value={d.hireDate}
+                        onChange={(ev) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            [e.id]: { ...d, hireDate: ev.target.value },
+                          }))
+                        }
+                        className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <input
+                        type="date"
+                        value={d.leaveDate}
+                        onChange={(ev) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            [e.id]: { ...d, leaveDate: ev.target.value },
+                          }))
+                        }
+                        className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-2">
                       <label className="inline-flex items-center gap-2">
