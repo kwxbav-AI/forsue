@@ -20,6 +20,7 @@ steps:
     id: Migrate
     waitFor: ["-"]
     entrypoint: bash
+    secretEnv: ["DB_URL"]
     args:
       - -c
       - |
@@ -55,7 +56,7 @@ steps:
             exit 1
           }
 
-          export DATABASE_URL="postgresql://postgres:q%5b%2b%3b)%2btY%2fXHUJ3pJ@127.0.0.1:5432/neondb_owner"
+          export DATABASE_URL="$$DB_URL"
 
           npx prisma migrate deploy
           npm run db:sync-permissions
@@ -78,6 +79,11 @@ steps:
 
 images:
   - $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/daily-performance-db-url/versions/latest
+      env: "DB_URL"
 
 options:
   logging: CLOUD_LOGGING_ONLY
