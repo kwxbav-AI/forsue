@@ -252,9 +252,9 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const employeeName = headerMap.employeeName !== undefined ? getCell(row, headerMap.employeeName) || "" : "";
     const shiftType = headerMap.shiftType !== undefined ? getCell(row, headerMap.shiftType) || null : null;
 
-    // 若無獨立上/下班欄，嘗試從班別（如 PT-12:00-16:00）解析時段與表訂工時
-    const shiftTimeParsed =
-      !startTimeStr && !endTimeStr ? parseShiftTypeTimeRange(shiftType) : null;
+    // 從班別（如 PT-12:00-16:00）解析表訂時段與表訂工時；即使已有實際上/下班打卡時間，
+    // 表訂工時仍應以班別欄位為準，兩者是各自獨立的資訊（實際工時 vs. 表訂工時）
+    const shiftTimeParsed = parseShiftTypeTimeRange(shiftType);
     if (shiftTimeParsed) {
       if (!startTimeStr) startTimeStr = shiftTimeParsed.startTime;
       if (!endTimeStr) endTimeStr = shiftTimeParsed.endTime;

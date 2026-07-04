@@ -389,6 +389,7 @@ export async function uploadAttendance(
   const storesForDept = await prisma.store.findMany({
     select: { id: true, department: true, name: true },
   });
+  const storeCodeMap = await buildStoreCodeLookup();
 
   const excludedDepartments = await getExcludedDepartments();
 
@@ -450,7 +451,7 @@ export async function uploadAttendance(
     const workDate = toWorkDateUTC(row.workDate);
     const employeeId = employeeIdByCode.get(row.employeeCode.trim())!;
     let originalStoreId: string | null = null;
-    if (row.storeCode) originalStoreId = await getStoreIdByCode(row.storeCode);
+    if (row.storeCode) originalStoreId = storeCodeMap.get(row.storeCode.trim()) ?? null;
     if (!originalStoreId && row.department) {
       originalStoreId = resolveStoreIdFromDepartment(row.department, storesForDept);
     }
@@ -522,7 +523,7 @@ export async function uploadAttendance(
     });
     imported++;
   }
-  });
+  }, { maxWait: 10_000, timeout: 120_000 });
 
   await prisma.uploadBatch.update({
     where: { id: batch.id },
