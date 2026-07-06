@@ -51,9 +51,13 @@ function NavLink({
 export function OperationsShell({
   children,
   visibleNav,
+  title = "營運部Dashboard",
+  subtitle = "宜蘭 · 桃園",
 }: {
   children: React.ReactNode;
   visibleNav: OpsNavItem[];
+  title?: string;
+  subtitle?: string;
 }) {
   const pathname = usePathname();
   const [notifyCount, setNotifyCount] = useState(0);
@@ -71,8 +75,8 @@ export function OperationsShell({
         style={{ backgroundColor: SIDEBAR_BG }}
       >
         <div className="border-b border-slate-700/80 px-4 py-5">
-          <h1 className="text-lg font-bold leading-tight">營運部Dashboard</h1>
-          <p className="mt-1 text-xs text-slate-400">宜蘭 · 桃園</p>
+          <h1 className="text-lg font-bold leading-tight">{title}</h1>
+          <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {visibleNav.map((item) => {

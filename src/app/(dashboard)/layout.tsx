@@ -10,7 +10,6 @@ import {
   canAccessWorkhourRelatedSectionDb,
 } from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
-import { NorthDashboardMenu } from "@/components/north-dashboard-menu";
 import { prisma } from "@/lib/prisma";
 
 export default async function DashboardLayout({
@@ -148,7 +147,11 @@ export default async function DashboardLayout({
                 門市入口
               </Link>
             ) : null}
-            {canNorthDashboard ? <NorthDashboardMenu /> : null}
+            {canNorthDashboard ? (
+              <Link href="/operations/north" className="text-slate-600 hover:text-sky-600">
+                北區Dashboard
+              </Link>
+            ) : null}
           </nav>
         </div>
       </header>
