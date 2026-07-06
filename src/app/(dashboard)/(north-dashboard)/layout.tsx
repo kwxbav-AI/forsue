@@ -1,6 +1,4 @@
 import { Suspense } from "react";
-import { getServerSession } from "@/lib/auth-server";
-import { isAuthEnabled } from "@/lib/auth-config";
 import { BarChart3, LayoutDashboard } from "lucide-react";
 import { OperationsShell } from "@/components/operations/operations-shell";
 import type { OpsNavItem } from "@/components/operations/ops-nav";
