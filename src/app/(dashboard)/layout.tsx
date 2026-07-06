@@ -10,6 +10,7 @@ import {
   canAccessWorkhourRelatedSectionDb,
 } from "@/lib/permissions-db";
 import { AuthLogoutButton } from "@/components/auth-logout-button";
+import { NorthDashboardMenu } from "@/components/north-dashboard-menu";
 import { prisma } from "@/lib/prisma";
 
 export default async function DashboardLayout({
@@ -77,6 +78,13 @@ export default async function DashboardLayout({
         { id: session.roleId, key: session.roleKey },
         "/bonus/monthly"
       )));
+  const canNorthDashboard =
+    !authOn ||
+    (session != null &&
+      (await canAccessPageDb(
+        { id: session.roleId, key: session.roleKey },
+        "/operations/north"
+      )));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -140,6 +148,7 @@ export default async function DashboardLayout({
                 門市入口
               </Link>
             ) : null}
+            {canNorthDashboard ? <NorthDashboardMenu /> : null}
           </nav>
         </div>
       </header>
