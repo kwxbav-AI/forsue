@@ -433,8 +433,10 @@ export async function uploadAttendance(
 
   await prisma.$transaction(async (tx) => {
     if (replaceEntireDates && uniqueDates.length > 0) {
+      // 只刪除「本次檔案涉及的員工」在那幾天的記錄，避免刪除其他門市的資料
+      const uploadEmployeeIds = Array.from(new Set(rowEmployeeIds));
       await tx.attendanceRecord.deleteMany({
-        where: { workDate: { in: uniqueDates } },
+        where: { workDate: { in: uniqueDates }, employeeId: { in: uploadEmployeeIds } },
       });
     } else if (!replaceEntireDates && empDatePairs.size > 0) {
       await tx.attendanceRecord.deleteMany({
