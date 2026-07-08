@@ -26,6 +26,7 @@ import {
   getNewHireOffsetOverridesByEmployeeCode,
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
+  isTemporaryStaffCode,
 } from "@/lib/attendance-data";
 
 const DAY_CONCURRENCY = 12;
@@ -1135,6 +1136,7 @@ export async function buildWorkHoursCalendar(input: {
           nhPercent != null && nhPercent < 1
             ? `新人計${Math.round(nhPercent * 100)}%`
             : null;
+        const temporaryLabel = isTemporaryStaffCode(a.employee.employeeCode ?? "") ? "臨時人員50%" : null;
         return {
           name: a.employee.name,
           workHours: Number(a.workHours),
@@ -1144,6 +1146,7 @@ export async function buildWorkHoursCalendar(input: {
           isSupport: false,
           outgoingTo: outTarget,
           newHireLabel,
+          temporaryLabel,
         };
       });
 
@@ -1159,6 +1162,7 @@ export async function buildWorkHoursCalendar(input: {
           nhPercent != null && nhPercent < 1
             ? `新人計${Math.round(nhPercent * 100)}%`
             : null;
+        const temporaryLabel = isTemporaryStaffCode(d.employee.employeeCode ?? "") ? "臨時人員50%" : null;
         return {
           name: d.employee.name,
           workHours: Number(d.actualHours ?? d.dispatchHours),
@@ -1168,6 +1172,7 @@ export async function buildWorkHoursCalendar(input: {
           isSupport: true,
           outgoingTo: null,
           newHireLabel,
+          temporaryLabel,
         };
       });
 

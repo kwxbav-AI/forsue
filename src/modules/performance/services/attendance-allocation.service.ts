@@ -11,6 +11,7 @@ import {
   getAttendanceDataStartDate,
   getNewHireOffsetOverridesByEmployeeCode,
   isEligibleForNewHireWorkPercent,
+  isTemporaryStaffCode,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
 import {
@@ -75,6 +76,8 @@ function isTrialEmployeeCode(employeeCode: string): boolean {
   const prefix = (employeeCode || "").trim().toLowerCase();
   return prefix.startsWith("a") || prefix.startsWith("b");
 }
+
+const TEMPORARY_STAFF_PERCENT = 0.5;
 
 /**
  * Step A: 出勤工時（原店，試作前保留實際時數）
@@ -379,6 +382,15 @@ export async function computeStoreHoursByEmployee(
     const origStoreId = att.originalStoreId ?? att.employee.defaultStoreId ?? "unknown";
     let hoursValue = Number(att.workHours);
     const isTrial = isTrialEmployeeCode(att.employee.employeeCode || "");
+    const isTemporary = isTemporaryStaffCode(att.employee.employeeCode || "");
+
+    // 臨時人員（D / E 開頭）：工時一律 50%，不套用儲備/新進折算
+    if (isTemporary) {
+      hoursValue = new Decimal(hoursValue).mul(TEMPORARY_STAFF_PERCENT).toNumber();
+      const storeHours: StoreHoursMap = { [origStoreId]: hoursValue };
+      employeeStores.set(att.employeeId, storeHours);
+      continue;
+    }
 
     // 後勤支援門市：不在出勤工時階段折算，改在調度拆分時處理（原店扣全額、支援店加 70%）
 

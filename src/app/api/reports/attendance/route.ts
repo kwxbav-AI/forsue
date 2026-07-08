@@ -12,6 +12,7 @@ import {
   getAttendanceDataStartDate,
   getNewHireOffsetOverridesByEmployeeCode,
   isEligibleForNewHireWorkPercent,
+  isTemporaryStaffCode,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
 import { resolveStoreIdsForAttendanceDepartment } from "@/lib/attendance-region-filter";
@@ -784,6 +785,7 @@ export async function GET(request: Request) {
       );
       const hasFilteredDispIn = dispList.some((d) => applyToThisStore(d.toStoreId));
       const isTrial = isTrialEmployeeCode(empCode);
+      const isTemporary = isTemporaryStaffCode(empCode);
       const reportWithAttendance =
         !!att && (attStoreOk || (isTrial && (hasFilteredAdj || hasFilteredDispIn)));
       const reportStoreId =
@@ -830,6 +832,32 @@ export async function GET(request: Request) {
           return reason === "後勤支援門市" && d.confirmStatus === "已確認";
         });
 
+        // 臨時人員（D / E 開頭）：保留原工時一行，另新增折算調整行（負數），小計為 50%
+        if (isTemporary && net > 0) {
+          const adjusted = new Decimal(net).mul(0.5).toNumber();
+          const delta = new Decimal(adjusted).minus(net).toNumber();
+          if (Math.abs(delta) > 0) {
+            net += delta;
+            rows.push({
+              type: "adjustment",
+              id: `temporary-${att.id}`,
+              employeeId: emp.id,
+              employeeCode: empCode,
+              name: empName,
+              department: deptForReport,
+              position,
+              workDate: dateStr,
+              workHours: Math.round(delta * 100) / 100,
+              adjustmentReason: "臨時人員，計50%工時",
+              locationMatchStatus: null,
+              startTime: null,
+              endTime: null,
+              clockInStoreText: null,
+              clockOutStoreText: null,
+            });
+          }
+        }
+
         // 儲備人力：保留原工時一行，另新增「儲備人力」調整行（負數），小計才會是折算後工時
         // 規則：儲備人力若當天有已確認調度（被調去他店支援/調出），則不套用儲備人力折算
         // 目的：原店出勤工時會被調度調出抵銷，支援店以 dispatch_in 計入；不應再額外打折造成負工時。
@@ -844,7 +872,7 @@ export async function GET(request: Request) {
               emp.reserveWorkPercent == null ? null : Number(emp.reserveWorkPercent),
           }
         );
-        if (!isTrial && reserveSetting.isReserveStaff && !hasAnyConfirmedDispatch) {
+        if (!isTrial && !isTemporary && reserveSetting.isReserveStaff && !hasAnyConfirmedDispatch) {
           const homeStoreId =
             emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
           if (homeStoreId) {
@@ -890,7 +918,7 @@ export async function GET(request: Request) {
 
         // 新進員工工時折算：依到職天數套用工時%（到職日當天算第 1 天）
         // 到職日在門檻日之前者不套用（僅 >= NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD 才可能套用）
-        if (!isTrial && emp.hireDate && net > 0 && isEligibleForNewHireWorkPercent(emp.hireDate)) {
+        if (!isTrial && !isTemporary && emp.hireDate && net > 0 && isEligibleForNewHireWorkPercent(emp.hireDate)) {
           const dayNo = workedDayNoIndexByEmployeeId.get(emp.id)?.get(dateStr);
           // 若拿不到「已上班日」天數索引，避免誤套用 0% 造成全員被當成新進員工
           if (dayNo == null) {

@@ -15,6 +15,7 @@ type CalStaff = {
   isSupport: boolean;
   outgoingTo: string | null;
   newHireLabel?: string | null;
+  temporaryLabel?: string | null;
 };
 
 type CalDeduction = { label: string; hours: number; note?: string | null; isPositive?: boolean };
@@ -307,6 +308,9 @@ export default function StoreCalendarPage() {
                                 ) : null}
                                 {s.newHireLabel && (
                                   <span className="text-orange-500 ml-0.5">（{s.newHireLabel}）</span>
+                                )}
+                                {s.temporaryLabel && (
+                                  <span className="text-purple-500 ml-0.5">（{s.temporaryLabel}）</span>
                                 )}
                               </span>
                             </div>

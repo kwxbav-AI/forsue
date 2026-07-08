@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateOnly, formatDateOnlyTaipei, parseTaipeiDateStartUTC, toStartOfDay } from "@/lib/date";
 
+/** 員工編號以 D / E 開頭者為臨時人員，工時一律折算 50%。 */
+export function isTemporaryStaffCode(employeeCode: string): boolean {
+  const prefix = (employeeCode || "").trim().toLowerCase();
+  return prefix.startsWith("d") || prefix.startsWith("e");
+}
+
 /** 到職日（台北日曆）在此日「之前」者，不套用新進員工工時比例；≥ 此日才可能套用。 */
 export const NEW_HIRE_WORK_PERCENT_ELIGIBLE_MIN_YMD = "2026-03-24";
 
