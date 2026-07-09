@@ -97,17 +97,18 @@ type WorkHoursData = {
 type CalendarStaff = {
   name: string;
   workHours: number;
-  startTime: string;
-  endTime: string;
   homeStore: string | null;
   isSupport: boolean;
   outgoingTo: string | null;
+  newHireLabel?: string | null;
+  temporaryLabel?: string | null;
 };
 
 type CalendarDeduction = {
   label: string;
   hours: number;
   note?: string | null;
+  isPositive?: boolean;
 };
 
 type CalendarDay = {
@@ -120,6 +121,8 @@ type CalendarDay = {
   isAchieved: boolean;
   isExceed: boolean;
   hasData: boolean;
+  netHours: number;
+  revenue: number;
 };
 
 type CalendarData = {
@@ -641,115 +644,163 @@ function CalendarTab({
     );
   }
 
+  const todayYmd = new Date().toISOString().slice(0, 10);
   const firstDay = data.days[0];
   const leadingEmpties = firstDay ? firstDay.weekday : 0;
+  const dayNumbers = data.days.map((d) => parseInt(d.date.slice(8), 10));
+  const dayMap = new Map(data.days.map((d) => [d.date, d]));
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 flex flex-wrap gap-4 items-center">
+      <div className="mb-2 flex flex-wrap gap-3 text-[11px] text-amber-800 rounded-xl border border-slate-100 bg-amber-50 px-3 py-2">
         <span>達標條件：平日工效比 ≥ 4,000 元/hr、週六 ≥ 5,500 元/hr</span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-teal-400" />本店人員
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />跨店支援
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />調入（他店來支援）
         </span>
-        <span className="text-rose-600">-Xh 標籤 = 扣工時項目</span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-indigo-500" />調出（去他店支援）
+        </span>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm overflow-x-auto">
-        <div className="grid grid-cols-7 gap-1 min-w-[560px]">
-          {CAL_DOW_LABELS.map((d, i) => (
-            <div
-              key={d}
-              className={`text-center text-xs font-medium py-1 ${
-                i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-500"
-              }`}
-            >
-              {d}
-            </div>
-          ))}
-          {Array.from({ length: leadingEmpties }).map((_, i) => (
-            <div key={`empty-${i}`} />
-          ))}
-          {data.days.map((day) => {
-            const dom = parseInt(day.date.slice(8), 10);
-            const isSun = day.weekday === 0;
-            const isSat = day.weekday === 6;
-            const isHoliday = !!day.holiday;
-            return (
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div style={{ minWidth: 0, maxWidth: "100%" }}>
+          <div className="grid grid-cols-7 border-b border-slate-100">
+            {CAL_DOW_LABELS.map((d, i) => (
               <div
-                key={day.date}
-                className={`border rounded-lg p-1.5 min-h-[90px] text-xs ${
-                  isHoliday
-                    ? "border-orange-200 bg-orange-50"
-                    : "border-slate-200 bg-white"
-                }`}
+                key={d}
+                className={`py-2 text-center text-sm font-bold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
               >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span
-                    className={`font-semibold ${
-                      isSun || isHoliday ? "text-red-500" : isSat ? "text-blue-500" : "text-slate-700"
-                    }`}
-                  >
-                    {dom}
-                  </span>
-                  {day.hasData ?
-                    day.isExceed ?
-                      <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                        超標
-                      </span>
-                    : day.isAchieved ?
-                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                        達標
-                      </span>
-                    : <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">
-                        未達
-                      </span>
-                  : null}
-                </div>
-                {day.holiday ?
-                  <div className="text-[10px] text-orange-600 font-medium mb-1 truncate">
-                    {day.holiday}
-                  </div>
-                : null}
-                {day.staff.map((s, si) => (
-                  <div key={si} className="flex items-center gap-1 mb-0.5">
-                    <span
-                      className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
-                        s.isSupport || s.outgoingTo ? "bg-amber-400" : "bg-teal-400"
-                      }`}
-                    />
-                    <span className="truncate text-slate-600">
-                      {s.name}
-                      {s.workHours > 0 ?
-                        <span className="text-slate-400 ml-0.5">{s.workHours}h</span>
-                      : null}
-                      {s.outgoingTo ?
-                        <span className="text-amber-600 ml-0.5">（支援{s.outgoingTo}）</span>
-                      : s.isSupport && s.homeStore ?
-                        <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
-                      : null}
-                    </span>
-                  </div>
-                ))}
-                {day.deductions.length > 0 ?
-                  <div className="mt-1 space-y-0.5">
-                    {day.deductions.map((d, di) => (
-                      <div key={di} className="text-[10px] text-rose-600 truncate" title={d.note ?? undefined}>
-                        -{d.hours}h {d.label}
-                      </div>
-                    ))}
-                  </div>
-                : null}
-                {day.hasData && day.efficiencyRatio != null ?
-                  <div className="mt-1 text-[10px] text-slate-400">
-                    工效比 {day.efficiencyRatio.toLocaleString()}
-                  </div>
-                : null}
+                {d}
               </div>
-            );
-          })}
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-[3px] bg-slate-100 p-[3px]">
+            {Array.from({ length: leadingEmpties }).map((_, i) => (
+              <div key={`b${i}`} className="min-h-24 bg-slate-50/50" />
+            ))}
+            {dayNumbers.map((dom) => {
+              const ymd = `${String(data.days[0]?.date.slice(0, 7))}-${String(dom).padStart(2, "0")}`;
+              const day = dayMap.get(ymd);
+              const isSun = (leadingEmpties + dom - 1) % 7 === 0;
+              const isSat = (leadingEmpties + dom - 1) % 7 === 6;
+              const isToday = ymd === todayYmd;
+              const isFuture = ymd > todayYmd;
+              const isHoliday = !!day?.holiday;
+              const isRest = isSun || isHoliday;
+
+              let cellCls = "min-h-28 p-1.5 rounded-sm border ";
+              if (isRest) cellCls += "bg-slate-50/70 border-slate-200 ";
+              else if (isFuture) cellCls += "bg-white opacity-50 border-slate-200 ";
+              else if (day?.isExceed) cellCls += "bg-purple-50 border-purple-300 ";
+              else if (day?.isAchieved) cellCls += "bg-emerald-50 border-emerald-300 ";
+              else if (day?.hasData) cellCls += "bg-white border-red-300 ";
+              else cellCls += "bg-white border-slate-200 ";
+
+              const borderStyle: React.CSSProperties = isToday
+                ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" }
+                : {};
+
+              const tag =
+                !isRest && !isFuture && day?.hasData
+                  ? day.isExceed
+                    ? { label: "超標", cls: "bg-purple-100 text-purple-700" }
+                    : day.isAchieved
+                    ? { label: "達標", cls: "bg-emerald-100 text-emerald-700" }
+                    : { label: "未達", cls: "bg-red-100 text-red-600" }
+                  : null;
+
+              const maxStaff = 8;
+
+              return (
+                <div key={dom} className={cellCls} style={borderStyle}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span
+                      className={`text-xs font-medium ${
+                        isSun || isHoliday
+                          ? "text-red-400"
+                          : isSat
+                          ? "text-blue-400"
+                          : isToday
+                          ? "text-blue-600"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {dom}
+                    </span>
+                    {tag && (
+                      <span className={`rounded px-1.5 py-px text-[10px] font-medium ${tag.cls}`}>
+                        {tag.label}
+                      </span>
+                    )}
+                  </div>
+                  {!isRest && !isFuture && day?.hasData && (
+                    <div
+                      className="mb-1.5 pb-1.5 text-[11px] font-medium"
+                      style={{
+                        borderBottom: "0.5px solid rgba(0,0,0,0.07)",
+                        color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
+                      }}
+                    >
+                      {day.netHours.toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
+                    </div>
+                  )}
+                  {!isRest && !isFuture && (
+                    <>
+                      {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
+                        <div key={si} className="flex items-start gap-1 mb-1">
+                          <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.outgoingTo ? "bg-indigo-500" : s.isSupport ? "bg-amber-400" : "bg-teal-400"}`} />
+                          <span className="text-[11px] leading-tight text-slate-700">
+                            {s.name}
+                            <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
+                            {s.outgoingTo ? (
+                              <span className="text-indigo-500 ml-0.5">→ {s.outgoingTo}</span>
+                            ) : s.isSupport && s.homeStore ? (
+                              <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
+                            ) : null}
+                            {s.newHireLabel && (
+                              <span className="text-orange-500 ml-0.5">（{s.newHireLabel}）</span>
+                            )}
+                            {s.temporaryLabel && (
+                              <span className="text-purple-500 ml-0.5">（{s.temporaryLabel}）</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                      {(day?.staff.length ?? 0) > maxStaff && (
+                        <div className="text-[10px] text-slate-400">
+                          +{(day?.staff.length ?? 0) - maxStaff} 人
+                        </div>
+                      )}
+                      {(day?.deductions ?? []).map((ded, di) => (
+                        <div key={di} className={`text-[10px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
+                          {ded.isPositive ? "+" : "-"}{ded.hours}h {ded.label}{ded.note ? `（${ded.note}）` : ""}
+                        </div>
+                      ))}
+                      {day?.efficiencyRatio != null && (
+                        <div
+                          className={`mt-1 text-[11px] font-medium ${
+                            day.isExceed
+                              ? "text-purple-600"
+                              : day.isAchieved
+                              ? "text-emerald-600"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          工效 {Math.round(day.efficiencyRatio).toLocaleString()}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {isHoliday && (
+                    <div className="text-[8px] text-red-400">{day?.holiday}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
