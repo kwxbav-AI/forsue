@@ -24,7 +24,6 @@ import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard
 import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
 import {
   OPS_COLORS,
-  REGION_CHART_COLORS,
   getYoyColor,
   type OpsThemeToken,
 } from "@/lib/ops-color-tokens";
@@ -33,9 +32,55 @@ import type { OpsDashboardMeta } from "@/types/operations";
 const TABS = [
   { id: "overview", label: "門市概況" },
   { id: "trend", label: "趨勢分析" },
+  { id: "calendar", label: "門市日曆" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+type CalendarStaff = {
+  name: string;
+  workHours: number;
+  homeStore: string | null;
+  isSupport: boolean;
+  outgoingTo: string | null;
+  newHireLabel?: string | null;
+  temporaryLabel?: string | null;
+};
+
+type CalendarDeduction = {
+  label: string;
+  hours: number;
+  note?: string | null;
+  isPositive?: boolean;
+};
+
+type CalendarDay = {
+  date: string;
+  weekday: number;
+  holiday: string | null;
+  staff: CalendarStaff[];
+  deductions: CalendarDeduction[];
+  efficiencyRatio: number | null;
+  isAchieved: boolean;
+  isExceed: boolean;
+  hasData: boolean;
+  netHours: number;
+  revenue: number;
+};
+
+type CalendarData = {
+  storeName: string;
+  days: CalendarDay[];
+  employeeAchievement: {
+    name: string;
+    homeStore: string | null;
+    isSupport: boolean;
+    attendanceDays: number;
+    achievedDays: number;
+    exceedDays: number;
+    achieveRate: number;
+  }[];
+};
 
 type DailyTrendPoint = {
   date: string;
@@ -68,16 +113,6 @@ type FilteredMetrics = {
   customerCount?: number;
   avgOrderValue?: number | null;
   customerDaysWithData?: number;
-};
-
-type KpiMetrics = {
-  totalRevenue: number;
-  totalLaborHours: number;
-  efficiencyRatio: number | null;
-  yoyGrowthRate: number | null;
-  regionLabel?: string;
-  periodStartDate?: string;
-  periodEndDate?: string;
 };
 
 type PerfData = {
@@ -175,40 +210,6 @@ function IconBadge({
   );
 }
 
-function TopMetricCard({
-  label,
-  value,
-  unit,
-  icon,
-  theme,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  icon: string;
-  theme: OpsThemeToken;
-}) {
-  return (
-    <div
-      className="flex items-start gap-3 rounded-xl border p-4 shadow-sm"
-      style={{ backgroundColor: theme.bg, borderColor: theme.border }}
-    >
-      <IconBadge iconBg={theme.iconBg} iconColor={theme.icon}>
-        {icon}
-      </IconBadge>
-      <div className="min-w-0">
-        <p className="text-xs" style={{ color: theme.label }}>
-          {label}
-        </p>
-        <p className="mt-1 text-2xl font-bold tabular-nums" style={{ color: theme.value }}>
-          {value}
-          <span className="ml-1 text-sm font-normal opacity-70">{unit}</span>
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function KpiCard({
   label,
   value,
@@ -260,116 +261,21 @@ function PanelCard({
   );
 }
 
-function MiniStat({
-  label,
-  value,
-  unit,
-  icon,
-  theme,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  icon: string;
-  theme: OpsThemeToken;
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-lg border p-3"
-      style={{ backgroundColor: theme.bg, borderColor: theme.border }}
-    >
-      <IconBadge iconBg={theme.iconBg} iconColor={theme.icon}>
-        {icon}
-      </IconBadge>
-      <div>
-        <p className="text-xs" style={{ color: theme.label }}>
-          {label}
-        </p>
-        <p className="text-lg font-bold tabular-nums" style={{ color: theme.value }}>
-          {value}
-          <span className="ml-1 text-xs font-normal opacity-70">{unit}</span>
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AchievementBucketCard({
-  count,
-  title,
-  pct,
-  hint,
-  storeNames,
-  tone,
-  compact = false,
-}: {
-  count: number;
-  title: string;
-  pct: number;
-  hint?: string;
-  storeNames: string[];
-  tone: "met" | "near" | "unmet";
-  compact?: boolean;
-}) {
-  const palette =
-    tone === "met" ? OPS_COLORS.status.met
-    : tone === "unmet" ? OPS_COLORS.status.unmet
-    : OPS_COLORS.achievement;
-
-  const countColor = tone === "near" ? OPS_COLORS.achievement.value : palette.value;
-  const titleColor = palette.label;
-  const pctColor = palette.value;
-
-  return (
-    <div
-      className={`group relative rounded-xl border text-center ${compact ? "p-3" : "p-6"}`}
-      style={{ backgroundColor: palette.bg, borderColor: palette.border }}
-    >
-      <p className={`font-bold ${compact ? "text-2xl" : "text-4xl"}`} style={{ color: countColor }}>
-        {count}
-      </p>
-      <p className={`font-medium ${compact ? "mt-1 text-sm" : "mt-2"}`} style={{ color: titleColor }}>
-        {title}
-      </p>
-      <p className={compact ? "text-xs" : "text-sm"} style={{ color: pctColor }}>
-        {formatPctOne(pct)}
-      </p>
-      {hint ?
-        <p className="mt-1 text-[10px] opacity-80" style={{ color: titleColor }}>
-          {hint}
-        </p>
-      : null}
-      {storeNames.length > 0 ? (
-        <div
-          className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[min(100%,280px)] -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs text-slate-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
-        >
-          <p className="mb-1 font-semibold" style={{ color: titleColor }}>
-            {title}清單
-          </p>
-          <ul className="space-y-0.5">
-            {storeNames.map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: string } = {}) {
   const searchParams = useSearchParams();
   const today = formatLocalDateInput();
 
   const [meta, setMeta] = useState<OpsDashboardMeta | null>(null);
-  const [kpiMetrics, setKpiMetrics] = useState<KpiMetrics | null>(null);
   const [filtered, setFiltered] = useState<FilteredMetrics | null>(null);
   const [companyPerf, setCompanyPerf] = useState<PerfData | null>(null);
   const [storePerf, setStorePerf] = useState<PerfData | null>(null);
+  const [calData, setCalData] = useState<CalendarData | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [companyPerfLoading, setCompanyPerfLoading] = useState(false);
   const [storePerfLoading, setStorePerfLoading] = useState(false);
+  const [calLoading, setCalLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [queried, setQueried] = useState(false);
@@ -444,7 +350,7 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     setLoading(true);
     setQueried(true);
     setFiltered(null);
-    setKpiMetrics(null);
+    setCalData(null);
     companyPerfCacheRef.current = null;
     storePerfCacheRef.current = null;
     setCompanyPerf(null);
@@ -481,7 +387,6 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
           stores: data.meta.stores ?? [],
         });
       }
-      setKpiMetrics(data.kpiMetrics ?? null);
       setFiltered(data.filteredMetrics ?? null);
 
       if (companyRes.ok) {
@@ -551,6 +456,26 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     };
   }, [tab, storeQueryKey, queried, startDate, endDate, region, storeId]);
 
+  const loadCalendar = useCallback(async () => {
+    if (!storeId) { setCalData(null); return; }
+    const year = parseInt(startDate.slice(0, 4), 10);
+    const month = parseInt(startDate.slice(5, 7), 10);
+    setCalLoading(true);
+    try {
+      const params = new URLSearchParams({ storeId, year: String(year), month: String(month) });
+      const res = await fetch(`/api/operations/work-hours/calendar?${params}`);
+      if (res.ok) setCalData(await res.json());
+      else setCalData(null);
+    } finally {
+      setCalLoading(false);
+    }
+  }, [storeId, startDate]);
+
+  useEffect(() => {
+    if (!queried || tab !== "calendar") return;
+    void loadCalendar();
+  }, [tab, queried, loadCalendar]);
+
   async function handleSyncStores() {
     setSyncing(true);
     await fetch("/api/operations/stores/sync", { method: "POST" });
@@ -563,25 +488,10 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     m?.defaultLaborHours != null || m?.monthlyLaborHourTarget != null;
   const chartData = m?.dailyTrend ?? [];
 
-  const regionalChartData = useMemo(() => {
-    if (!companyPerf?.regionalBenchmark.length) return [];
-    const labels = companyPerf.regionalBenchmark[0]?.months.map((mo) => mo.label) ?? [];
-    return labels.map((label, i) => {
-      const row: Record<string, string | number> = { label };
-      for (const r of companyPerf.regionalBenchmark) {
-        row[`${r.region}_actual`] = r.months[i]?.actualRevenue ?? 0;
-        row[`${r.region}_target`] = r.months[i]?.targetRevenue ?? 0;
-      }
-      return row;
-    });
-  }, [companyPerf]);
-
   const subtitle =
     queried && m ?
       `${startDate} ~ ${endDate} · ${m.filterLabel}`
     : "篩選日期與門市後按「重新整理」查看績效指標";
-
-  const a = companyPerf?.achievementSummary;
 
   return (
     <div className="space-y-5 pb-8 max-w-7xl">
@@ -696,129 +606,10 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
         />
       </div>
 
-      {/* 全公司 KPI（桃園+宜蘭） */}
-      <div className="grid gap-3 md:grid-cols-3">
-        <KpiCard
-          label="全公司營收達成值"
-          theme={OPS_COLORS.revenue}
-          value={queried && kpiMetrics && !loading ? formatMoney(kpiMetrics.totalRevenue) : "—"}
-          sub={
-            queried && kpiMetrics?.periodStartDate && kpiMetrics?.periodEndDate ?
-              `${kpiMetrics.periodStartDate} ~ ${kpiMetrics.periodEndDate} · ${kpiMetrics.regionLabel ?? "桃園區 + 宜蘭區"}`
-            : "宜蘭區 + 桃園區（查詢後顯示）"
-          }
-        />
-        <KpiCard
-          label="營運部工效比"
-          theme={OPS_COLORS.hours}
-          value={
-            queried && kpiMetrics && !loading ?
-              <>
-                {formatRatio(kpiMetrics.efficiencyRatio)}
-                <span className="ml-1 text-base font-normal opacity-70">元/hr</span>
-              </>
-            : "—"
-          }
-          sub="營收達成值 ÷ 總工時"
-        />
-        <KpiCard
-          label="營收成長率"
-          value={queried && kpiMetrics && !loading ? formatYoy(kpiMetrics.yoyGrowthRate) : "—"}
-          valueColor={
-            queried && kpiMetrics && !loading ?
-              getYoyColor(kpiMetrics.yoyGrowthRate)
-            : OPS_COLORS.yoy.neutral
-          }
-          sub="較去年同期"
-        />
-      </div>
-
       {message ?
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {message}
         </p>
-      : null}
-
-      {queried ?
-        <div className="space-y-5">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            全區視角 · 桃園區 + 宜蘭區
-          </p>
-
-          {companyPerfLoading || loading ?
-            <p className="py-6 text-center text-sm text-slate-500">載入全區數據中…</p>
-          : !companyPerf ?
-            <p className="py-6 text-center text-sm text-slate-500">全區數據載入失敗，請重新整理</p>
-          : <>
-              {a ?
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-                    <div className="min-w-0">
-                      <h2 className="font-semibold text-slate-800">達成分析</h2>
-                      <p className="mb-3 mt-1 text-xs text-slate-500">
-                        區間營收達成情況（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市 · 實際營收 ÷ 業績目標）
-                      </p>
-                      <div className="grid max-w-md grid-cols-3 gap-2">
-                        <AchievementBucketCard compact count={a.green} title="達標" pct={a.greenPct} storeNames={a.achievementStores?.green ?? []} tone="met" />
-                        <AchievementBucketCard compact count={a.yellow} title="接近達標" pct={a.yellowPct} hint="達成率 80%～99%" storeNames={a.achievementStores?.yellow ?? []} tone="near" />
-                        <AchievementBucketCard compact count={a.red} title="未達標" pct={a.redPct} hint="達成率 < 80%" storeNames={a.achievementStores?.red ?? []} tone="unmet" />
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h2 className="font-semibold text-slate-800">區域對標</h2>
-                      <p className="mb-3 mt-1 text-xs text-slate-500">
-                        桃園區 & 宜蘭區 · 月度營收與目標對比（{companyPerf.startDate} ~ {companyPerf.endDate}）
-                      </p>
-                      <div className="h-[200px] w-full min-w-0 lg:h-[220px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={regionalChartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatWan(Number(v))} />
-                            <Tooltip formatter={(v: number) => [`${formatWan(v)} 萬`, ""]} />
-                            <Legend />
-                            {(["桃園區", "宜蘭區"] as const).flatMap((reg) => {
-                              const colors = REGION_CHART_COLORS[reg];
-                              if (!companyPerf.regionalBenchmark.some((r) => r.region === reg)) return [];
-                              return [
-                                <Bar key={`${reg}-target`} dataKey={`${reg}_target`} name={`${reg} 目標`} fill={colors.target} radius={[4, 4, 0, 0]} />,
-                                <Bar key={`${reg}-actual`} dataKey={`${reg}_actual`} name={`${reg} 實際`} fill={colors.actual} radius={[4, 4, 0, 0]} />,
-                              ];
-                            })}
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              : null}
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="font-semibold text-slate-800">門市排名</h2>
-                <p className="mb-3 mt-1 text-xs text-slate-500">
-                  依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
-                </p>
-                <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {companyPerf.storeRanking.map((s, i) => (
-                    <li
-                      key={s.storeId}
-                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate">
-                        <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
-                        {s.storeName}
-                        <span className="ml-1 text-xs text-slate-400">{s.region}</span>
-                      </span>
-                      <span className="ml-2 shrink-0 font-semibold" style={{ color: OPS_COLORS.hours.label }}>
-                        {s.targetMetDays} 次
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </>
-          }
-        </div>
       : null}
 
       <div className="flex gap-1 border-b border-slate-200">
@@ -846,15 +637,6 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
           </p>
         : m ?
           <div className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              <TopMetricCard label="營業額" value={formatMoney(m.totalRevenue)} unit="元" icon="💰" theme={OPS_COLORS.revenue} />
-              <TopMetricCard label="工時" value={formatHours(m.totalLaborHours)} unit="hr" icon="⏱" theme={OPS_COLORS.hours} />
-              <TopMetricCard label="工效比" value={formatRatio(m.efficiencyRatio)} unit="元/hr" icon="⚡" theme={OPS_COLORS.hours} />
-              <TopMetricCard label="月營收目標" value={dashMoney(m.revenueForecast)} unit="元" icon="📈" theme={OPS_COLORS.achievement} />
-              <TopMetricCard label="營收達成值" value={formatMoney(m.revenueAchievement ?? m.totalRevenue)} unit="元" icon="✓" theme={OPS_COLORS.revenue} />
-              <TopMetricCard label="達成率" value={formatPctValue(m.revenueAchievementRate ?? null)} unit="%" icon="%" theme={OPS_COLORS.achievement} />
-            </div>
-
             <div className="grid gap-3 md:grid-cols-2">
               <div
                 className="flex items-center gap-4 rounded-xl border bg-white p-4 shadow-sm"
@@ -1080,6 +862,274 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
           </div>
       : null}
 
+      {tab === "calendar" ?
+        !queried ?
+          <p className="py-12 text-center text-sm text-slate-500">請先查詢後再查看門市日曆</p>
+        : !storeId ?
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">
+            請在上方篩選器選擇單一門市，即可查看該門市的月曆出勤與達標紀錄。
+          </div>
+        : calLoading ?
+          <p className="py-12 text-center text-sm text-slate-500">載入日曆中…</p>
+        : !calData ?
+          <div className="text-center py-16">
+            <p className="text-sm text-slate-500 mb-3">尚未載入日曆資料</p>
+            <button
+              type="button"
+              onClick={() => void loadCalendar()}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              載入日曆
+            </button>
+          </div>
+        : <AnalysisCalendarView data={calData} />
+      : null}
+
+      {queried && companyPerf && !companyPerfLoading && !loading ?
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="font-semibold text-slate-800">門市排名</h2>
+          <p className="mb-3 mt-1 text-xs text-slate-500">
+            依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
+          </p>
+          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {companyPerf.storeRanking.map((s, i) => (
+              <li
+                key={s.storeId}
+                className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 truncate">
+                  <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
+                  {s.storeName}
+                  <span className="ml-1 text-xs text-slate-400">{s.region}</span>
+                </span>
+                <span className="ml-2 shrink-0 font-semibold" style={{ color: OPS_COLORS.hours.label }}>
+                  {s.targetMetDays} 次
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      : null}
+
+    </div>
+  );
+}
+
+const CAL_DOW_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
+function AnalysisCalendarView({ data }: { data: CalendarData }) {
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const firstDay = data.days[0];
+  const leadingEmpties = firstDay ? firstDay.weekday : 0;
+  const dayNumbers = data.days.map((d) => parseInt(d.date.slice(8), 10));
+  const dayMap = new Map(data.days.map((d) => [d.date, d]));
+
+  return (
+    <div className="space-y-6">
+      <div className="mb-2 flex flex-wrap gap-3 text-[11px] text-amber-800 rounded-xl border border-slate-100 bg-amber-50 px-3 py-2">
+        <span>達標條件：平日工效比 ≥ 4,000 元/hr、週六 ≥ 5,500 元/hr</span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-teal-400" />本店人員
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />調入（他店來支援）
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-indigo-500" />調出（去他店支援）
+        </span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div style={{ minWidth: 0, maxWidth: "100%" }}>
+          <div className="grid grid-cols-7 border-b border-slate-100">
+            {CAL_DOW_LABELS.map((d, i) => (
+              <div
+                key={d}
+                className={`py-2 text-center text-sm font-bold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-[3px] bg-slate-100 p-[3px]">
+            {Array.from({ length: leadingEmpties }).map((_, i) => (
+              <div key={`b${i}`} className="min-h-24 bg-slate-50/50" />
+            ))}
+            {dayNumbers.map((dom) => {
+              const ymd = `${String(data.days[0]?.date.slice(0, 7))}-${String(dom).padStart(2, "0")}`;
+              const day = dayMap.get(ymd);
+              const isSun = (leadingEmpties + dom - 1) % 7 === 0;
+              const isSat = (leadingEmpties + dom - 1) % 7 === 6;
+              const isToday = ymd === todayYmd;
+              const isFuture = ymd > todayYmd;
+              const isHoliday = !!day?.holiday;
+              const isRest = isSun || isHoliday;
+
+              let cellCls = "min-h-28 p-1.5 rounded-sm border ";
+              if (isRest) cellCls += "bg-slate-50/70 border-slate-200 ";
+              else if (isFuture) cellCls += "bg-white opacity-50 border-slate-200 ";
+              else if (day?.isExceed) cellCls += "bg-purple-50 border-purple-300 ";
+              else if (day?.isAchieved) cellCls += "bg-emerald-50 border-emerald-300 ";
+              else if (day?.hasData) cellCls += "bg-white border-red-300 ";
+              else cellCls += "bg-white border-slate-200 ";
+
+              const borderStyle: React.CSSProperties = isToday
+                ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" }
+                : {};
+
+              const tag =
+                !isRest && !isFuture && day?.hasData
+                  ? day.isExceed
+                    ? { label: "超標", cls: "bg-purple-100 text-purple-700" }
+                    : day.isAchieved
+                    ? { label: "達標", cls: "bg-emerald-100 text-emerald-700" }
+                    : { label: "未達", cls: "bg-red-100 text-red-600" }
+                  : null;
+
+              const maxStaff = 8;
+
+              return (
+                <div key={dom} className={cellCls} style={borderStyle}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span
+                      className={`text-xs font-medium ${
+                        isSun || isHoliday ? "text-red-400"
+                        : isSat ? "text-blue-400"
+                        : isToday ? "text-blue-600"
+                        : "text-slate-500"
+                      }`}
+                    >
+                      {dom}
+                    </span>
+                    {tag && (
+                      <span className={`rounded px-1.5 py-px text-[10px] font-medium ${tag.cls}`}>
+                        {tag.label}
+                      </span>
+                    )}
+                  </div>
+                  {!isRest && !isFuture && day?.hasData && (
+                    <div
+                      className="mb-1.5 pb-1.5 text-[11px] font-medium"
+                      style={{
+                        borderBottom: "0.5px solid rgba(0,0,0,0.07)",
+                        color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
+                      }}
+                    >
+                      {day.netHours.toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
+                    </div>
+                  )}
+                  {!isRest && !isFuture && (
+                    <>
+                      {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
+                        <div key={si} className="flex items-start gap-1 mb-1">
+                          <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.outgoingTo ? "bg-indigo-500" : s.isSupport ? "bg-amber-400" : "bg-teal-400"}`} />
+                          <span className="text-[11px] leading-tight text-slate-700">
+                            {s.name}
+                            <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
+                            {s.outgoingTo ? (
+                              <span className="text-indigo-500 ml-0.5">→ {s.outgoingTo}</span>
+                            ) : s.isSupport && s.homeStore ? (
+                              <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
+                            ) : null}
+                            {s.newHireLabel && (
+                              <span className="text-orange-500 ml-0.5">（{s.newHireLabel}）</span>
+                            )}
+                            {s.temporaryLabel && (
+                              <span className="text-purple-500 ml-0.5">（{s.temporaryLabel}）</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                      {(day?.staff.length ?? 0) > maxStaff && (
+                        <div className="text-[10px] text-slate-400">
+                          +{(day?.staff.length ?? 0) - maxStaff} 人
+                        </div>
+                      )}
+                      {(day?.deductions ?? []).map((ded, di) => (
+                        <div key={di} className={`text-[10px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
+                          {ded.isPositive ? "+" : "-"}{ded.hours}h {ded.label}{ded.note ? `（${ded.note}）` : ""}
+                        </div>
+                      ))}
+                      {day?.efficiencyRatio != null && (
+                        <div
+                          className={`mt-1 text-[11px] font-medium ${
+                            day.isExceed ? "text-purple-600"
+                            : day.isAchieved ? "text-emerald-600"
+                            : "text-slate-400"
+                          }`}
+                        >
+                          工效 {Math.round(day.efficiencyRatio).toLocaleString()}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {isHoliday && (
+                    <div className="text-[8px] text-red-400">{day?.holiday}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="font-semibold text-slate-800 mb-1">員工達標次數</h2>
+        <p className="text-xs text-slate-500 mb-3">
+          出勤日中，本門市工效比達標／超標的次數（達標不含超標，兩欄合計為原達標總次數）
+        </p>
+        {data.employeeAchievement.length ?
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-slate-500 font-normal">
+                  <th className="py-2 pr-4 font-normal">員工</th>
+                  <th className="py-2 pr-4 font-normal">類別</th>
+                  <th className="py-2 pr-4 text-right font-normal">出勤工作日</th>
+                  <th className="py-2 pr-4 text-right font-normal">達標次數</th>
+                  <th className="py-2 pr-4 text-right font-normal">超標次數</th>
+                  <th className="py-2 text-right font-normal">達標率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.employeeAchievement.map((e) => (
+                  <tr key={e.name} className="border-b border-slate-100">
+                    <td className="py-2 pr-4 font-medium text-slate-800">{e.name}</td>
+                    <td className="py-2 pr-4">
+                      {e.isSupport ?
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          {e.homeStore ?? "跨店支援"}
+                        </span>
+                      : <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-800">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+                          本店
+                        </span>
+                      }
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-slate-700">{e.attendanceDays} 天</td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                        {e.achievedDays - e.exceedDays} 次
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      {e.exceedDays > 0 ? (
+                        <span className="inline-block rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                          {e.exceedDays} 次
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-slate-500">{e.achieveRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        : <p className="py-8 text-center text-sm text-slate-400">本月尚無出勤紀錄</p>}
+      </div>
     </div>
   );
 }
