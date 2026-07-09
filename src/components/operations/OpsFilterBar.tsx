@@ -37,9 +37,9 @@ export function OpsFilterBar({
 }: OpsFilterBarProps) {
   const regions =
     fixedRegion ? [fixedRegion]
-    : regionOptions && regionOptions.length >= OPS_FILTER_REGIONS.length
+    : regionOptions && regionOptions.length > 0
       ? regionOptions
-      : [...OPS_FILTER_REGIONS];
+      : OPS_FILTER_REGIONS.filter((r) => r !== "台北區");
 
   const filteredStores = stores.filter((s) => !region || s.region === region);
 
