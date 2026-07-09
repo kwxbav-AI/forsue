@@ -16,14 +16,3 @@ export interface UploadResult {
   failedCount: number;
   errors: ParseError[];
 }
-
-export type ShiftRosterBatchFileResult = UploadResult & {
-  filename: string;
-};
-
-export interface ShiftRosterBatchUploadResult {
-  success: boolean;
-  importedCount: number;
-  failedCount: number;
-  results: ShiftRosterBatchFileResult[];
-}

@@ -27,7 +27,6 @@ model Store {
   aliases             StoreAlias[]
   storeHourDeductions StoreHourDeduction[]
   changeLogs          StoreChangeLog[]
-  shiftPlans          StoreShiftPlan[]
   newStoreSetting     NewStoreSetting?
 }
 
@@ -136,13 +135,6 @@ enum UploadFileType {
   CUSTOMER_TRAFFIC
 }
 
-enum ShiftPlanKind {
-  WORK
-  OFF
-  HOLIDAY
-  LEAVE
-  UNKNOWN
-}
 
 enum UploadStatus {
   SUCCESS
@@ -209,27 +201,6 @@ model AppSetting {
   createdAt DateTime @default(now())
 }
 
-model StoreShiftPlan {
-  id             String        @id @default(cuid())
-  workDate       DateTime      @db.Date
-  storeId        String
-  employeeCode   String
-  employeeName   String?
-  employeeId     String?
-  shiftKind      ShiftPlanKind @default(WORK)
-  startTime      String?
-  endTime        String?
-  scheduledHours Decimal       @db.Decimal(10, 2)
-  rawCell        String?
-  uploadBatchId  String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  store          Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, workDate, employeeCode])
-  @@index([workDate])
-  @@index([storeId, workDate])
-}
 
 model DispatchRecord {
   id            String   @id @default(cuid())

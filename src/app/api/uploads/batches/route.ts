@@ -11,7 +11,6 @@ export async function GET() {
     "EMPLOYEE_MASTER",
     "DAILY_REVENUE",
     "INVENTORY_REFERENCE",
-    "SHIFT_ROSTER",
     "CUSTOMER_TRAFFIC",
   ] as const;
   const results = await Promise.all(
