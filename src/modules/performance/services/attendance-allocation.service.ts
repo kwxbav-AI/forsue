@@ -72,6 +72,149 @@ export type StoreHoursComputeOptions = {
   prefetch?: AllocationPrefetchContext;
 };
 
+/** 單一員工單日「儲備人力全店到齊」判斷所需的最小出勤資料形狀 */
+export type ReserveContextAttendance = {
+  employeeId: string;
+  originalStoreId: string | null;
+  workHours: unknown;
+  shiftType: string | null;
+  scheduledWorkHours?: unknown;
+  employee: { defaultStoreId: string | null };
+};
+
+/** 單一員工單日「儲備人力全店到齊」判斷所需的最小調度資料形狀（呼叫端須自行篩選 confirmStatus="已確認"） */
+export type ReserveContextDispatch = {
+  employeeId: string;
+  fromStoreId: string | null;
+  toStoreId: string;
+  remark: string | null;
+};
+
+export type ReserveStaffContext = {
+  /** 門市當日是否「全店到齊」（儲備人力折算的前提條件） */
+  storeFullByStoreId: Map<string, boolean>;
+  /** 門市當日加班總時數（單筆出勤 >8h 部分加總） */
+  storeOvertimeByStoreId: Map<string, number>;
+  /** 當日有已確認調度（不論方向、不論門市）的員工 id 集合——有的話不套用儲備人力折算 */
+  hasConfirmedDispatchByEmployeeId: Set<string>;
+};
+
+function isLeaveShiftType(shiftType: string | null | undefined): boolean {
+  const s = (shiftType ?? "").trim();
+  if (!s) return false;
+  // 常見：特休/事假/病假/公假/補休/喪假/婚假/產假/育嬰等；半天常會含「半」
+  // 規則：只要出勤檔標示為任何假別（含半天），就視為「未到齊」。
+  return /(特休|事假|病假|公假|補休|喪假|婚假|產假|育嬰|請假|休假|半天)/.test(s);
+}
+
+function extractDispatchReason(remark: string | null): string {
+  if (!remark) return "";
+  const s = remark.trim();
+  if (!s) return "";
+  return s.split("/")[0].trim();
+}
+
+/**
+ * 「儲備人力全店到齊」判斷的單一事實來源（single source of truth）。
+ * 供 attendance-allocation（每日績效計算的「引擎」）與出勤報表共用，避免各自實作、彼此漂移。
+ *
+ * 呼叫端須自行以「當日」為範圍查詢 attendances／dispatches（dispatches 須已篩選 confirmStatus="已確認"），
+ * 這個函式本身不做任何資料庫查詢，純粹依輸入資料計算。
+ */
+export function deriveReserveStaffContext(input: {
+  attendances: ReserveContextAttendance[];
+  dispatches: ReserveContextDispatch[];
+  assignedByStore: Map<string, string[]>;
+  fallbackHomeStoreByEmployee: Map<string, string>;
+}): ReserveStaffContext {
+  const { attendances, dispatches, assignedByStore, fallbackHomeStoreByEmployee } = input;
+
+  // 「全店到齊」判斷（儲備人力用）：
+  // - 以「名冊上的人當天是否有實際上班（workHours > 0）」判定是否到齊（避免用 8 小時門檻誤傷兼職）
+  // - 只要該店名冊上任一人被標示為請假（含半天），也視為未到齊 → 儲備人力 100%
+  // - 若有「表定工時」欄（scheduledWorkHours），則以「實際工時 < 表定工時」視為請假/未到齊（可涵蓋請假 2 小時等情境）
+  // - 你目前的業務定義：即使是排休，只要沒有調人補進來，也應視為未到齊
+  const attendanceEmployeeIds = new Set(
+    attendances.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId)
+  );
+  const leaveEmployeeIds = new Set(
+    attendances
+      .filter((a) => {
+        const actual = Number(a.workHours);
+        const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
+        const byScheduled =
+          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
+        return byScheduled || isLeaveShiftType(a.shiftType);
+      })
+      .map((a) => a.employeeId)
+  );
+
+  // 規則：儲備人力只要當天有「已確認調度」（不論 fromStoreId 是否有填、不論門市），就不應再做儲備人力折算
+  // 目的：避免被調去他店支援時仍被打折，導致原店變成負工時或支援工時被折算。
+  const hasConfirmedDispatchByEmployeeId = new Set(dispatches.map((d) => d.employeeId));
+
+  // 出勤記錄「第一筆非空的 originalStoreId」，用於調度 fromStoreId 缺值時的 fallback（與聚合出勤工時邏輯一致）
+  const originalStoreIdByEmployeeId = new Map<string, string | null>();
+  for (const a of attendances) {
+    const prev = originalStoreIdByEmployeeId.get(a.employeeId);
+    const merged = prev !== undefined ? (prev ?? a.originalStoreId ?? null) : (a.originalStoreId ?? null);
+    originalStoreIdByEmployeeId.set(a.employeeId, merged);
+  }
+
+  const learningOutCountByStoreId = new Map<string, number>();
+  const learningInCountByStoreId = new Map<string, number>();
+  const otherOutCountByStoreId = new Map<string, number>();
+  for (const dr of dispatches) {
+    const reason = extractDispatchReason(dr.remark ?? null);
+    const resolvedFromStoreId = dr.fromStoreId || originalStoreIdByEmployeeId.get(dr.employeeId) || null;
+    if (resolvedFromStoreId) {
+      if (reason === "跨店學習") {
+        learningOutCountByStoreId.set(
+          resolvedFromStoreId,
+          (learningOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
+        );
+      } else {
+        otherOutCountByStoreId.set(
+          resolvedFromStoreId,
+          (otherOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
+        );
+      }
+    }
+    if (reason === "跨店學習") {
+      learningInCountByStoreId.set(dr.toStoreId, (learningInCountByStoreId.get(dr.toStoreId) ?? 0) + 1);
+    }
+  }
+
+  const storeFullByStoreId = new Map<string, boolean>();
+  assignedByStore.forEach((empIds, storeId) => {
+    // 全店到齊：該門市名冊上的人都在出勤表有出現，且當天沒有調度調出（fromStoreId=該門市）
+    const allPresent = empIds.every((id) => attendanceEmployeeIds.has(id));
+    const hasLeave = empIds.some((id) => leaveEmployeeIds.has(id));
+    const otherOut = otherOutCountByStoreId.get(storeId) ?? 0;
+    const learningOut = learningOutCountByStoreId.get(storeId) ?? 0;
+    const learningIn = learningInCountByStoreId.get(storeId) ?? 0;
+    // 例外：若事由為「跨店學習」且一調出一調入（成對），則仍視為全店到齊
+    const learningPaired = learningOut > 0 && learningIn === learningOut;
+    const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
+    storeFullByStoreId.set(storeId, allPresent && !hasNetDispatchOut && !hasLeave);
+  });
+
+  const storeOvertimeByStoreId = new Map<string, number>();
+  for (const att of attendances) {
+    const storeId =
+      att.employee.defaultStoreId ??
+      fallbackHomeStoreByEmployee.get(att.employeeId) ??
+      att.originalStoreId ??
+      null;
+    if (!storeId) continue;
+    const workH = Number(att.workHours);
+    const overtime = Math.max(0, workH - 8);
+    storeOvertimeByStoreId.set(storeId, (storeOvertimeByStoreId.get(storeId) ?? 0) + overtime);
+  }
+
+  return { storeFullByStoreId, storeOvertimeByStoreId, hasConfirmedDispatchByEmployeeId };
+}
+
 function isTrialEmployeeCode(employeeCode: string): boolean {
   const prefix = (employeeCode || "").trim().toLowerCase();
   return prefix.startsWith("a") || prefix.startsWith("b");
@@ -197,109 +340,14 @@ export async function computeStoreHoursByEmployee(
     assignedByStore.set(homeStoreId, list);
   }
 
-  function isLeaveShiftType(shiftType: string | null | undefined): boolean {
-    const s = (shiftType ?? "").trim();
-    if (!s) return false;
-    // 常見：特休/事假/病假/公假/補休/喪假/婚假/產假/育嬰等；半天常會含「半」
-    // 規則：只要出勤檔標示為任何假別（含半天），就視為「未到齊」。
-    return /(特休|事假|病假|公假|補休|喪假|婚假|產假|育嬰|請假|休假|半天)/.test(s);
-  }
-
-  // 「全店到齊」判斷（儲備人力用）：
-  // - 以「名冊上的人當天是否有實際上班（workHours > 0）」判定是否到齊（避免用 8 小時門檻誤傷兼職）
-  // - 只要該店名冊上任一人被標示為請假（含半天），也視為未到齊 → 儲備人力 100%
-  // - 若有「表定工時」欄（scheduledWorkHours），則以「實際工時 < 表定工時」視為請假/未到齊（可涵蓋請假 2 小時等情境）
-  // - 你目前的業務定義：即使是排休，只要沒有調人補進來，也應視為未到齊
-  const attendanceEmployeeIds = new Set(
-    attendances.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId)
-  );
-  const leaveEmployeeIds = new Set(
-    attendances
-      .filter((a) => {
-        const actual = Number(a.workHours);
-        const scheduled =
-          (a as any).scheduledWorkHours != null ? Number((a as any).scheduledWorkHours) : null;
-        const byScheduled =
-          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
-        return byScheduled || isLeaveShiftType(a.shiftType);
-      })
-      .map((a) => a.employeeId)
-  );
-  const dispatchOutEmployeeIds = new Set(
-    dispatches.filter((d) => !!d.fromStoreId).map((d) => d.employeeId)
-  );
-  // 規則：儲備人力只要當天有「已確認調度」（不論 fromStoreId 是否有填），就不應再做儲備人力折算
-  // 目的：避免被調去他店支援時仍被打折，導致原店變成負工時或支援工時被折算。
-  const hasConfirmedDispatchByEmployeeId = new Set(dispatches.map((d) => d.employeeId));
-
-  function extractDispatchReason(remark: string | null): string {
-    if (!remark) return "";
-    const s = remark.trim();
-    if (!s) return "";
-    return s.split("/")[0].trim();
-  }
-
-  const learningOutCountByStoreId = new Map<string, number>();
-  const learningInCountByStoreId = new Map<string, number>();
-  const otherOutCountByStoreId = new Map<string, number>();
-  const backofficeConfirmedByEmployeeId = new Set<string>();
-  for (const dr of dispatches) {
-    const reason = extractDispatchReason(dr.remark ?? null);
-    if (reason === "後勤支援門市" && dr.confirmStatus === "已確認") {
-      backofficeConfirmedByEmployeeId.add(dr.employeeId);
-    }
-    // fromStoreId 可能為 null（填報時未指定），改用出勤記錄的 originalStoreId 或員工 defaultStoreId 作為 fallback
-    const resolvedFromStoreId =
-      dr.fromStoreId ||
-      aggregatedAttendanceByEmployeeId.get(dr.employeeId)?.originalStoreId ||
-      null;
-    if (resolvedFromStoreId) {
-      if (reason === "跨店學習") {
-        learningOutCountByStoreId.set(
-          resolvedFromStoreId,
-          (learningOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
-        );
-      } else {
-        otherOutCountByStoreId.set(
-          resolvedFromStoreId,
-          (otherOutCountByStoreId.get(resolvedFromStoreId) ?? 0) + 1
-        );
-      }
-    }
-    if (reason === "跨店學習") {
-      learningInCountByStoreId.set(
-        dr.toStoreId,
-        (learningInCountByStoreId.get(dr.toStoreId) ?? 0) + 1
-      );
-    }
-  }
-
-  const storeFullByStoreId = new Map<string, boolean>();
-  assignedByStore.forEach((empIds, storeId) => {
-    // 全店到齊：該門市名冊上的人都在出勤表有出現，且當天沒有調度調出（fromStoreId=該門市）
-    const allPresent = empIds.every((id) => attendanceEmployeeIds.has(id));
-    const hasLeave = empIds.some((id) => leaveEmployeeIds.has(id));
-    const otherOut = otherOutCountByStoreId.get(storeId) ?? 0;
-    const learningOut = learningOutCountByStoreId.get(storeId) ?? 0;
-    const learningIn = learningInCountByStoreId.get(storeId) ?? 0;
-    // 例外：若事由為「跨店學習」且一調出一調入（成對），則仍視為全店到齊
-    const learningPaired = learningOut > 0 && learningIn === learningOut;
-    const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
-    storeFullByStoreId.set(storeId, allPresent && !hasNetDispatchOut && !hasLeave);
-  });
-
-  const storeOvertimeByStoreId = new Map<string, number>();
-  for (const att of attendances) {
-    const storeId =
-      att.employee.defaultStoreId ??
-      fallbackHomeStoreByEmployee.get(att.employeeId) ??
-      att.originalStoreId ??
-      null;
-    if (!storeId) continue;
-    const workH = Number(att.workHours);
-    const overtime = Math.max(0, workH - 8);
-    storeOvertimeByStoreId.set(storeId, (storeOvertimeByStoreId.get(storeId) ?? 0) + overtime);
-  }
+  // 「全店到齊 / 加班時數 / 是否有已確認調度」判斷，與出勤報表共用同一份邏輯（deriveReserveStaffContext）
+  const { storeFullByStoreId, storeOvertimeByStoreId, hasConfirmedDispatchByEmployeeId } =
+    deriveReserveStaffContext({
+      attendances,
+      dispatches,
+      assignedByStore,
+      fallbackHomeStoreByEmployee,
+    });
 
   const employeeStores: Map<string, StoreHoursMap> = new Map();
   const dateStr = formatDateOnly(d);

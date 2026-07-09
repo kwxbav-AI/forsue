@@ -21,7 +21,10 @@ import {
   getReserveStaffSettingForEmployeeDate,
   getReserveStaffSettingsByEmployeeDate,
 } from "@/lib/reserve-staff-periods";
-import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
+import {
+  computeStoreHoursByEmployee,
+  deriveReserveStaffContext,
+} from "@/modules/performance/services/attendance-allocation.service";
 import { computeDailyMetricsByStore } from "@/modules/performance/services/daily-store-metrics.service";
 import Decimal from "decimal.js";
 
@@ -356,10 +359,13 @@ export async function GET(request: Request) {
       return note ? `${label}，${note}` : label;
     };
 
-    // 針對「儲備人力」計算：判定「全店到齊」與「加班總時數」必須看整間店的資料，
-    // 不能被姓名/工號搜尋（empWhere）篩到只剩一個人，否則會誤判未到齊。
+    // 針對「儲備人力」計算：判定「全店到齊」「加班總時數」「當日是否有已確認調度」，
+    // 與每日績效計算引擎（attendance-allocation.service.ts）共用同一份 deriveReserveStaffContext，
+    // 避免各自實作、彼此漂移（例如調度查詢是否限定門市、是否只算已確認調度等）。
+    // 注意：不能被姓名/工號搜尋（empWhere）篩到只剩一個人，否則會誤判未到齊。
     const storeFullByDateStore = new Map<string, boolean>();
     const overtimeByDateStore = new Map<string, number>();
+    const hasConfirmedDispatchByDateEmployee = new Map<string, Set<string>>();
 
     const reserveHomeStoreIds = new Set<string>();
     for (const r of records) {
@@ -394,6 +400,8 @@ export async function GET(request: Request) {
       });
       const calcEmployeeIdList = Array.from(calcEmployeeIds);
 
+      // 調度查詢刻意「不」限定門市：判斷員工當天是否已被確認調度，須看他整天的狀態，
+      // 不能只看跟目前篩選門市有關的那幾筆（否則跟引擎的判斷會不一致）。
       const [calcAttendances, calcDispatches] = await Promise.all([
         calcEmployeeIdList.length > 0
           ? prisma.attendanceRecord.findMany({
@@ -413,90 +421,48 @@ export async function GET(request: Request) {
             })
           : [],
         prisma.dispatchRecord.findMany({
-          where: {
-            AND: [
-              dispatchWorkDateWhere,
-            ],
-            OR: [
-              { fromStoreId: { in: Array.from(reserveHomeStoreIds) } },
-              { toStoreId: { in: Array.from(reserveHomeStoreIds) } },
-            ],
-          },
-          select: { workDate: true, fromStoreId: true, toStoreId: true, remark: true },
+          where: { AND: [dispatchWorkDateWhere, { confirmStatus: "已確認" }] },
+          select: { workDate: true, employeeId: true, fromStoreId: true, toStoreId: true, remark: true },
           orderBy: [{ workDate: "asc" }],
         }),
       ]);
 
-      const attendanceIdsByDateStore = new Map<string, Set<string>>();
-      const leaveIdsByDateStore = new Map<string, Set<string>>();
+      const calcAttendancesByDate = new Map<string, typeof calcAttendances>();
       for (const a of calcAttendances) {
         const ds = formatDateOnly(a.workDate);
-        const storeId =
-          a.employee.defaultStoreId ??
-          fallbackHomeStoreByEmployee.get(a.employeeId) ??
-          a.originalStoreId ??
-          null;
-        if (!storeId) continue;
-        const k = `${ds}|${storeId}`;
-        if (!attendanceIdsByDateStore.has(k)) attendanceIdsByDateStore.set(k, new Set());
-        // 到齊判斷：必須有實際上班（workHours > 0）才算到場（避免 8 小時門檻誤傷兼職）
-        if (Number(a.workHours) > 0) {
-          attendanceIdsByDateStore.get(k)!.add(a.employeeId);
-        }
-
-        const st = a.shiftType ? String(a.shiftType).trim() : "";
-        const byText = st ? /(特休|事假|病假|公假|補休|喪假|婚假|產假|育嬰|請假|休假|半天)/.test(st) : false;
-        const scheduled =
-          a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
-        const byScheduled =
-          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && Number(a.workHours) < scheduled;
-        const isLeave = byText || byScheduled;
-        if (isLeave) {
-          if (!leaveIdsByDateStore.has(k)) leaveIdsByDateStore.set(k, new Set());
-          leaveIdsByDateStore.get(k)!.add(a.employeeId);
-        }
-
-        const workH = Number(a.workHours);
-        const overtime = Math.max(0, workH - 8);
-        overtimeByDateStore.set(k, (overtimeByDateStore.get(k) ?? 0) + overtime);
+        const list = calcAttendancesByDate.get(ds) ?? [];
+        list.push(a);
+        calcAttendancesByDate.set(ds, list);
       }
-
-      const learningOutCountByDateStore = new Map<string, number>();
-      const learningInCountByDateStore = new Map<string, number>();
-      const otherOutCountByDateStore = new Map<string, number>();
+      const calcDispatchesByDate = new Map<string, typeof calcDispatches>();
       for (const dr of calcDispatches) {
         const ds = formatDateOnly(dr.workDate);
-        const reason = extractDispatchReason(dr.remark ?? null);
-        if (dr.fromStoreId) {
-          const k = `${ds}|${dr.fromStoreId}`;
-          if (reason === "跨店學習") {
-            learningOutCountByDateStore.set(k, (learningOutCountByDateStore.get(k) ?? 0) + 1);
-          } else {
-            otherOutCountByDateStore.set(k, (otherOutCountByDateStore.get(k) ?? 0) + 1);
-          }
-        }
-        if (reason === "跨店學習") {
-          const k = `${ds}|${dr.toStoreId}`;
-          learningInCountByDateStore.set(k, (learningInCountByDateStore.get(k) ?? 0) + 1);
-        }
+        const list = calcDispatchesByDate.get(ds) ?? [];
+        list.push(dr);
+        calcDispatchesByDate.set(ds, list);
       }
 
       for (const ds of datesForCalc) {
+        const dayAttendances = calcAttendancesByDate.get(ds) ?? [];
+        const dayDispatches = calcDispatchesByDate.get(ds) ?? [];
+        const context = deriveReserveStaffContext({
+          attendances: dayAttendances.map((a) => ({
+            employeeId: a.employeeId,
+            originalStoreId: a.originalStoreId,
+            workHours: a.workHours,
+            shiftType: a.shiftType,
+            scheduledWorkHours: a.scheduledWorkHours,
+            employee: { defaultStoreId: a.employee.defaultStoreId },
+          })),
+          dispatches: dayDispatches,
+          assignedByStore,
+          fallbackHomeStoreByEmployee,
+        });
+        hasConfirmedDispatchByDateEmployee.set(ds, context.hasConfirmedDispatchByEmployeeId);
         reserveHomeStoreIds.forEach((storeId) => {
           const k = `${ds}|${storeId}`;
-          const empIds = assignedByStore.get(storeId) ?? [];
-          const presentIds = attendanceIdsByDateStore.get(k) ?? new Set<string>();
-          const allPresent = empIds.length > 0 && empIds.every((id) => presentIds.has(id));
-          const leaveIds = leaveIdsByDateStore.get(k) ?? new Set<string>();
-          const hasLeave = empIds.some((id) => leaveIds.has(id));
-
-          const otherOut = otherOutCountByDateStore.get(k) ?? 0;
-          const learningOut = learningOutCountByDateStore.get(k) ?? 0;
-          const learningIn = learningInCountByDateStore.get(k) ?? 0;
-          const learningPaired = learningOut > 0 && learningIn === learningOut;
-          const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
-
-          storeFullByDateStore.set(k, allPresent && !hasNetDispatchOut && !hasLeave);
+          storeFullByDateStore.set(k, context.storeFullByStoreId.get(storeId) ?? false);
+          overtimeByDateStore.set(k, context.storeOvertimeByStoreId.get(storeId) ?? 0);
         });
       }
     }
@@ -861,7 +827,10 @@ export async function GET(request: Request) {
         // 儲備人力：保留原工時一行，另新增「儲備人力」調整行（負數），小計才會是折算後工時
         // 規則：儲備人力若當天有已確認調度（被調去他店支援/調出），則不套用儲備人力折算
         // 目的：原店出勤工時會被調度調出抵銷，支援店以 dispatch_in 計入；不應再額外打折造成負工時。
-        const hasAnyConfirmedDispatch = dispList.length > 0;
+        // 注意：須看員工「整天、不限門市」是否有已確認調度（跟引擎一致），不能只看跟目前篩選門市有關的 dispList，
+        // 否則篩選單一門市檢視時，看不到員工被調去其他門市的紀錄，會誤套用儲備人力折算。
+        const hasAnyConfirmedDispatch =
+          hasConfirmedDispatchByDateEmployee.get(dateStr)?.has(emp.id) ?? false;
         const reserveSetting = getReserveStaffSettingForEmployeeDate(
           reserveSettingsByEmployeeDate,
           emp.id,
