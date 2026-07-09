@@ -340,7 +340,7 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     const opsRegions = DUAL_OPS_REGIONS as readonly string[];
     const fromApi = (meta?.regions ?? []).filter((r) => opsRegions.includes(r));
     if (fromApi.length >= OPS_FILTER_REGIONS.length) return fromApi;
-    return [...OPS_FILTER_REGIONS];
+    return OPS_FILTER_REGIONS.filter((r) => r !== "台北區");
   }, [meta?.regions, fixedRegion]);
 
   const handleRefresh = useCallback(async () => {
@@ -882,33 +882,34 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
               載入日曆
             </button>
           </div>
-        : <AnalysisCalendarView data={calData} />
-      : null}
-
-      {queried && companyPerf && !companyPerfLoading && !loading ?
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold text-slate-800">門市排名</h2>
-          <p className="mb-3 mt-1 text-xs text-slate-500">
-            依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
-          </p>
-          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {companyPerf.storeRanking.map((s, i) => (
-              <li
-                key={s.storeId}
-                className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-              >
-                <span className="min-w-0 truncate">
-                  <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
-                  {s.storeName}
-                  <span className="ml-1 text-xs text-slate-400">{s.region}</span>
-                </span>
-                <span className="ml-2 shrink-0 font-semibold" style={{ color: OPS_COLORS.hours.label }}>
-                  {s.targetMetDays} 次
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
+        : <>
+            <AnalysisCalendarView data={calData} />
+            {companyPerf && !companyPerfLoading ?
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="font-semibold text-slate-800">門市排名</h2>
+                <p className="mb-3 mt-1 text-xs text-slate-500">
+                  依區間工效比達標次數（{companyPerf.startDate} ~ {companyPerf.endDate} · 桃園區 + 宜蘭區全門市）
+                </p>
+                <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {companyPerf.storeRanking.map((s, i) => (
+                    <li
+                      key={s.storeId}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0 truncate">
+                        <span className="inline-block w-6 font-medium text-slate-400">{i + 1}</span>
+                        {s.storeName}
+                        <span className="ml-1 text-xs text-slate-400">{s.region}</span>
+                      </span>
+                      <span className="ml-2 shrink-0 font-semibold" style={{ color: OPS_COLORS.hours.label }}>
+                        {s.targetMetDays} 次
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            : null}
+          </>
       : null}
 
     </div>
