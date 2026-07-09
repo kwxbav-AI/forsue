@@ -88,7 +88,7 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-6">
           <div className="flex flex-wrap items-center gap-2">
             <Link href="/" className="text-lg font-semibold text-slate-800">
               每日績效計算系統 <span className="text-xs font-normal text-sky-600">網頁版</span>
