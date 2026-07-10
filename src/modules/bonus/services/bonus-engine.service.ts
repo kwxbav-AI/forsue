@@ -379,6 +379,9 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     let poolWorkers = 0;
     for (const employeeId of todayAttendees) {
       const attList = attByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
+      // 請假等 0 工時的出勤紀錄不算「有上班」，不計入池子人數
+      const totalActual = attList.reduce((sum, a) => sum + Number(a.workHours), 0);
+      if (totalActual <= 0) continue;
       const origStoreId = attList[0]?.originalStoreId ?? "";
       if (reachedStores.has(origStoreId)) poolWorkers++;
     }
