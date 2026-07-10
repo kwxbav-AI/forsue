@@ -218,7 +218,6 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       const scheduledHours = attList[0].scheduledWorkHours
         ? Number(attList[0].scheduledWorkHours)
         : FULL_HOURS;
-      const shiftType = attList[0].shiftType;
       const originalStoreId = attList[0].originalStoreId;
       const empNhRatio = newHireRatio(employeeMap.get(employeeId)?.hireDate ?? null, yearMonth);
 
@@ -323,15 +322,12 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
 
       // 計算當日比例
       let ratio: number;
-      const pt = isPartTime(shiftType, scheduledHours);
       if (weekday === 6) {
         // 六：>=3h → 100%, <3h → 50%
         ratio = calcH >= 3 ? 1 : 0.5;
-      } else if (pt) {
-        // 兼職平日：按排班工時比例
-        ratio = scheduledHours > 0 ? Math.min(calcH / scheduledHours, 1) : 0;
       } else {
-        // 正職平日：按 8h 比例
+        // 平日：一律按 8h 比例（計算工時已依 Rule 7 上限為排班時數，
+        // 兼職排班較短者，比例自然按排班時數/8 打折，不會跟正職領一樣多）
         ratio = Math.min(calcH / FULL_HOURS, 1);
       }
 
@@ -396,20 +392,33 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
 
-  // ─── 計算每日營運成果獎金分配 ────────────────────────────────────────────────
-  const totalOpsBonus = new Map<string, number>(); // employeeId → 月份累計營運成果獎金
+  // ─── 計算營運成果獎金分配（整月獎金池，按整月總工時比例一次分配） ────────────────
+  const totalOpsBonus = new Map<string, number>(); // employeeId → 月份營運成果獎金
 
-  dailyOpsPool.forEach((pool, dateStr) => {
-    if (pool <= 0) return;
-    const calcMap = dailyCalcHoursByEmployee.get(dateStr);
-    if (!calcMap) return;
-    const totalHours = Array.from(calcMap.values()).reduce((s, h) => s + h, 0);
-    if (totalHours <= 0) return;
+  let totalMonthlyPool = 0;
+  dailyOpsPool.forEach((pool) => {
+    totalMonthlyPool += pool;
+  });
+
+  const employeeMonthlyHours = new Map<string, number>();
+  let totalMonthlyHoursAllEmployees = 0;
+  dailyCalcHoursByEmployee.forEach((calcMap) => {
     calcMap.forEach((h, eid) => {
-      const share = new Decimal(pool).mul(h).div(totalHours).toDecimalPlaces(2).toNumber();
-      totalOpsBonus.set(eid, (totalOpsBonus.get(eid) ?? 0) + share);
+      employeeMonthlyHours.set(eid, (employeeMonthlyHours.get(eid) ?? 0) + h);
+      totalMonthlyHoursAllEmployees += h;
     });
   });
+
+  if (totalMonthlyPool > 0 && totalMonthlyHoursAllEmployees > 0) {
+    employeeMonthlyHours.forEach((h, eid) => {
+      const share = new Decimal(totalMonthlyPool)
+        .mul(h)
+        .div(totalMonthlyHoursAllEmployees)
+        .toDecimalPlaces(2)
+        .toNumber();
+      totalOpsBonus.set(eid, share);
+    });
+  }
 
   // ─── 彙總每人結果 ─────────────────────────────────────────────────────────────
   const results: BonusEmployeeResult[] = [];
