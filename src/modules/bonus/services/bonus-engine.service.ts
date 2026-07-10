@@ -41,16 +41,25 @@ function calcBonusHours(actualHours: number, scheduledHours: number): number {
   return Math.min(rounded, scheduledHours);
 }
 
-// ─── 新人比例 (Rule 2) ─────────────────────────────────────────────────────────
-function newHireRatio(hireDate: Date | null, yearMonth: string): number {
+// ─── 新人比例 (Rule 2)：以到職日起算的實際天數判斷（0-29天50%、30-59天80%），
+// 不是用日曆月份差，避免月中到職者在月份切換當天就被提早跳級 ──────────────────
+function newHireRatio(hireDate: Date | null, workDate: Date): number {
   if (!hireDate) return 1;
-  const [y, m] = yearMonth.split("-").map(Number);
-  const hireY = hireDate.getFullYear();
-  const hireM = hireDate.getMonth() + 1;
-  const monthsSinceHire = (y - hireY) * 12 + (m - hireM);
-  if (monthsSinceHire === 0) return 0.5;
-  if (monthsSinceHire === 1) return 0.8;
+  const daysSinceHire = Math.floor(
+    (workDate.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (daysSinceHire < 30) return 0.5;
+  if (daysSinceHire < 60) return 0.8;
   return 1;
+}
+
+// ─── 營運成果獎金池排除名單（短期工讀 + A/B/C 開頭員編）───────────────────────
+const OPS_POOL_EXCLUDED_POSITIONS = new Set(["兼職-暑假短期工讀", "兼職-寒假短期工讀"]);
+function isExcludedFromOpsPool(emp: { employeeCode: string; position: string | null } | undefined): boolean {
+  if (!emp) return true;
+  if (/^[ABCabc]/.test(emp.employeeCode)) return true;
+  if (emp.position && OPS_POOL_EXCLUDED_POSITIONS.has(emp.position)) return true;
+  return false;
 }
 
 // ─── 是否為兼職 ────────────────────────────────────────────────────────────────
@@ -219,7 +228,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         ? Number(attList[0].scheduledWorkHours)
         : FULL_HOURS;
       const originalStoreId = attList[0].originalStoreId;
-      const empNhRatio = newHireRatio(employeeMap.get(employeeId)?.hireDate ?? null, yearMonth);
+      const empNhRatio = newHireRatio(employeeMap.get(employeeId)?.hireDate ?? null, cur);
 
       const calcH = calcBonusHours(totalActual, scheduledHours);
 
@@ -313,8 +322,11 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         };
         if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
         dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
-        // 後勤門市員工（未調度）不參與 ops 池
-        if (!hiddenStoreIds.has(storeId) || hasDispatch) {
+        // 後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編不參與 ops 池
+        if (
+          (!hiddenStoreIds.has(storeId) || hasDispatch) &&
+          !isExcludedFromOpsPool(employeeMap.get(employeeId))
+        ) {
           dailyCalcHoursMap.set(employeeId, calcH);
         }
         continue;
@@ -361,9 +373,12 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
       dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
 
-      // 計入 ops 池工時：後勤門市員工（未調度）不參與池子分配
+      // 計入 ops 池工時：後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編不參與池子分配
       const effectiveStoreForPool = storeId;
-      if (!hiddenStoreIds.has(effectiveStoreForPool) || hasDispatch) {
+      if (
+        (!hiddenStoreIds.has(effectiveStoreForPool) || hasDispatch) &&
+        !isExcludedFromOpsPool(employeeMap.get(employeeId))
+      ) {
         dailyCalcHoursMap.set(employeeId, calcH);
       }
     }
@@ -382,6 +397,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       // 請假等 0 工時的出勤紀錄不算「有上班」，不計入池子人數
       const totalActual = attList.reduce((sum, a) => sum + Number(a.workHours), 0);
       if (totalActual <= 0) continue;
+      // 短期工讀、A/B/C 開頭員編不計入池子人數
+      if (isExcludedFromOpsPool(employeeMap.get(employeeId))) continue;
       const origStoreId = attList[0]?.originalStoreId ?? "";
       if (reachedStores.has(origStoreId)) poolWorkers++;
     }
@@ -433,8 +450,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   for (const employeeId of allEmployeeIds) {
     const emp = employeeMap.get(employeeId);
     if (!emp) continue;
-    // A/B 開頭員工編號不計算獎金（後台管理人員）
-    if (/^[ABab]/.test(emp.employeeCode)) continue;
+    // A/B/C 開頭員工編號不計算獎金（後台管理人員）
+    if (/^[ABCabc]/.test(emp.employeeCode)) continue;
 
     const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
@@ -445,7 +462,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;
 
     // 新人比例：僅用於顯示（新人%欄位）與新店保障金額計算，實際達標獎金已逐日套用
-    const nhRatio = newHireRatio(emp.hireDate, yearMonth);
+    // 取月底當天的比例作為整月代表值
+    const nhRatio = newHireRatio(emp.hireDate, endDate);
     let subtotalBonus = new Decimal(targetBonus).add(operationsBonus);
 
     // 新店保障：優先用 defaultStoreId，若為 null 則從出勤記錄推算最常出現的門市

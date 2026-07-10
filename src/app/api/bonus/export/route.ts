@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         Number(d.actualWorkHours),
         Number(d.calcHours),
         Number(d.baseBonus),
-        Number(d.dailyBonus),
+        Math.round(Number(d.dailyBonus)),
         d.dispatchNote ?? "",
       ]);
     }
