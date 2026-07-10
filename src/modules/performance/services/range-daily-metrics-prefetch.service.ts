@@ -2,9 +2,8 @@ import { prisma } from "@/lib/prisma";
 import {
   businessDayWorkDateFromDate,
   formatDateOnly,
-  formatDateOnlyTaipei,
   parseDateOnlyUTC,
-  toDateRangeTaipei,
+  toDateRange,
   toStartOfDay,
 } from "@/lib/date";
 import {
@@ -59,7 +58,8 @@ export async function buildRangeDailyMetricsPrefetch(
   const { reportVisibleOnly = true } = options;
   const rangeStart = parseDateOnlyUTC(startYmd);
   const rangeEnd = parseDateOnlyUTC(endYmd);
-  const { start: revenueStart, end: revenueEnd } = toDateRangeTaipei(startYmd, endYmd);
+  // 營收以 UTC 日曆日寫入 @db.Date，須用 UTC 區間（與 /api/reports/revenue 一致），避免誤含前一日
+  const { start: revenueStart, end: revenueEnd } = toDateRange(startYmd, endYmd);
 
   const stores = await prisma.store.findMany({
     where: {
@@ -220,7 +220,7 @@ export async function buildRangeDailyMetricsPrefetch(
 
   const revenueByYmdStore = new Map<string, Map<string, number>>();
   for (const r of revenueRows) {
-    const ymd = formatDateOnlyTaipei(r.revenueDate);
+    const ymd = formatDateOnly(r.revenueDate);
     const rev = Number(r.revenueAmount ?? 0);
     if (rev <= 0) continue;
     let byStore = revenueByYmdStore.get(ymd);

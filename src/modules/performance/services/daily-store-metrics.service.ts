@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import {
   businessDayWorkDateFromDate,
-  calendarDayBoundsFromYmd,
+  endOfDayUTC,
   formatDateOnly,
+  parseDateOnlyUTC,
   toStartOfDay,
 } from "@/lib/date";
 import { computeTotalWorkHoursByStore } from "./attendance-allocation.service";
@@ -27,7 +28,8 @@ export async function computeDailyMetricsByStore(
   const d = toStartOfDay(workDate);
   const businessYmd = formatDateOnly(d);
   const exactWorkDate = businessDayWorkDateFromDate(d);
-  const { start: revenueDayStart, end: revenueDayEnd } = calendarDayBoundsFromYmd(businessYmd);
+  const revenueDayStart = parseDateOnlyUTC(businessYmd);
+  const revenueDayEnd = endOfDayUTC(businessYmd);
   const storeHours = await computeTotalWorkHoursByStore(d);
 
   const revenueGrouped = await prisma.revenueRecord.groupBy({
@@ -105,7 +107,8 @@ export async function computeDailyRevenueOnlyByStore(
   const { reportVisibleOnly = true } = options;
   const d = toStartOfDay(workDate);
   const businessYmd = formatDateOnly(d);
-  const { start: revenueDayStart, end: revenueDayEnd } = calendarDayBoundsFromYmd(businessYmd);
+  const revenueDayStart = parseDateOnlyUTC(businessYmd);
+  const revenueDayEnd = endOfDayUTC(businessYmd);
 
   const revenueGrouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
