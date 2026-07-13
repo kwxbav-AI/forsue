@@ -53,11 +53,11 @@ function newHireRatio(hireDate: Date | null, workDate: Date): number {
   return 1;
 }
 
-// ─── 營運成果獎金池排除名單（短期工讀 + A/B/C 開頭員編）───────────────────────
+// ─── 營運成果獎金池排除名單（短期工讀 + A/B/C/D/E 開頭員編）───────────────────────
 const OPS_POOL_EXCLUDED_POSITIONS = new Set(["兼職-暑假短期工讀", "兼職-寒假短期工讀"]);
 function isExcludedFromOpsPool(emp: { employeeCode: string; position: string | null } | undefined): boolean {
   if (!emp) return true;
-  if (/^[ABCabc]/.test(emp.employeeCode)) return true;
+  if (/^[ABCDEabcde]/.test(emp.employeeCode)) return true;
   if (emp.position && OPS_POOL_EXCLUDED_POSITIONS.has(emp.position)) return true;
   return false;
 }
@@ -480,8 +480,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   for (const employeeId of allEmployeeIds) {
     const emp = employeeMap.get(employeeId);
     if (!emp) continue;
-    // A/B/C 開頭員工編號不計算獎金（後台管理人員）
-    if (/^[ABCabc]/.test(emp.employeeCode)) continue;
+    // A/B/C 開頭：後台管理人員；D/E 開頭：臨時人員 — 皆不計算獎金
+    if (/^[ABCDEabcde]/.test(emp.employeeCode)) continue;
 
     const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
