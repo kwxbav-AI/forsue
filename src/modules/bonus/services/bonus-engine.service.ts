@@ -92,6 +92,7 @@ export interface BonusDailyDetail {
   baseBonus: number;
   dailyBonus: number;
   dispatchNote: string | null;
+  countsTowardHours: boolean;
 }
 
 export interface BonusEmployeeResult {
@@ -145,7 +146,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         where: { yearMonth },
         select: { employeeId: true, accountabilityRatio: true },
       }),
-      prisma.store.findMany({ select: { id: true, hideInReports: true, department: true } }),
+      prisma.store.findMany({ select: { id: true, hideInReports: true, excludeFromBonus: true } }),
     ]);
 
   // 建立查找索引
@@ -164,9 +165,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
   // 報表隱藏門市（後勤/非門市部門）：這些門市的員工不計算達標獎金
   const hiddenStoreIds = new Set<string>(allStores.filter((s) => s.hideInReports).map((s) => s.id));
 
-  // 台北區門市不計入營運成果獎金池（不論該店是否達標，都不貢獻池子金額）
+  // 排除獎金計算的門市（例如台北區）：不計入營運成果獎金池，也不貢獻池子金額
+  // 獨立於 hideInReports（報表隱藏），門市管理頁面「排除獎金計算」勾選設定
   const opsPoolExcludedStoreIds = new Set<string>(
-    allStores.filter((s) => s.department?.includes("台北區")).map((s) => s.id)
+    allStores.filter((s) => s.excludeFromBonus).map((s) => s.id)
   );
 
   // 新店查找：storeId → 是否在本月保障期內
@@ -322,6 +324,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         }
       }
 
+      // 後勤/報表隱藏門市，當天沒有調度支援 → 這天工時跟任何獎金計算都無關
+      // （不是「未達標領 0」，是根本不算），計算工時彙總要排除，避免顯示誤導
+      const countsTowardHours = !hiddenStoreIds.has(storeId) || hasDispatch;
+
       if (!isTargetMet || calcH === 0) {
         // 未達標或無工時 → 0 獎金，但仍記錄
         const detail: BonusDailyDetail = {
@@ -338,12 +344,13 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
           baseBonus: 0,
           dailyBonus: 0,
           dispatchNote,
+          countsTowardHours,
         };
         if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
         dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
         // 後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編、台北區不參與 ops 池
         if (
-          (!hiddenStoreIds.has(storeId) || hasDispatch) &&
+          countsTowardHours &&
           !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
           !opsPoolExcludedStoreIds.has(storeId)
         ) {
@@ -389,6 +396,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         baseBonus,
         dailyBonus: dailyBonus.toDecimalPlaces(2).toNumber(),
         dispatchNote,
+        countsTowardHours,
       };
       if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
       dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
@@ -396,7 +404,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       // 計入 ops 池工時：後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編、台北區不參與池子分配
       const effectiveStoreForPool = storeId;
       if (
-        (!hiddenStoreIds.has(effectiveStoreForPool) || hasDispatch) &&
+        countsTowardHours &&
         !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
         !opsPoolExcludedStoreIds.has(effectiveStoreForPool)
       ) {
@@ -494,7 +502,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
 
-    const totalCalcHours = details.reduce((s, d) => s + d.calcHours, 0);
+    // 後勤/報表隱藏門市當天沒有調度支援的工時，跟任何獎金計算都無關，不計入顯示總工時
+    const totalCalcHours = details
+      .filter((d) => d.countsTowardHours)
+      .reduce((s, d) => s + d.calcHours, 0);
     // 新人比例已於逐日計算 dailyBonus 時套用（見上方迴圈），此處加總即為套用後金額
     const targetBonus = details.reduce((s, d) => s + d.dailyBonus, 0);
     const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;

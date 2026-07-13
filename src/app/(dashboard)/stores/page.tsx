@@ -11,6 +11,7 @@ type Store = {
   department?: string | null;
   isActive?: boolean;
   hideInReports?: boolean;
+  excludeFromBonus?: boolean;
   aliases: string[];
 };
 
@@ -36,6 +37,7 @@ export default function StoresPage() {
   const [editAliasesText, setEditAliasesText] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
   const [editHideInReports, setEditHideInReports] = useState(false);
+  const [editExcludeFromBonus, setEditExcludeFromBonus] = useState(false);
   const [canViewStoreChangeLogs, setCanViewStoreChangeLogs] = useState(false);
   const [permPending, setPermPending] = useState({ canReadPending: false, canApprove: false });
   const [pendingRefresh, setPendingRefresh] = useState(0);
@@ -126,6 +128,7 @@ export default function StoresPage() {
     setEditDepartment(s.department ?? "");
     setEditAliasesText(([s.code, ...(s.aliases || [])].filter(Boolean) as string[]).join(" "));
     setEditHideInReports(Boolean(s.hideInReports));
+    setEditExcludeFromBonus(Boolean(s.excludeFromBonus));
   }
 
   const editAliasPreview = useMemo(
@@ -147,6 +150,7 @@ export default function StoresPage() {
         department: editDepartment || null,
         aliases: editAliasPreview,
         hideInReports: editHideInReports,
+        excludeFromBonus: editExcludeFromBonus,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -303,6 +307,11 @@ export default function StoresPage() {
                       {s.hideInReports ? (
                         <span className="ml-2 rounded bg-indigo-50 px-1 text-xs text-indigo-700">
                           報表隱藏
+                        </span>
+                      ) : null}
+                      {s.excludeFromBonus ? (
+                        <span className="ml-2 rounded bg-amber-50 px-1 text-xs text-amber-700">
+                          排除獎金計算
                         </span>
                       ) : null}
                     </td>
@@ -477,6 +486,16 @@ export default function StoresPage() {
                   onChange={(e) => setEditHideInReports(e.target.checked)}
                 />
                 <span className="text-sm text-slate-700">報表隱藏（圖表 / 工效比 / 出勤 / 營收）</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editExcludeFromBonus}
+                  onChange={(e) => setEditExcludeFromBonus(e.target.checked)}
+                />
+                <span className="text-sm text-slate-700">
+                  排除獎金計算（達標獎金／營運成果獎金池皆不計，與報表隱藏各自獨立）
+                </span>
               </label>
             </div>
             <div className="mt-4 flex justify-end gap-2">

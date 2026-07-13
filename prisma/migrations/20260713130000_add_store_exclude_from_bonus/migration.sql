@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Store"
+ADD COLUMN IF NOT EXISTS "excludeFromBonus" BOOLEAN NOT NULL DEFAULT false;

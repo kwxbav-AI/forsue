@@ -47,6 +47,7 @@ export async function GET() {
         department: s.department,
         isActive: s.isActive,
         hideInReports: (s as any).hideInReports ?? false,
+        excludeFromBonus: (s as any).excludeFromBonus ?? false,
         aliases: aliasCodes,
       };
     })

@@ -19,6 +19,7 @@ model Store {
   department          String?
   isActive            Boolean              @default(true)
   hideInReports       Boolean              @default(false) // 報表/績效頁隱藏（不影響門市啟用/資料對應）
+  excludeFromBonus    Boolean              @default(false) // 排除獎金計算（達標獎金＋營運成果獎金池，皆不貢獻也不分潤），與 hideInReports 各自獨立
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   employees           Employee[]
