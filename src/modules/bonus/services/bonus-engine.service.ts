@@ -62,6 +62,14 @@ function isExcludedFromOpsPool(emp: { employeeCode: string; position: string | n
   return false;
 }
 
+// ─── 調度事由（remark 用 "/" 分隔事由與備註，取第一段）───────────────────────
+function extractDispatchReason(remark: string | null): string {
+  if (!remark) return "";
+  const s = remark.trim();
+  if (!s) return "";
+  return s.split("/")[0].trim();
+}
+
 // ─── 是否為兼職 ────────────────────────────────────────────────────────────────
 function isPartTime(shiftType: string | null | undefined, scheduledHours: number): boolean {
   if (shiftType?.startsWith("FT-")) return false;
@@ -230,11 +238,17 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       const originalStoreId = attList[0].originalStoreId;
       const empNhRatio = newHireRatio(employeeMap.get(employeeId)?.hireDate ?? null, cur);
 
-      const calcH = calcBonusHours(totalActual, scheduledHours);
-
       // 判斷門市達標狀態
       const dispList = dispByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
       const hasDispatch = dispList.length > 0;
+      const dispatchReason = hasDispatch ? extractDispatchReason(dispList[0].remark) : "";
+      const isBackofficeSupport = dispatchReason === "後勤支援門市";
+
+      // 後勤支援門市：獎金比例用「調度時數」而非整天出勤工時（支援店只算實際支援的時間）
+      const hoursForBonusRatio = isBackofficeSupport
+        ? Number(dispList[0].actualHours ?? dispList[0].dispatchHours ?? 0)
+        : totalActual;
+      const calcH = calcBonusHours(hoursForBonusRatio, scheduledHours);
 
       let storeId = originalStoreId ?? (employeeMap.get(employeeId)?.defaultStoreId ?? "");
       let storeName = "";
@@ -384,14 +398,16 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     }
 
     // 計算今日營運成果獎金池
-    // 池子 = 72 × (達標門市的上班人數)
-    const reachedStores = new Set<string>();
+    // 池子 = 72 × 上班人數，超標門市加倍（144）；人數採「調度後實際上班門市」
+    const storeTargetInfo = new Map<string, { isTargetMet: boolean; isExceeded: boolean }>();
     for (const p of performanceDailies) {
-      if (p.workDate.toISOString().slice(0, 10) === dateStr && p.isTargetMet) {
-        reachedStores.add(p.storeId);
-      }
+      if (p.workDate.toISOString().slice(0, 10) !== dateStr) continue;
+      const isExceeded =
+        weekday >= 1 && weekday <= 5 && Number(p.efficiencyRatio) >= EXCEED_THRESHOLD;
+      storeTargetInfo.set(p.storeId, { isTargetMet: p.isTargetMet, isExceeded });
     }
-    let poolWorkers = 0;
+
+    const poolHeadcountByStore = new Map<string, number>();
     for (const employeeId of todayAttendees) {
       const attList = attByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
       // 請假等 0 工時的出勤紀錄不算「有上班」，不計入池子人數
@@ -399,10 +415,24 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       if (totalActual <= 0) continue;
       // 短期工讀、A/B/C 開頭員編不計入池子人數
       if (isExcludedFromOpsPool(employeeMap.get(employeeId))) continue;
+
       const origStoreId = attList[0]?.originalStoreId ?? "";
-      if (reachedStores.has(origStoreId)) poolWorkers++;
+      const empDispList = dispByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
+      // 調撥後的實際上班門市：有調度就算支援店，沒有才算原門市
+      const actualStoreId =
+        empDispList.length > 0 ? (empDispList[0].toStoreId ?? origStoreId) : origStoreId;
+
+      poolHeadcountByStore.set(actualStoreId, (poolHeadcountByStore.get(actualStoreId) ?? 0) + 1);
     }
-    dailyOpsPool.set(dateStr, poolWorkers * OPS_BONUS_PER_PERSON);
+
+    let dailyPoolTotal = 0;
+    poolHeadcountByStore.forEach((headcount, storeId) => {
+      const info = storeTargetInfo.get(storeId);
+      if (!info?.isTargetMet) return;
+      const multiplier = info.isExceeded ? 2 : 1;
+      dailyPoolTotal += OPS_BONUS_PER_PERSON * multiplier * headcount;
+    });
+    dailyOpsPool.set(dateStr, dailyPoolTotal);
 
     // 記錄計算工時
     const dailyCalcEntry = new Map<string, number>();
