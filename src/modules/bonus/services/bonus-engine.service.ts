@@ -62,14 +62,6 @@ function isExcludedFromOpsPool(emp: { employeeCode: string; position: string | n
   return false;
 }
 
-// ─── 調度事由（remark 用 "/" 分隔事由與備註，取第一段）───────────────────────
-function extractDispatchReason(remark: string | null): string {
-  if (!remark) return "";
-  const s = remark.trim();
-  if (!s) return "";
-  return s.split("/")[0].trim();
-}
-
 // ─── 是否為兼職 ────────────────────────────────────────────────────────────────
 function isPartTime(shiftType: string | null | undefined, scheduledHours: number): boolean {
   if (shiftType?.startsWith("FT-")) return false;
@@ -248,8 +240,11 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       // 判斷門市達標狀態
       const dispList = dispByDateEmployee.get(`${dateStr}_${employeeId}`) ?? [];
       const hasDispatch = dispList.length > 0;
-      const dispatchReason = hasDispatch ? extractDispatchReason(dispList[0].remark) : "";
-      const isBackofficeSupport = dispatchReason === "後勤支援門市";
+      // 不看調度事由文字（用詞容易不一致，例如「人力支援」vs「後勤支援門市」），
+      // 只看這個人的原門市是不是後勤/報表隱藏門市：是的話，被調度出去支援時
+      // 一律用調度時數算比例，不用整天出勤工時
+      const homeStoreId = originalStoreId ?? (employeeMap.get(employeeId)?.defaultStoreId ?? "");
+      const isBackofficeSupport = hasDispatch && hiddenStoreIds.has(homeStoreId);
 
       // 後勤支援門市：獎金比例用「調度時數」而非整天出勤工時（支援店只算實際支援的時間）
       const hoursForBonusRatio = isBackofficeSupport
@@ -502,10 +497,9 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const dailyMap = dailyBonusByEmployee.get(employeeId) ?? new Map<string, BonusDailyDetail>();
     const details = Array.from(dailyMap.values()).sort((a, b) => a.workDate.localeCompare(b.workDate));
 
-    // 後勤/報表隱藏門市當天沒有調度支援的工時，跟任何獎金計算都無關，不計入顯示總工時
-    const totalCalcHours = details
-      .filter((d) => d.countsTowardHours)
-      .reduce((s, d) => s + d.calcHours, 0);
+    // 顯示的計算工時直接用「實際餵進獎金池分配公式」的工時，跟 operationsBonus 用同一份數字，
+    // 避免顯示欄位跟實際分配各自算一次、彼此漂移
+    const totalCalcHours = employeeMonthlyHours.get(employeeId) ?? 0;
     // 新人比例已於逐日計算 dailyBonus 時套用（見上方迴圈），此處加總即為套用後金額
     const targetBonus = details.reduce((s, d) => s + d.dailyBonus, 0);
     const operationsBonus = totalOpsBonus.get(employeeId) ?? 0;
