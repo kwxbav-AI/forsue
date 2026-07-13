@@ -41,6 +41,7 @@ const DISPATCH_REASONS = [
   "跨店學習",
   "後勤支援門市",
   "門市支援客服",
+  "督導支援",
 ] as const;
 
 function minutesDiff(start: string, end: string): number | null {
@@ -227,9 +228,10 @@ export default function DispatchesPage() {
         endDate: form.endDate,
         startTime: form.startTime,
         endTime: form.endTime,
-        remark: form.note
-          ? `${form.reason} / ${form.note}`
-          : form.reason,
+        remark: (() => {
+          const tag = form.reason === "督導支援" ? `${form.reason}(X)` : form.reason;
+          return form.note ? `${tag} / ${form.note}` : tag;
+        })(),
       }),
     });
     const data = await res.json().catch(() => ({}));
