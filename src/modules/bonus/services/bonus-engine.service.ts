@@ -32,13 +32,8 @@ const DEFAULT_MULTIPLIERS: Record<string, number> = {
 
 // ─── 工時計算規則 (Rule 7) ─────────────────────────────────────────────────────
 function calcBonusHours(actualHours: number, scheduledHours: number): number {
-  let rounded: number;
-  if (actualHours + 0.1 > 8) {
-    rounded = 8;
-  } else {
-    rounded = Math.ceil(actualHours * 2) / 2;
-  }
-  return Math.min(rounded, scheduledHours);
+  const effective = actualHours + 0.1 > 8 ? 8 : actualHours;
+  return Math.min(effective, scheduledHours);
 }
 
 // ─── 新人比例 (Rule 2)：以到職日起算的實際天數判斷（0-29天50%、30-59天80%），
@@ -245,6 +240,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       // 一律用調度時數算比例，不用整天出勤工時
       const homeStoreId = originalStoreId ?? (employeeMap.get(employeeId)?.defaultStoreId ?? "");
       const isBackofficeSupport = hasDispatch && hiddenStoreIds.has(homeStoreId);
+      // 獎金池相關判斷（後勤/報表隱藏、排除獎金計算門市）一律用「調度後實際支援店」，
+      // 不要用 storeId（storeId 只有達標當天才會換成支援店，沒達標時仍是原門市，
+      // 會誤把沒達標的支援日當成後勤自己的門市而整天被排除）
+      const poolStoreId = hasDispatch ? (dispList[0].toStoreId ?? homeStoreId) : homeStoreId;
 
       // 後勤支援門市：獎金比例用「調度時數」而非整天出勤工時（支援店只算實際支援的時間）
       const hoursForBonusRatio = isBackofficeSupport
@@ -321,7 +320,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
 
       // 後勤/報表隱藏門市，當天沒有調度支援 → 這天工時跟任何獎金計算都無關
       // （不是「未達標領 0」，是根本不算），計算工時彙總要排除，避免顯示誤導
-      const countsTowardHours = !hiddenStoreIds.has(storeId) || hasDispatch;
+      const countsTowardHours = !hiddenStoreIds.has(poolStoreId) || hasDispatch;
 
       if (!isTargetMet || calcH === 0) {
         // 未達標或無工時 → 0 獎金，但仍記錄
@@ -347,7 +346,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         if (
           countsTowardHours &&
           !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
-          !opsPoolExcludedStoreIds.has(storeId)
+          !opsPoolExcludedStoreIds.has(poolStoreId)
         ) {
           dailyCalcHoursMap.set(employeeId, calcH);
         }
@@ -397,11 +396,10 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
 
       // 計入 ops 池工時：後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編、台北區不參與池子分配
-      const effectiveStoreForPool = storeId;
       if (
         countsTowardHours &&
         !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
-        !opsPoolExcludedStoreIds.has(effectiveStoreForPool)
+        !opsPoolExcludedStoreIds.has(poolStoreId)
       ) {
         dailyCalcHoursMap.set(employeeId, calcH);
       }
