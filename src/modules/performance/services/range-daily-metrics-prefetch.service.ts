@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import {
   businessDayWorkDateFromDate,
   formatDateOnly,
+  formatDateOnlyTaipei,
   parseDateOnlyUTC,
   toDateRange,
   toStartOfDay,
@@ -220,7 +221,7 @@ export async function buildRangeDailyMetricsPrefetch(
 
   const revenueByYmdStore = new Map<string, Map<string, number>>();
   for (const r of revenueRows) {
-    const ymd = formatDateOnly(r.revenueDate);
+    const ymd = formatDateOnlyTaipei(r.revenueDate);
     const rev = Number(r.revenueAmount ?? 0);
     if (rev <= 0) continue;
     let byStore = revenueByYmdStore.get(ymd);
