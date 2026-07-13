@@ -145,7 +145,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         where: { yearMonth },
         select: { employeeId: true, accountabilityRatio: true },
       }),
-      prisma.store.findMany({ select: { id: true, hideInReports: true } }),
+      prisma.store.findMany({ select: { id: true, hideInReports: true, department: true } }),
     ]);
 
   // 建立查找索引
@@ -163,6 +163,11 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
 
   // 報表隱藏門市（後勤/非門市部門）：這些門市的員工不計算達標獎金
   const hiddenStoreIds = new Set<string>(allStores.filter((s) => s.hideInReports).map((s) => s.id));
+
+  // 台北區門市不計入營運成果獎金池（不論該店是否達標，都不貢獻池子金額）
+  const opsPoolExcludedStoreIds = new Set<string>(
+    allStores.filter((s) => s.department?.includes("台北區")).map((s) => s.id)
+  );
 
   // 新店查找：storeId → 是否在本月保障期內
   const newStoreIds = new Set<string>();
@@ -336,10 +341,11 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         };
         if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
         dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
-        // 後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編不參與 ops 池
+        // 後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編、台北區不參與 ops 池
         if (
           (!hiddenStoreIds.has(storeId) || hasDispatch) &&
-          !isExcludedFromOpsPool(employeeMap.get(employeeId))
+          !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
+          !opsPoolExcludedStoreIds.has(storeId)
         ) {
           dailyCalcHoursMap.set(employeeId, calcH);
         }
@@ -387,11 +393,12 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       if (!dailyBonusByEmployee.has(employeeId)) dailyBonusByEmployee.set(employeeId, new Map());
       dailyBonusByEmployee.get(employeeId)!.set(dateStr, detail);
 
-      // 計入 ops 池工時：後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編不參與池子分配
+      // 計入 ops 池工時：後勤門市員工（未調度）、短期工讀、A/B/C 開頭員編、台北區不參與池子分配
       const effectiveStoreForPool = storeId;
       if (
         (!hiddenStoreIds.has(effectiveStoreForPool) || hasDispatch) &&
-        !isExcludedFromOpsPool(employeeMap.get(employeeId))
+        !isExcludedFromOpsPool(employeeMap.get(employeeId)) &&
+        !opsPoolExcludedStoreIds.has(effectiveStoreForPool)
       ) {
         dailyCalcHoursMap.set(employeeId, calcH);
       }
@@ -402,6 +409,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     const storeTargetInfo = new Map<string, { isTargetMet: boolean; isExceeded: boolean }>();
     for (const p of performanceDailies) {
       if (p.workDate.toISOString().slice(0, 10) !== dateStr) continue;
+      if (opsPoolExcludedStoreIds.has(p.storeId)) continue; // 台北區門市不貢獻獎金池
       const isExceeded =
         weekday >= 1 && weekday <= 5 && Number(p.efficiencyRatio) >= EXCEED_THRESHOLD;
       storeTargetInfo.set(p.storeId, { isTargetMet: p.isTargetMet, isExceeded });
