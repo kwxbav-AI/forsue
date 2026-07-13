@@ -71,7 +71,8 @@ export default function DispatchesPage() {
   const [editRow, setEditRow] = useState<DispatchRow | null>(null);
   const [editActualHours, setEditActualHours] = useState("");
   const [editConfirmStatus, setEditConfirmStatus] = useState<string>("待確認");
-  const [editRemark, setEditRemark] = useState("");
+  const [editReason, setEditReason] = useState<string>(DISPATCH_REASONS[0]);
+  const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -285,7 +286,17 @@ export default function DispatchesPage() {
     setEditRow(row);
     setEditActualHours(row.actualHours != null ? String(row.actualHours) : "");
     setEditConfirmStatus(row.confirmStatus === "已確認" ? "已確認" : "待確認");
-    setEditRemark(row.remark ?? "");
+    // 解析 remark："事由(X) / 備註" 或 "事由 / 備註" 或純事由
+    const raw = row.remark ?? "";
+    const slashIdx = raw.indexOf(" / ");
+    const reasonRaw = slashIdx >= 0 ? raw.slice(0, slashIdx) : raw;
+    const note = slashIdx >= 0 ? raw.slice(slashIdx + 3) : "";
+    const reasonBase = reasonRaw.replace(/\(X\)$/, "").trim();
+    const matched = (DISPATCH_REASONS as readonly string[]).includes(reasonBase)
+      ? reasonBase
+      : DISPATCH_REASONS[0];
+    setEditReason(matched);
+    setEditNote(note);
   }
 
   async function saveEdit() {
@@ -296,7 +307,7 @@ export default function DispatchesPage() {
       setMessageIsError(true);
       return;
     }
-    const isBackoffice = (editRow.remark ?? "").trim().startsWith("後勤支援門市");
+    const isBackoffice = editReason === "後勤支援門市";
     if (isBackoffice && editConfirmStatus === "已確認" && (actual == null || actual <= 0)) {
       setMessage("後勤支援門市在「已確認」時必須填寫調度工時（> 0）");
       setMessageIsError(true);
@@ -311,7 +322,10 @@ export default function DispatchesPage() {
       body: JSON.stringify({
         actualHours: actual,
         confirmStatus: editConfirmStatus,
-        remark: editRemark.trim() || null,
+        remark: (() => {
+          const tag = editReason === "督導支援" ? `${editReason}(X)` : editReason;
+          return editNote.trim() ? `${tag} / ${editNote.trim()}` : tag;
+        })(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -721,7 +735,7 @@ export default function DispatchesPage() {
             <label className="mb-2 block">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">
-                  {(editRow.remark ?? "").trim().startsWith("後勤支援門市") && editConfirmStatus === "已確認"
+                  {editReason === "後勤支援門市" && editConfirmStatus === "已確認"
                     ? "調度工時（必填）"
                     : "實際時數"}
                 </span>
@@ -739,7 +753,7 @@ export default function DispatchesPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
               />
               <p className="mt-1 text-xs text-slate-400">
-                {(editRow.remark ?? "").trim().startsWith("後勤支援門市") && editConfirmStatus === "已確認"
+                {editReason === "後勤支援門市" && editConfirmStatus === "已確認"
                   ? "後勤支援門市：此處填寫調度工時；原店扣全額、支援店以 70% 計入。"
                   : "留空時以「預申請時數」計算（非出勤時數）；填寫後績效以實際時數計算。"}
               </p>
@@ -755,14 +769,26 @@ export default function DispatchesPage() {
                 <option value="已確認">已確認</option>
               </select>
             </label>
+            <label className="mb-2 block">
+              <span className="text-sm text-slate-600">事由</span>
+              <select
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                {DISPATCH_REASONS.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </label>
             <label className="mb-4 block">
-              <span className="text-sm text-slate-600">事由與備註</span>
+              <span className="text-sm text-slate-600">備註</span>
               <input
                 type="text"
-                value={editRemark}
-                onChange={(e) => setEditRemark(e.target.value)}
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                placeholder="會直接覆蓋下方表格中的備註內容"
+                placeholder="選填：說明支援原因、特殊情況"
               />
             </label>
             <div className="flex justify-end gap-2">
