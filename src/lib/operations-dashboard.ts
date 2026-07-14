@@ -207,7 +207,7 @@ export function inferRetailRegion(
 
   if (dept) {
 
-    const m = dept.match(/^(桃園區|宜蘭區)/);
+    const m = dept.match(/^(桃園區|宜蘭區|台北區)/);
 
     if (m) return m[1];
 

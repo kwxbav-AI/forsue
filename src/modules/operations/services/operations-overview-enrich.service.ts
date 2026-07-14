@@ -15,6 +15,7 @@ import {
 } from "@/lib/operations-dashboard";
 import {
   fetchChartsPerStore,
+  filterChartsByCatalogRegions,
   fetchDualRegionChartTotals,
   fetchRegionChartTotals,
   fetchDualRegionRevenueTotal,
@@ -246,15 +247,21 @@ export async function buildEnrichedOverviewStores(input: {
   const { startYmd, endYmd, region } = input;
 
   const filterStores = await listPerformanceStoresForFilter();
-  const scopedFilterStores =
-    region ? filterStores.filter((s) => s.region === region) : filterStores;
+  const scopedFilterStores = region
+    ? filterStores.filter((s) => s.region === region)
+    : filterStores.filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region));
   const scopedStoreIds = scopedFilterStores.map((s) => s.id);
 
-  const [perStore, metDaysMap, perfToRetail] = await Promise.all([
+  const [allPerStore, metDaysMap, perfToRetail] = await Promise.all([
     fetchChartsPerStore(startYmd, endYmd),
     countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
     mapPerformanceToRetailStore(scopedStoreIds),
   ]);
+
+  // 無 region 時（營運部Dashboard）限縮到桃園＋宜蘭，避免台北區滲入
+  const perStore = region
+    ? allPerStore
+    : filterChartsByCatalogRegions(allPerStore, DUAL_OPS_REGIONS);
 
   const retailIds = [
     ...new Set([...perfToRetail.values()].map((v) => v.retailId).filter(Boolean)),
@@ -267,7 +274,7 @@ export async function buildEnrichedOverviewStores(input: {
       startYmd,
       endYmd,
       filterLabel: region || "全部",
-      storeCount: filterStores.length,
+      storeCount: scopedFilterStores.length,
       selection: region ? { region } : {},
       applyOpsCatalogWhenEmpty: true,
       skipDailyTrend: true,
