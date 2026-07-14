@@ -170,6 +170,24 @@ function resolveStoreIdFromStoreText(
   return contains?.id ?? null;
 }
 
+async function getDefaultWorkHoursByDepartment(): Promise<Map<string, number>> {
+  const key = "attendance.defaultWorkHours.byDepartment";
+  const row = await prisma.appSetting.findUnique({
+    where: { key },
+    select: { valueJson: true },
+  });
+  const raw = row?.valueJson as unknown;
+  const result = new Map<string, number>();
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [dept, hours] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof hours === "number" && hours > 0) {
+        result.set(normalizeDepartment(dept), hours);
+      }
+    }
+  }
+  return result;
+}
+
 async function getExcludedDepartments(): Promise<string[]> {
   const key = "attendance.location.excludedDepartments";
   const row = await prisma.appSetting.findUnique({
@@ -388,7 +406,10 @@ export async function uploadAttendance(
   });
   const storeCodeMap = await buildStoreCodeLookup();
 
-  const excludedDepartments = await getExcludedDepartments();
+  const [excludedDepartments, defaultWorkHoursByDept] = await Promise.all([
+    getExcludedDepartments(),
+    getDefaultWorkHoursByDepartment(),
+  ]);
 
   // 先建立員工，後面可一次抓同日調度（避免每列查 DB）
   const employeeIdByCode = new Map<string, string>();
@@ -499,13 +520,20 @@ export async function uploadAttendance(
       dispatchToStoreId,
     });
 
+    // 無打卡紀錄且工時為 0 時，套用部門預設工時（如福德店正職 8 小時）
+    let finalWorkHours = row.workHours.toNumber();
+    if (finalWorkHours === 0 && !row.clockInInfoRaw && !row.clockOutInfoRaw && row.department) {
+      const deptDefault = defaultWorkHoursByDept.get(normalizeDepartment(row.department));
+      if (deptDefault != null) finalWorkHours = deptDefault;
+    }
+
     await tx.attendanceRecord.create({
       data: {
         workDate,
         employeeId,
         originalStoreId,
         department: row.department,
-        workHours: row.workHours.toNumber(),
+        workHours: finalWorkHours,
         scheduledWorkHours: row.scheduledWorkHours ? row.scheduledWorkHours.toNumber() : null,
         startTime: row.startTime,
         endTime: row.endTime,
