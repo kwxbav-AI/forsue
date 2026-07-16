@@ -449,13 +449,42 @@ export async function uploadAttendance(
     }
   }
 
+  // replaceEntireDates 時，以「日期 × 部門/門市」為範圍刪除，
+  // 確保換人後舊員工記錄也被清掉，同時不影響其他門市的資料。
+  // （若只刪「檔案內員工 × 日期」，舊員工不在新檔案裡就不會被刪。）
+  const coveredDepartments = [...new Set(
+    parsed.data.map((r) => r.department?.trim()).filter((d): d is string => Boolean(d))
+  )];
+  const coveredStoreIds = [...new Set(
+    parsed.data.flatMap((r) => {
+      const ids: string[] = [];
+      if (r.storeCode) {
+        const sid = storeCodeMap.get(r.storeCode.trim());
+        if (sid) ids.push(sid);
+      }
+      if (r.department) {
+        const sid = resolveStoreIdFromDepartment(r.department, storesForDept);
+        if (sid) ids.push(sid);
+      }
+      return ids;
+    })
+  )];
+
   await prisma.$transaction(async (tx) => {
     if (replaceEntireDates && uniqueDates.length > 0) {
-      // 只刪除「本次檔案涉及的員工」在那幾天的記錄，避免刪除其他門市的資料
-      const uploadEmployeeIds = Array.from(new Set(rowEmployeeIds));
-      await tx.attendanceRecord.deleteMany({
-        where: { workDate: { in: uniqueDates }, employeeId: { in: uploadEmployeeIds } },
-      });
+      // 刪除「這批日期 × 這批部門/門市」的全部記錄，避免換人後舊員工記錄殘留
+      const orConditions: object[] = [];
+      if (coveredStoreIds.length > 0) {
+        orConditions.push({ originalStoreId: { in: coveredStoreIds } });
+      }
+      if (coveredDepartments.length > 0) {
+        orConditions.push({ department: { in: coveredDepartments } });
+      }
+      if (orConditions.length > 0) {
+        await tx.attendanceRecord.deleteMany({
+          where: { workDate: { in: uniqueDates }, OR: orConditions },
+        });
+      }
     } else if (!replaceEntireDates && empDatePairs.size > 0) {
       await tx.attendanceRecord.deleteMany({
         where: {
