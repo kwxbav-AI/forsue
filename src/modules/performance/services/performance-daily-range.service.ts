@@ -111,14 +111,18 @@ async function addBulkRevenueBeforeAttendanceStart(
 /** 依上傳營收／出勤即時加總（與重算公式相同） */
 async function computeEngineRangeRows(
   effStart: string,
-  effEnd: string
+  effEnd: string,
+  opts: { storeIds?: string[] } = {}
 ): Promise<PerformanceDailyRangeRow[]> {
   if (effStart > effEnd) return [];
 
   const attendanceStartYmd = formatDateOnly(await getAttendanceDataStartDate());
 
+  const bypassHideFilter = opts.storeIds != null;
   const stores = await prisma.store.findMany({
-    where: { hideInReports: false },
+    where: bypassHideFilter
+      ? { id: { in: opts.storeIds! } }
+      : { hideInReports: false },
     select: { id: true, name: true },
   });
 
@@ -162,11 +166,11 @@ async function computeEngineRangeRows(
   let dailyMaps: Map<string, { revenue: number; laborHours: number }>[];
   if (dayStrs.length > 0) {
     const prefetch = await buildRangeDailyMetricsPrefetch(dayLoopStart, effEnd, {
-      reportVisibleOnly: true,
+      reportVisibleOnly: !bypassHideFilter,
     });
     dailyMaps = await mapWithConcurrency(dayStrs, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
       computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch, {
-        reportVisibleOnly: true,
+        reportVisibleOnly: !bypassHideFilter,
       })
     );
   } else {
@@ -207,7 +211,7 @@ async function computeEngineRangeRows(
       const row = accum.get(id);
       const store = resolvedById.get(id);
       if (!row) continue;
-      if (!store || store.hideInReports) {
+      if (!store || (!bypassHideFilter && store.hideInReports)) {
         accum.delete(id);
         continue;
       }
@@ -243,6 +247,25 @@ export async function aggregateStoreMetricsForRange(
   );
 
   return computeEngineRangeRows(effStart, effEnd);
+}
+
+/**
+ * 同 aggregateStoreMetricsForRange，但以指定門市 ID 列表為範圍，
+ * 繞過 hideInReports 篩選，供北區 Dashboard 使用。
+ */
+export async function aggregateStoreMetricsForStoreIds(
+  startDate: string,
+  endDate: string,
+  storeIds: string[]
+): Promise<PerformanceDailyRangeRow[]> {
+  if (storeIds.length === 0) return [];
+  const revenueStartYmd = getRevenueMetricsDataStartYmd();
+  const { startDate: effStart, endDate: effEnd } = clampMetricsDateRange(
+    startDate,
+    endDate,
+    revenueStartYmd
+  );
+  return computeEngineRangeRows(effStart, effEnd, { storeIds });
 }
 
 /** @deprecated 請改用 aggregateStoreMetricsForRange */

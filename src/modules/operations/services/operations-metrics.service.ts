@@ -12,6 +12,7 @@ import {
 } from "@/lib/operations-dashboard";
 import {
   aggregateStoreMetricsForRange,
+  aggregateStoreMetricsForStoreIds,
   sumPerformanceDailyRangeRows,
 } from "@/modules/performance/services/performance-daily-range.service";
 
@@ -65,6 +66,16 @@ export async function fetchChartsPerStore(
   const data = rows.map(toChartsRow);
   chartsPerStoreCache.set(key, { expiresAt: now + CHARTS_CACHE_MS, data });
   return data;
+}
+
+/** 同 fetchChartsPerStore，但以指定門市 ID 為範圍，繞過 hideInReports 篩選（供北區 Dashboard） */
+export async function fetchChartsPerStoreForStoreIds(
+  startDate: string,
+  endDate: string,
+  storeIds: string[]
+): Promise<ChartsPerStoreRow[]> {
+  const rows = await aggregateStoreMetricsForStoreIds(startDate, endDate, storeIds);
+  return rows.map(toChartsRow);
 }
 
 /** YoY 去年同期（PerformanceDaily 快照；去年通常無即時上傳） */
@@ -428,6 +439,52 @@ export async function listPerformanceStoresForFilter() {
   }
 
   return result;
+}
+
+/** 同 listPerformanceStoresForFilter，但只回傳台北區門市，且不排除 hideInReports 門市 */
+export async function listNorthRegionPerformanceStores() {
+  const northGroup = OPS_REGION_CATALOG.find((g) => g.region === "台北區");
+  if (!northGroup) return [];
+
+  const catalogKeys = new Set(northGroup.storeNames.map(normalizeStoreKey));
+  const stores = await prisma.store.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, department: true },
+  });
+
+  const candidatesByKey = new Map<string, typeof stores>();
+  for (const s of stores) {
+    let matchedKey: string | null = null;
+    const normalized = normalizeStoreKey(s.name);
+    if (catalogKeys.has(normalized)) {
+      matchedKey = normalized;
+    } else {
+      for (const catalogKey of catalogKeys) {
+        if (storeNameMatchesCatalogKey(s.name, catalogKey)) {
+          matchedKey = catalogKey;
+          break;
+        }
+      }
+    }
+    if (!matchedKey) continue;
+    const list = candidatesByKey.get(matchedKey) ?? [];
+    list.push(s);
+    candidatesByKey.set(matchedKey, list);
+  }
+
+  return northGroup.storeNames
+    .map((catalogName) => {
+      const key = normalizeStoreKey(catalogName);
+      const store = pickCatalogStore(candidatesByKey.get(key) ?? [], catalogName);
+      if (!store) return null;
+      return {
+        id: store.id,
+        storeName: formatOpsStoreLabel(store.name),
+        region: "台北區",
+        catalogKey: catalogName,
+      };
+    })
+    .filter(Boolean) as Array<{ id: string; storeName: string; region: string; catalogKey: string }>;
 }
 
 export function getOpsCatalogStoreCount(region?: string): number {

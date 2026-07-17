@@ -18,11 +18,13 @@ import {
 } from "@/lib/operations-dashboard";
 import {
   fetchChartsPerStore,
+  fetchChartsPerStoreForStoreIds,
   filterChartsByCatalogRegions,
   fetchDualRegionChartTotals,
   fetchRegionChartTotals,
   fetchDualRegionRevenueTotal,
   listPerformanceStoresForFilter,
+  listNorthRegionPerformanceStores,
 } from "@/modules/operations/services/operations-metrics.service";
 import { sumTargetByMonthForPerformanceStores } from "@/modules/operations/services/operations-revenue-bulk.service";
 import { formatDateOnlyTaipei } from "@/lib/date";
@@ -208,18 +210,14 @@ async function buildNorthRegionKpiMetricsUncached(startYmd: string, endYmd: stri
   const priorStart = shiftYear(startYmd, -1);
   const priorEnd = shiftYear(endYmd, -1);
 
-  const allFilterStores = await listPerformanceStoresForFilter();
-  const northStores = allFilterStores.filter((s) => s.region === "台北區");
+  const northStores = await listNorthRegionPerformanceStores();
   const northStoreIds = northStores.map((s) => s.id);
 
-  const [allCurrentCharts, allPriorCharts, totalTarget] = await Promise.all([
-    fetchChartsPerStore(startYmd, endYmd),
-    fetchChartsPerStore(priorStart, priorEnd),
+  const [northCurrentCharts, northPriorCharts, totalTarget] = await Promise.all([
+    fetchChartsPerStoreForStoreIds(startYmd, endYmd, northStoreIds),
+    fetchChartsPerStoreForStoreIds(priorStart, priorEnd, northStoreIds),
     sumFullMonthTargetForPerformanceStores(startYmd, endYmd, northStoreIds),
   ]);
-
-  const northCurrentCharts = allCurrentCharts.filter((c) => northStoreIds.includes(c.storeId));
-  const northPriorCharts = allPriorCharts.filter((c) => northStoreIds.includes(c.storeId));
 
   const currentRevenue = northCurrentCharts.reduce((a, c) => a + c.revenueSum, 0);
   const priorRevenue = northPriorCharts.reduce((a, c) => a + c.revenueSum, 0);
@@ -296,15 +294,20 @@ export async function buildEnrichedOverviewStores(input: {
   region?: string;
 }) {
   const { startYmd, endYmd, region } = input;
+  const isNorth = region === "台北區";
 
-  const filterStores = await listPerformanceStoresForFilter();
+  const filterStores = isNorth
+    ? await listNorthRegionPerformanceStores()
+    : await listPerformanceStoresForFilter();
   const scopedFilterStores = region
     ? filterStores.filter((s) => s.region === region)
     : filterStores.filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region));
   const scopedStoreIds = scopedFilterStores.map((s) => s.id);
 
   const [allPerStore, metDaysMap, perfToRetail] = await Promise.all([
-    fetchChartsPerStore(startYmd, endYmd),
+    isNorth
+      ? fetchChartsPerStoreForStoreIds(startYmd, endYmd, scopedStoreIds)
+      : fetchChartsPerStore(startYmd, endYmd),
     countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
     mapPerformanceToRetailStore(scopedStoreIds),
   ]);
