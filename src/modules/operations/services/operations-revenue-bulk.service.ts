@@ -184,6 +184,37 @@ async function collectRetailIdsForTargets(
   return ids;
 }
 
+/** 回傳 retailId → perfStoreId 對應表（供 per-store 拆分使用） */
+async function buildRetailToPerfStoreMap(
+  perfStoreIds: string[],
+  perfToRetail: Awaited<ReturnType<typeof mapPerformanceToRetailStore>>
+): Promise<Map<string, string>> {
+  const retailToPerfId = new Map<string, string>();
+  for (const [perfId, { retailId }] of perfToRetail) {
+    if (retailId) retailToPerfId.set(retailId, perfId);
+  }
+  const [perfStores, activeRetail] = await Promise.all([
+    prisma.store.findMany({
+      where: { id: { in: perfStoreIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.retailStore.findMany({
+      where: { isActive: true },
+      select: { id: true, storeName: true },
+    }),
+  ]);
+  const retailIdByNameKey = new Map(
+    activeRetail.map((r) => [normalizeStoreKey(r.storeName), r.id])
+  );
+  for (const s of perfStores) {
+    const rid =
+      perfToRetail.get(s.id)?.retailId ??
+      retailIdByNameKey.get(normalizeStoreKey(s.name));
+    if (rid && !retailToPerfId.has(rid)) retailToPerfId.set(rid, s.id);
+  }
+  return retailToPerfId;
+}
+
 /** 指定績效門市各月目標合計 */
 export async function sumTargetByMonthForPerformanceStores(
   startYmd: string,
@@ -274,6 +305,34 @@ export function sumRevenueTotalsByMonth(
     }
   }
   return monthTotals;
+}
+
+/** 各績效門市的整月目標（不攤提）→ Map<perfStoreId, total> */
+export async function sumFullMonthTargetByPerformanceStore(
+  startYmd: string,
+  endYmd: string,
+  perfStoreIds: string[]
+): Promise<Map<string, number>> {
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  if (slices.length === 0 || perfStoreIds.length === 0) return new Map();
+  const perfToRetail = await mapPerformanceToRetailStore(perfStoreIds);
+  const retailToPerfId = await buildRetailToPerfStoreMap(perfStoreIds, perfToRetail);
+  const retailIds = [...retailToPerfId.keys()];
+  if (retailIds.length === 0) return new Map();
+  const targetRows = await prisma.storeTarget.findMany({
+    where: {
+      storeId: { in: retailIds },
+      OR: slices.map(({ year, month }) => ({ year, month })),
+    },
+    select: { storeId: true, salesTarget: true },
+  });
+  const result = new Map<string, number>();
+  for (const row of targetRows) {
+    const perfId = retailToPerfId.get(row.storeId);
+    if (!perfId) continue;
+    result.set(perfId, (result.get(perfId) ?? 0) + Number(row.salesTarget ?? 0));
+  }
+  return result;
 }
 
 /** 指定門市各月營收加總（單次 DB） */

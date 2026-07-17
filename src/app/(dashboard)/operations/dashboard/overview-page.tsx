@@ -59,7 +59,10 @@ type OverviewStore = {
   region: string;
   revenue: number;
   revenueTarget: number | null;
+  fullMonthTarget?: number | null;
   revenueAchievementRate: number | null;
+  yoyGrowthRate?: number | null;
+  priorYearRevenue?: number | null;
   laborHours: number;
   efficiencyRatio: number | null;
   targetMetDays: number;
@@ -122,6 +125,7 @@ type OverviewData = {
     avgOrderValue: number | null;
     daysWithData: number;
   };
+  northKpiMetrics?: NorthKpiMetrics | null;
 };
 
 type KpiMetrics = {
@@ -135,6 +139,8 @@ type KpiMetrics = {
   periodStartDate?: string;
   periodEndDate?: string;
 };
+
+type NorthKpiMetrics = KpiMetrics;
 
 function formatMoney(n: number) {
   return Math.round(n).toLocaleString("zh-TW");
@@ -248,12 +254,15 @@ function StoreStatusTooltip({
 }
 
 export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: string } = {}) {
+  const isNorthMode = fixedRegion === "台北區";
   const today = formatLocalDateInput();
   const [startDate, setStartDate] = useState(defaultOverviewStartDate);
   const [endDate, setEndDate] = useState(today);
   const [region, setRegion] = useState(fixedRegion ?? "");
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [kpi, setKpi] = useState<KpiMetrics | null>(null);
+  const [northKpi, setNorthKpi] = useState<NorthKpiMetrics | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const heavyLoadedRef = useRef(false);
 
@@ -270,8 +279,9 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
       const ovRes = await fetch(`/api/operations/overview?${params}`);
       if (ovRes.ok) {
         const data = await ovRes.json();
-        const { kpiMetrics: kpiData, ...overviewData } = data as OverviewData & {
+        const { kpiMetrics: kpiData, northKpiMetrics: northKpiData, ...overviewData } = data as OverviewData & {
           kpiMetrics?: KpiMetrics;
+          northKpiMetrics?: NorthKpiMetrics;
         };
         setOverview((prev) => ({
           ...overviewData,
@@ -280,6 +290,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
           : (prev?.monthlyTrend ?? []),
         }));
         if (kpiData) setKpi(kpiData);
+        if (northKpiData) setNorthKpi(northKpiData);
         if (includeMonthlyTrend) heavyLoadedRef.current = true;
       }
     } finally {
@@ -448,54 +459,159 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
 
       {overview ?
         <>
-          {/* 第一層：全公司（桃園+宜蘭），依篩選日期區間 */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <KpiCard
-              title="全公司營收目標值"
-              value={formatMoney(kpi?.totalTarget ?? overview.summary.totalTarget)}
-              sub={`${overview.startDate} ~ ${overview.endDate} · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
-              icon={<Target className="h-5 w-5" />}
-              theme={OPS_COLORS.achievement}
-            />
-            <KpiCard
-              title="全公司營收達成值"
-              value={formatMoney(kpi?.totalRevenue ?? 0)}
-              sub={`${overview.startDate} ~ ${overview.endDate} · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
-              icon={<Store className="h-5 w-5" />}
-              theme={OPS_COLORS.revenue}
-            />
-            <KpiCard
-              title="區間達成率"
-              value={formatPctOne(kpi?.revenueAchievementRate ?? null)}
-              sub={`營收達成值 ÷ 營收目標值 · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
-              icon={<Target className="h-5 w-5" />}
-              theme={OPS_COLORS.achievement}
-            />
-            <KpiCard
-              title="區間營收成長率"
-              value={
-                kpi?.yoyGrowthRate != null ?
-                  `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
-                : "—"
-              }
-              valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
-              sub={`較去年同期同區間 · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
-              icon={<Activity className="h-5 w-5" />}
-            />
-            <KpiCard
-              title="全公司工效比"
-              value={
-                kpi?.efficiencyRatio != null ?
-                  Math.round(kpi.efficiencyRatio).toLocaleString("zh-TW")
-                : "—"
-              }
-              sub={`元 / hr · ${kpi?.regionLabel ?? "桃園+宜蘭"}`}
-              icon={<Activity className="h-5 w-5" />}
-              theme={OPS_COLORS.hours}
-            />
-          </div>
+          {/* 第一列：北區模式→全北區台北區；標準模式→全公司桃園+宜蘭 */}
+          {(() => {
+            const row1 = isNorthMode ? northKpi : kpi;
+            const row1Label = isNorthMode ? (northKpi?.regionLabel ?? "台北區") : (kpi?.regionLabel ?? "桃園+宜蘭");
+            const row1Prefix = isNorthMode ? "全北區" : "全公司";
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <KpiCard
+                  title={`${row1Prefix}營收目標值`}
+                  value={formatMoney(row1?.totalTarget ?? (isNorthMode ? 0 : overview.summary.totalTarget))}
+                  sub={`${overview.startDate} ~ ${overview.endDate} · ${row1Label}`}
+                  icon={<Target className="h-5 w-5" />}
+                  theme={OPS_COLORS.achievement}
+                />
+                <KpiCard
+                  title={`${row1Prefix}營收達成值`}
+                  value={formatMoney(row1?.totalRevenue ?? 0)}
+                  sub={`${overview.startDate} ~ ${overview.endDate} · ${row1Label}`}
+                  icon={<Store className="h-5 w-5" />}
+                  theme={OPS_COLORS.revenue}
+                />
+                <KpiCard
+                  title="區間達成率"
+                  value={formatPctOne(row1?.revenueAchievementRate ?? null)}
+                  sub={`營收達成值 ÷ 營收目標值 · ${row1Label}`}
+                  icon={<Target className="h-5 w-5" />}
+                  theme={OPS_COLORS.achievement}
+                />
+                <KpiCard
+                  title="區間營收成長率"
+                  value={
+                    row1?.yoyGrowthRate != null ?
+                      `${row1.yoyGrowthRate > 0 ? "+" : ""}${row1.yoyGrowthRate.toFixed(1)}%`
+                    : "—"
+                  }
+                  valueColor={getYoyColor(row1?.yoyGrowthRate ?? null)}
+                  sub={`較去年同期同區間 · ${row1Label}`}
+                  icon={<Activity className="h-5 w-5" />}
+                />
+                <KpiCard
+                  title={`${row1Prefix}工效比`}
+                  value={
+                    row1?.efficiencyRatio != null ?
+                      Math.round(row1.efficiencyRatio).toLocaleString("zh-TW")
+                    : "—"
+                  }
+                  sub={`元 / hr · ${row1Label}`}
+                  icon={<Activity className="h-5 w-5" />}
+                  theme={OPS_COLORS.hours}
+                />
+              </div>
+            );
+          })()}
 
-          {/* 第二層：依篩選區域，依篩選日期區間 */}
+          {/* 第二列：北區模式→選取門市；標準模式→篩選區域加總 */}
+          {isNorthMode ? (() => {
+            const selectedStore = overview.stores.find((s) => s.storeId === selectedStoreId) ?? null;
+            const storeTarget = selectedStore?.fullMonthTarget ?? null;
+            const storeRevenue = selectedStore?.revenue ?? null;
+            const storeAchRate =
+              storeTarget != null && storeTarget > 0 && storeRevenue != null ?
+                Math.round((storeRevenue / storeTarget) * 1000) / 10
+              : null;
+            const storeLabel = selectedStore?.storeName ?? "—";
+            return (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-500">選取門市</span>
+                  <select
+                    value={selectedStoreId}
+                    onChange={(e) => setSelectedStoreId(e.target.value)}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="">請選擇門市</option>
+                    {overview.stores.map((s) => (
+                      <option key={s.storeId} value={s.storeId}>{s.storeName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+                  <KpiCard
+                    title="營收目標值"
+                    value={storeTarget != null ? formatMoney(storeTarget) : "—"}
+                    sub={selectedStore ? `${overview.startDate} ~ ${overview.endDate} · ${storeLabel} · 整月目標` : "請選擇門市"}
+                    icon={<Target className="h-5 w-5" />}
+                    theme={OPS_COLORS.achievement}
+                  />
+                  <KpiCard
+                    title="營收達成值"
+                    value={storeRevenue != null ? formatMoney(storeRevenue) : "—"}
+                    sub={selectedStore ? `${overview.startDate} ~ ${overview.endDate} · ${storeLabel}` : "請選擇門市"}
+                    icon={<Store className="h-5 w-5" />}
+                    theme={OPS_COLORS.revenue}
+                  />
+                  <KpiCard
+                    title="達成率"
+                    value={formatPctOne(storeAchRate)}
+                    sub="營收達成值 / 營收目標值"
+                    icon={<Target className="h-5 w-5" />}
+                    theme={OPS_COLORS.achievement}
+                  />
+                  <KpiCard
+                    title="成長率"
+                    value={
+                      selectedStore?.yoyGrowthRate != null ?
+                        `${selectedStore.yoyGrowthRate > 0 ? "+" : ""}${selectedStore.yoyGrowthRate.toFixed(1)}%`
+                      : "—"
+                    }
+                    valueColor={getYoyColor(selectedStore?.yoyGrowthRate ?? null)}
+                    sub={selectedStore ? `較去年同期 · ${storeLabel}` : "請選擇門市"}
+                    icon={<Activity className="h-5 w-5" />}
+                  />
+                  <KpiCard
+                    title="工效比"
+                    value={
+                      selectedStore?.efficiencyRatio != null ?
+                        Math.round(selectedStore.efficiencyRatio).toLocaleString("zh-TW")
+                      : "—"
+                    }
+                    sub="元 / hr"
+                    icon={<Activity className="h-5 w-5" />}
+                    theme={OPS_COLORS.hours}
+                  />
+                  <KpiCard
+                    title="來客數（結帳單）"
+                    value={
+                      customerMetrics && customerMetrics.totalCustomerCount > 0 ?
+                        customerMetrics.totalCustomerCount.toLocaleString("zh-TW")
+                      : "—"
+                    }
+                    sub={
+                      customerMetrics?.daysWithData ?
+                        `區間 ${customerMetrics.daysWithData} 天有資料`
+                      : "請至資料上傳中心匯入"
+                    }
+                    icon={<Users className="h-5 w-5" />}
+                    theme={OPS_COLORS.customer}
+                  />
+                  <KpiCard
+                    title="平均客單價"
+                    value={
+                      customerMetrics?.avgOrderValue != null ?
+                        `${formatMoney(customerMetrics.avgOrderValue)} 元`
+                      : "—"
+                    }
+                    sub="銷售總額 ÷ 來客數"
+                    icon={<Receipt className="h-5 w-5" />}
+                    theme={OPS_COLORS.customer}
+                  />
+                </div>
+              </>
+            );
+          })() : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
             <KpiCard
               title="營收目標值"
@@ -567,6 +683,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
               theme={OPS_COLORS.customer}
             />
           </div>
+          )}
 
           <p className="text-xs text-slate-500 -mt-2">
             來客數與平均客單價請至{" "}

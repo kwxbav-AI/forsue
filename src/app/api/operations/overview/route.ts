@@ -6,7 +6,9 @@ import {
   buildEnrichedOverviewStores,
   buildYearToDateMonthlyRevenueTrend,
   buildOpsKpiMetrics,
+  buildNorthRegionKpiMetrics,
 } from "@/modules/operations/services/operations-overview-enrich.service";
+import { sumFullMonthTargetByPerformanceStore } from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
   buildDualRegionRevenueShare,
   buildSupervisorPriorityAlerts,
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const effective = await resolveEffectiveMetricsDateRange(startDate, endDate);
+    const isNorthRegion = region === "台北區";
 
     const overviewBundlePromise = buildEnrichedOverviewStores({
       startYmd: effective.startDate,
@@ -36,14 +39,32 @@ export async function GET(request: NextRequest) {
       region: region || undefined,
     });
 
-    const [{ stores, customerMetrics, workingDaysInRange }, monthlyTrend, kpiMetrics] =
+    const [{ stores: rawStores, customerMetrics, workingDaysInRange }, monthlyTrend, kpiMetrics, northKpiMetrics] =
       await Promise.all([
       overviewBundlePromise,
       includeMonthlyTrend ? buildYearToDateMonthlyRevenueTrend() : Promise.resolve([]),
-      includeKpi ?
+      includeKpi && !isNorthRegion ?
         buildOpsKpiMetrics(effective.startDate, effective.endDate, region || undefined)
       : Promise.resolve(null),
+      includeKpi && isNorthRegion ?
+        buildNorthRegionKpiMetrics(effective.startDate, effective.endDate)
+      : Promise.resolve(null),
     ]);
+
+    // 北區模式：替每間門市附加整月目標（不攤提）
+    let stores = rawStores;
+    if (isNorthRegion && rawStores.length > 0) {
+      const perfStoreIds = rawStores.map((s) => s.storeId);
+      const fullMonthTargetByStore = await sumFullMonthTargetByPerformanceStore(
+        effective.startDate,
+        effective.endDate,
+        perfStoreIds
+      );
+      stores = rawStores.map((s) => ({
+        ...s,
+        fullMonthTarget: fullMonthTargetByStore.get(s.storeId) ?? null,
+      }));
+    }
 
     const regionStats = OPS_REGION_CATALOG.map((g) => {
       const inRegion = stores.filter((s) => s.region === g.region);
@@ -94,6 +115,7 @@ export async function GET(request: NextRequest) {
       workingDaysInRange,
       monthlyTrend,
       kpiMetrics,
+      northKpiMetrics,
       priorityAlerts,
       dualRegionRevenueShare,
       customerMetrics,

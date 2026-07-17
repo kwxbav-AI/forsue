@@ -196,6 +196,57 @@ export async function buildOpsKpiMetrics(startYmd: string, endYmd: string, regio
   return data;
 }
 
+let northKpiCache: {
+  key: string;
+  expiresAt: number;
+  data: Awaited<ReturnType<typeof buildNorthRegionKpiMetricsUncached>>;
+} | null = null;
+
+async function buildNorthRegionKpiMetricsUncached(startYmd: string, endYmd: string) {
+  const priorStart = shiftYear(startYmd, -1);
+  const priorEnd = shiftYear(endYmd, -1);
+
+  const allFilterStores = await listPerformanceStoresForFilter();
+  const northStores = allFilterStores.filter((s) => s.region === "台北區");
+  const northStoreIds = northStores.map((s) => s.id);
+
+  const [allCurrentCharts, allPriorCharts, totalTarget] = await Promise.all([
+    fetchChartsPerStore(startYmd, endYmd),
+    fetchChartsPerStore(priorStart, priorEnd),
+    sumFullMonthTargetForPerformanceStores(startYmd, endYmd, northStoreIds),
+  ]);
+
+  const northCurrentCharts = allCurrentCharts.filter((c) => northStoreIds.includes(c.storeId));
+  const northPriorCharts = allPriorCharts.filter((c) => northStoreIds.includes(c.storeId));
+
+  const currentRevenue = northCurrentCharts.reduce((a, c) => a + c.revenueSum, 0);
+  const priorRevenue = northPriorCharts.reduce((a, c) => a + c.revenueSum, 0);
+  const currentLaborHours = northCurrentCharts.reduce((a, c) => a + c.hoursSum, 0);
+
+  return {
+    totalRevenue: currentRevenue,
+    totalTarget,
+    revenueAchievementRate:
+      totalTarget > 0 ? Math.round((currentRevenue / totalTarget) * 1000) / 10 : null,
+    totalLaborHours: currentLaborHours,
+    efficiencyRatio: currentLaborHours > 0 ? currentRevenue / currentLaborHours : null,
+    yoyGrowthRate: yoyGrowthRate(currentRevenue, priorRevenue),
+    priorYearRevenue: priorRevenue,
+    regionLabel: "台北區",
+  };
+}
+
+export async function buildNorthRegionKpiMetrics(startYmd: string, endYmd: string) {
+  const key = `${startYmd}|${endYmd}`;
+  const now = Date.now();
+  if (northKpiCache && northKpiCache.key === key && northKpiCache.expiresAt > now) {
+    return northKpiCache.data;
+  }
+  const data = await buildNorthRegionKpiMetricsUncached(startYmd, endYmd);
+  northKpiCache = { key, expiresAt: now + KPI_METRICS_CACHE_MS, data };
+  return data;
+}
+
 /** 當年度 1 月 1 日至今的月度業績趨勢（不受總覽日期篩選影響，10 分鐘快取） */
 export async function buildYearToDateMonthlyRevenueTrend() {
   const todayYmd = formatDateOnlyTaipei();
