@@ -29,6 +29,11 @@ const ITEMS = [
     title: "五、批次調整工時",
     description: "同一日期、原因、扣除時數時，一次勾選多人批次寫入（如店長會議、晉升考核）",
   },
+  {
+    href: "/dispatch-audit",
+    title: "六、調度稽核",
+    description: "比對出勤資料與調度填報，找出出勤門市與本店不同但未填調度的疑似漏登紀錄",
+  },
 ];
 
 export default async function WorkhourRelatedPage() {
