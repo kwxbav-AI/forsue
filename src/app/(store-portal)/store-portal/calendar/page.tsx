@@ -211,22 +211,39 @@ export default function StoreCalendarPage() {
           <p className="text-sm text-slate-400">載入中…</p>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-             <div style={{ minWidth: 0, maxWidth: "100%" }}>
-              <div className="grid grid-cols-7 border-b border-slate-100">
-                {WEEKDAY_LABELS.map((d, i) => (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-1.5">
+              {/* 星期標題列 */}
+              <div
+                className="grid mb-1.5"
+                style={{ gridTemplateColumns: "0.5fr 1fr 1fr 1fr 1fr 1fr 1fr" }}
+              >
+                {WEEKDAY_LABELS.map((lbl, i) => (
                   <div
-                    key={d}
-                    className={`py-2 text-center text-sm font-bold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
+                    key={lbl}
+                    className={`py-1.5 text-center text-[11px] font-medium tracking-wide uppercase ${
+                      i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400"
+                    }`}
                   >
-                    {d}
+                    {lbl}
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-[3px] bg-slate-100 p-[3px]">
-                {blanks.map((_, i) => (
-                  <div key={`b${i}`} className="min-h-24 bg-slate-50/50" />
-                ))}
+
+              {/* 日期格子 */}
+              <div
+                className="grid gap-[5px]"
+                style={{ gridTemplateColumns: "0.5fr 1fr 1fr 1fr 1fr 1fr 1fr" }}
+              >
+                {/* 月初空白格 */}
+                {blanks.map((_, i) => {
+                  const isSunBlank = i % 7 === 0;
+                  return isSunBlank ? (
+                    <div key={`b${i}`} className="rounded-[10px] border border-slate-100 bg-white/40 min-h-[136px]" />
+                  ) : (
+                    <div key={`b${i}`} className="rounded-[10px] border border-slate-100 bg-white/40 min-h-[136px]" />
+                  );
+                })}
+
                 {dayNumbers.map((d) => {
                   const ymd = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                   const day = dayMap.get(ymd);
@@ -235,119 +252,142 @@ export default function StoreCalendarPage() {
                   const isToday = ymd === todayYmd;
                   const isFuture = ymd > todayYmd;
                   const isHoliday = !!day?.holiday;
-                  const isRest = isSun || isHoliday;
+                  const maxStaff = 8;
 
-                  let cellCls = "min-h-28 p-1.5 rounded-sm border ";
-                  if (isRest) cellCls += "bg-slate-50/70 border-slate-200 ";
-                  else if (isFuture) cellCls += "bg-white opacity-50 border-slate-200 ";
-                  else if (day?.isExceed) cellCls += "bg-purple-50 border-purple-300 ";
-                  else if (day?.isAchieved) cellCls += "bg-emerald-50 border-emerald-300 ";
-                  else if (day?.hasData) cellCls += "bg-white border-red-300 ";
-                  else cellCls += "bg-white border-slate-200 ";
+                  /* ── 週日格：僅顯示日期＋假日文字 ── */
+                  if (isSun) {
+                    return (
+                      <div
+                        key={d}
+                        className="rounded-[10px] border border-slate-100 bg-white/60 min-h-[136px] flex flex-col items-center justify-start pt-3 gap-1"
+                        style={isToday ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" } : {}}
+                      >
+                        <span className="text-[15px] font-medium text-red-400">{d}</span>
+                        {isHoliday && (
+                          <span className="text-[10px] font-medium text-red-300 text-center px-1 leading-tight">{day?.holiday}</span>
+                        )}
+                      </div>
+                    );
+                  }
 
-                  const borderStyle: React.CSSProperties = isToday
-                    ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" }
-                    : {};
+                  /* ── 一～六格：完整卡片 ── */
+                  let cellBorder = "border-slate-200";
+                  let cellBg = "bg-white";
+                  let statusDotCls = "";
 
-                  const tag =
-                    !isRest && !isFuture && day?.hasData
-                      ? (day as any).isExceed
-                        ? { label: "超標", cls: "bg-purple-100 text-purple-700" }
-                        : day.isAchieved
-                        ? { label: "達標", cls: "bg-emerald-100 text-emerald-700" }
-                        : { label: "未達", cls: "bg-red-100 text-red-600" }
-                      : null;
+                  if (isHoliday) {
+                    cellBorder = "border-slate-200";
+                    cellBg = "bg-slate-50";
+                  } else if (isFuture) {
+                    cellBorder = "border-slate-100";
+                    cellBg = "bg-white opacity-50";
+                  } else if (day?.isExceed) {
+                    cellBorder = "border-purple-200";
+                    cellBg = "bg-purple-50";
+                    statusDotCls = "bg-purple-400";
+                  } else if (day?.isAchieved) {
+                    cellBorder = "border-emerald-200";
+                    cellBg = "bg-emerald-50";
+                    statusDotCls = "bg-emerald-400";
+                  } else if (day?.hasData) {
+                    cellBorder = "border-red-200";
+                    cellBg = "bg-red-50";
+                    statusDotCls = "bg-red-400";
+                  }
 
-                  const maxStaff = 8; // updated
+                  const summaryColor =
+                    day?.isExceed ? "text-purple-700"
+                    : day?.isAchieved ? "text-emerald-800"
+                    : day?.hasData ? "text-slate-700"
+                    : "text-slate-700";
+
+                  const effColor =
+                    day?.isExceed ? "text-purple-500"
+                    : day?.isAchieved ? "text-emerald-600"
+                    : "text-slate-400";
 
                   return (
-                    <div key={d} className={cellCls} style={borderStyle}>
-                      <div className="mb-1 flex items-center justify-between">
+                    <div
+                      key={d}
+                      className={`rounded-[10px] border ${cellBorder} ${cellBg} min-h-[136px] p-[10px]`}
+                      style={isToday ? { outline: "2px solid #93c5fd", outlineOffset: "-2px" } : {}}
+                    >
+                      {/* 日期 + 狀態點 */}
+                      <div className="flex items-baseline justify-between mb-1.5">
                         <span
-                          className={`text-xs font-medium ${
-                            isSun || isHoliday
-                              ? "text-red-400"
-                              : isSat
-                              ? "text-blue-400"
-                              : isToday
-                              ? "text-blue-600"
-                              : "text-slate-500"
+                          className={`text-[17px] font-medium leading-none ${
+                            isHoliday ? "text-red-400"
+                            : isSat ? "text-blue-500"
+                            : isToday ? "text-blue-600"
+                            : "text-slate-700"
                           }`}
                         >
                           {d}
                         </span>
-                        {tag && (
-                          <span className={`rounded px-1.5 py-px text-[10px] font-medium ${tag.cls}`}>
-                            {tag.label}
-                          </span>
+                        {statusDotCls && (
+                          <span className={`inline-block h-2 w-2 rounded-full ${statusDotCls}`} />
                         )}
                       </div>
-                      {!isRest && !isFuture && day?.hasData && (
-                        <div
-                          className="mb-1.5 pb-1.5 text-[11px] font-medium"
-                          style={{
-                            borderBottom: "0.5px solid rgba(0,0,0,0.07)",
-                            color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
-                          }}
-                        >
-                          {day.netHours.toFixed(1)}h &nbsp;／&nbsp; ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
-                        </div>
+
+                      {/* 假日文字 */}
+                      {isHoliday && (
+                        <div className="text-[14px] font-medium text-red-400 mb-1">{day?.holiday}</div>
                       )}
-                      {!isRest && !isFuture && (
+
+                      {/* 工時 + 營收摘要 */}
+                      {!isHoliday && !isFuture && day?.hasData && (
+                        <>
+                          <div className={`text-[13px] font-medium mb-0.5 ${summaryColor}`}>
+                            {day.netHours.toFixed(1)}h · ${day.revenue >= 10000 ? `${(day.revenue / 10000).toFixed(1)}萬` : day.revenue.toLocaleString()}
+                          </div>
+                          <div className={`text-[11px] mb-2 ${effColor}`}>
+                            工效比 {day.efficiencyRatio != null ? `${Math.round(day.efficiencyRatio).toLocaleString()} 元/hr` : "—"}
+                          </div>
+                        </>
+                      )}
+
+                      {/* 員工列表 */}
+                      {!isHoliday && !isFuture && (
                         <>
                           {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
-                            <div key={si} className="flex items-start gap-1 mb-1">
-                              <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.outgoingTo ? "bg-indigo-500" : s.isSupport ? "bg-amber-400" : "bg-teal-400"}`} />
-                              <span className="text-[11px] leading-tight text-slate-700">
-                                {s.name}
-                                <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
-                                {s.outgoingTo ? (
-                                  <span className="text-indigo-500 ml-0.5">→ {s.outgoingTo}</span>
-                                ) : s.isSupport && s.homeStore ? (
-                                  <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
-                                ) : null}
-                                {s.newHireLabel && (
-                                  <span className="text-orange-500 ml-0.5">（{s.newHireLabel}）</span>
-                                )}
-                                {s.temporaryLabel && (
-                                  <span className="text-purple-500 ml-0.5">（{s.temporaryLabel}）</span>
-                                )}
+                            <div key={si} className="flex items-center gap-1.5 mb-1">
+                              <span
+                                className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+                                  s.outgoingTo ? "bg-indigo-400" : s.isSupport ? "bg-amber-400" : "bg-teal-400"
+                                }`}
+                              />
+                              <span className="text-[12px] text-slate-600 truncate">{s.name}</span>
+                              <span className="text-[12px] font-medium text-slate-700 ml-auto flex-shrink-0">
+                                {s.workHours.toFixed(1)}h
                               </span>
                             </div>
                           ))}
+                          {/* 調入/調出備註 */}
+                          {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
+                            s.outgoingTo ? (
+                              <div key={`note-${si}`} className="text-[10px] text-indigo-400 mb-0.5">
+                                {s.name} → {s.outgoingTo}
+                              </div>
+                            ) : s.isSupport && s.homeStore ? (
+                              <div key={`note-${si}`} className="text-[10px] text-amber-500 mb-0.5">
+                                {s.name}（{s.homeStore}）
+                              </div>
+                            ) : null
+                          ))}
                           {(day?.staff.length ?? 0) > maxStaff && (
-                            <div className="text-[10px] text-slate-400">
-                              +{(day?.staff.length ?? 0) - maxStaff} 人
-                            </div>
+                            <div className="text-[10px] text-slate-400">+{(day?.staff.length ?? 0) - maxStaff} 人</div>
                           )}
                           {(day?.deductions ?? []).map((ded, di) => (
-                            <div key={di} className={`text-[10px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
+                            <div key={di} className={`text-[11px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
                               {ded.isPositive ? "+" : "-"}{ded.hours}h {ded.label}{ded.note ? `（${ded.note}）` : ""}
                             </div>
                           ))}
-                          {day?.efficiencyRatio != null && (
-                            <div
-                              className={`mt-1 text-[11px] font-medium ${
-                                day.isExceed
-                                  ? "text-purple-600"
-                                  : day.isAchieved
-                                  ? "text-emerald-600"
-                                  : "text-slate-400"
-                              }`}
-                            >
-                              工效 {Math.round(day.efficiencyRatio).toLocaleString()}
-                            </div>
-                          )}
                         </>
-                      )}
-                      {isHoliday && (
-                        <div className="text-[14px] font-medium text-red-400">{day?.holiday}</div>
                       )}
                     </div>
                   );
                 })}
               </div>
-             </div>
             </div>
 
             {weeklySummary.length > 0 && (() => {
