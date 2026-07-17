@@ -426,7 +426,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
               className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
             >
               <option value="">全部區域</option>
-              {OPS_FILTER_REGIONS.map((r) => (
+              {OPS_FILTER_REGIONS.filter((r) => r !== "台北區").map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
