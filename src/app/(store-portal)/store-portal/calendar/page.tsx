@@ -217,7 +217,7 @@ export default function StoreCalendarPage() {
                 {WEEKDAY_LABELS.map((d, i) => (
                   <div
                     key={d}
-                    className={`py-2 text-center text-sm font-bold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
+                    className={`py-2 text-center text-base font-extrabold ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-600"}`}
                   >
                     {d}
                   </div>
@@ -264,7 +264,7 @@ export default function StoreCalendarPage() {
                     <div key={d} className={cellCls} style={borderStyle}>
                       <div className="mb-1 flex items-center justify-between">
                         <span
-                          className={`text-xs font-medium ${
+                          className={`text-[18px] font-bold leading-none ${
                             isSun || isHoliday
                               ? "text-red-400"
                               : isSat
@@ -284,7 +284,7 @@ export default function StoreCalendarPage() {
                       </div>
                       {!isRest && !isFuture && day?.hasData && (
                         <div
-                          className="mb-1.5 pb-1.5 text-[11px] font-medium"
+                          className="mb-1.5 pb-1.5 text-[17px] font-bold"
                           style={{
                             borderBottom: "0.5px solid rgba(0,0,0,0.07)",
                             color: day.isExceed ? "#5b21b6" : day.isAchieved ? "#085041" : "#475569",
@@ -298,7 +298,7 @@ export default function StoreCalendarPage() {
                           {(day?.staff ?? []).slice(0, maxStaff).map((s, si) => (
                             <div key={si} className="flex items-start gap-1 mb-1">
                               <span className={`inline-block mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${s.outgoingTo ? "bg-indigo-500" : s.isSupport ? "bg-amber-400" : "bg-teal-400"}`} />
-                              <span className="text-[11px] leading-tight text-slate-700">
+                              <span className="text-[12px] leading-tight text-slate-700">
                                 {s.name}
                                 <span className="text-slate-400 ml-0.5">{s.workHours.toFixed(1)}h</span>
                                 {s.outgoingTo ? (
@@ -321,7 +321,7 @@ export default function StoreCalendarPage() {
                             </div>
                           )}
                           {(day?.deductions ?? []).map((ded, di) => (
-                            <div key={di} className={`text-[10px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
+                            <div key={di} className={`text-[11px] font-medium ${ded.isPositive ? "text-green-600" : "text-red-500"}`}>
                               {ded.isPositive ? "+" : "-"}{ded.hours}h {ded.label}{ded.note ? `（${ded.note}）` : ""}
                             </div>
                           ))}
