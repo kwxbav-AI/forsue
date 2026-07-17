@@ -5,10 +5,11 @@ import { countWorkingDaysInRangeUTC } from "@/lib/month-working-calendar";
 import {
   fetchChartsPerStore,
   filterChartsByOpsCatalog,
+  filterChartsByCatalogRegions,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
 import { mapPerformanceToRetailStore } from "@/modules/operations/services/operations-dashboard-filter.service";
-import { normalizeStoreKey } from "@/lib/operations-dashboard";
+import { normalizeStoreKey, DUAL_OPS_REGIONS } from "@/lib/operations-dashboard";
 
 type MonthSlice = { year: number; month: number; overlapStart: string; overlapEnd: string };
 
@@ -333,6 +334,52 @@ export async function sumFullMonthTargetByPerformanceStore(
     result.set(perfId, (result.get(perfId) ?? 0) + Number(row.salesTarget ?? 0));
   }
   return result;
+}
+
+/** 桃+宜各月營收加總（只含 DUAL_OPS_REGIONS，供月度業績趨勢圖使用） */
+export async function sumDualRegionRevenueByMonth(
+  startYmd: string,
+  endYmd: string
+): Promise<Map<string, number>> {
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  const monthTotals = new Map<string, number>();
+  for (const slice of slices) {
+    const ym = `${slice.year}-${String(slice.month).padStart(2, "0")}`;
+    const charts = await fetchChartsPerStore(slice.overlapStart, slice.overlapEnd);
+    const filtered = filterChartsByCatalogRegions(charts, DUAL_OPS_REGIONS);
+    const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
+    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + revenue);
+  }
+  return monthTotals;
+}
+
+/** 桃+宜各月整月目標加總（不攤提，供月度業績趨勢圖使用） */
+export async function sumDualRegionFullMonthTargetByMonth(
+  startYmd: string,
+  endYmd: string
+): Promise<Map<string, number>> {
+  const filterStores = await listPerformanceStoresForFilter();
+  const dualStoreIds = filterStores
+    .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
+    .map((s) => s.id);
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  if (slices.length === 0 || dualStoreIds.length === 0) return new Map();
+  const perfToRetail = await mapPerformanceToRetailStore(dualStoreIds);
+  const retailIds = [...(await collectRetailIdsForTargets(dualStoreIds, perfToRetail))];
+  if (retailIds.length === 0) return new Map();
+  const targetRows = await prisma.storeTarget.findMany({
+    where: {
+      storeId: { in: retailIds },
+      OR: slices.map(({ year, month }) => ({ year, month })),
+    },
+    select: { year: true, month: true, salesTarget: true },
+  });
+  const byMonth = new Map<string, number>();
+  for (const row of targetRows) {
+    const ym = `${row.year}-${String(row.month).padStart(2, "0")}`;
+    byMonth.set(ym, (byMonth.get(ym) ?? 0) + Number(row.salesTarget ?? 0));
+  }
+  return byMonth;
 }
 
 /** 指定門市各月營收加總（單次 DB） */

@@ -10,6 +10,8 @@ import {
   sumOpsCatalogRevenueByMonth,
   sumOpsCatalogTargetByMonth,
   sumFullMonthTargetForPerformanceStores,
+  sumDualRegionRevenueByMonth,
+  sumDualRegionFullMonthTargetByMonth,
 } from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
   DUAL_OPS_REGIONS,
@@ -271,8 +273,8 @@ export async function buildMonthlyRevenueTrend(startYmd: string, endYmd: string)
   const trendEnd = months[months.length - 1].sliceEnd;
 
   const [revenueByMonth, targetByMonth] = await Promise.all([
-    sumOpsCatalogRevenueByMonth(trendStart, trendEnd),
-    sumOpsCatalogTargetByMonth(trendStart, trendEnd),
+    sumDualRegionRevenueByMonth(trendStart, trendEnd),
+    sumDualRegionFullMonthTargetByMonth(trendStart, trendEnd),
   ]);
 
   return months.map(({ year, month, label }) => {
