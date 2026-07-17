@@ -17,6 +17,9 @@ export default function HolidaysPage() {
   const [date, setDate] = useState(() => formatLocalDateInput());
   const [name, setName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editName, setEditName] = useState("");
 
   async function refresh() {
     setLoading(true);
@@ -46,6 +49,30 @@ export default function HolidaysPage() {
       return;
     }
     setName("");
+    refresh();
+  }
+
+  function startEdit(h: Holiday) {
+    setEditingId(h.id);
+    setEditDate(h.date);
+    setEditName(h.name);
+    setMessage(null);
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    setMessage(null);
+    const res = await fetch(`/api/settings/holidays/${editingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: editDate, name: editName }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error || "更新失敗");
+      return;
+    }
+    setEditingId(null);
     refresh();
   }
 
@@ -128,7 +155,45 @@ export default function HolidaysPage() {
               </tr>
             </thead>
             <tbody>
-              {list.map((h) => (
+              {list.map((h) =>
+                editingId === h.id ? (
+                  <tr key={h.id} className="border-b border-slate-100 bg-sky-50">
+                    <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-sky-50 px-4 py-2">
+                      <input
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                    <td className="sticky left-[140px] z-[5] w-[220px] min-w-[220px] bg-sky-50 px-4 py-2">
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-2" />
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={saveEdit}
+                          className="rounded bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700"
+                        >
+                          儲存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="text-slate-500 hover:underline text-xs"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
                 <tr key={h.id} className="border-b border-slate-100">
                   <td className="sticky left-0 z-[5] w-[140px] min-w-[140px] bg-white px-4 py-2">
                     {h.date}
@@ -145,17 +210,27 @@ export default function HolidaysPage() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     {h.isActive && (
-                      <button
-                        type="button"
-                        onClick={() => removeHoliday(h.id)}
-                        className="text-red-600 hover:underline"
-                      >
-                        停用
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(h)}
+                          className="text-sky-600 hover:underline"
+                        >
+                          編輯
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeHoliday(h.id)}
+                          className="text-red-600 hover:underline"
+                        >
+                          停用
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
-              ))}
+                )
+              )}
             </tbody>
           </table>
         )}

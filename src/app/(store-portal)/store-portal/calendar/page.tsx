@@ -341,7 +341,7 @@ export default function StoreCalendarPage() {
                         </>
                       )}
                       {isHoliday && (
-                        <div className="text-[8px] text-red-400">{day?.holiday}</div>
+                        <div className="text-[14px] font-medium text-red-400">{day?.holiday}</div>
                       )}
                     </div>
                   );
