@@ -9,6 +9,7 @@ import { buildDashboardFilterResult } from "@/modules/operations/services/operat
 import {
   sumOpsCatalogRevenueByMonth,
   sumOpsCatalogTargetByMonth,
+  sumFullMonthTargetForPerformanceStores,
 } from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
   DUAL_OPS_REGIONS,
@@ -132,29 +133,25 @@ async function buildOpsKpiMetricsUncached(startYmd: string, endYmd: string, regi
   const priorStart = shiftYear(startYmd, -1);
   const priorEnd = shiftYear(endYmd, -1);
 
+  // 全公司欄位固定顯示桃園+宜蘭，不受區域選擇器影響
   const filterStores = await listPerformanceStoresForFilter();
-  const scopedStores = region
-    ? filterStores.filter((s) => s.region === region)
-    : filterStores.filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region));
-  const scopedStoreIds = scopedStores.map((s) => s.id);
+  const dualStores = filterStores.filter((s) =>
+    (DUAL_OPS_REGIONS as readonly string[]).includes(s.region)
+  );
+  const dualStoreIds = dualStores.map((s) => s.id);
 
-  const [dualCurrent, currentRevenue, priorRevenue, targetByMonth] = await Promise.all([
-    region ? fetchRegionChartTotals(startYmd, endYmd, region) : fetchDualRegionChartTotals(startYmd, endYmd),
-    region
-      ? fetchRevenueForStoreIds(scopedStoreIds, startYmd, endYmd)
-      : fetchDualRegionRevenueTotal(startYmd, endYmd),
-    region
-      ? fetchRevenueForStoreIds(scopedStoreIds, priorStart, priorEnd)
-      : fetchDualRegionRevenueTotal(priorStart, priorEnd),
-    sumTargetByMonthForPerformanceStores(startYmd, endYmd, scopedStoreIds),
+  const [dualCurrent, currentRevenue, priorRevenue, totalTarget] = await Promise.all([
+    fetchDualRegionChartTotals(startYmd, endYmd),
+    fetchDualRegionRevenueTotal(startYmd, endYmd),
+    fetchDualRegionRevenueTotal(priorStart, priorEnd),
+    sumFullMonthTargetForPerformanceStores(startYmd, endYmd, dualStoreIds),
   ]);
 
-  const totalTarget = [...targetByMonth.values()].reduce((a, b) => a + b, 0);
   const totalRevenue = currentRevenue;
   const revenueAchievementRate =
     totalTarget > 0 ? Math.round((totalRevenue / totalTarget) * 1000) / 10 : null;
 
-  const regionLabel = region || "宜蘭區 + 桃園區";
+  const regionLabel = "宜蘭區 + 桃園區";
 
   return {
     totalRevenue,
@@ -188,7 +185,8 @@ async function fetchRevenueForStoreIds(
 
 /** KPI 指標：依篩選日期區間與區域累計（5 分鐘快取） */
 export async function buildOpsKpiMetrics(startYmd: string, endYmd: string, region?: string) {
-  const key = `${startYmd}|${endYmd}|${region ?? ""}`;
+  // 全公司 KPI 固定桃園+宜蘭，與 region 無關，快取 key 不帶 region
+  const key = `${startYmd}|${endYmd}`;
   const now = Date.now();
   if (kpiMetricsCache && kpiMetricsCache.key === key && kpiMetricsCache.expiresAt > now) {
     return kpiMetricsCache.data;

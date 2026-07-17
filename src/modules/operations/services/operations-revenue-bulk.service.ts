@@ -223,6 +223,31 @@ export async function sumTargetByMonthForPerformanceStores(
   return byMonth;
 }
 
+/** 指定績效門市整月目標加總（不按工作天比例攤提，直接加總各月 salesTarget） */
+export async function sumFullMonthTargetForPerformanceStores(
+  startYmd: string,
+  endYmd: string,
+  perfStoreIds: string[]
+): Promise<number> {
+  const storeIds = perfStoreIds;
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  if (slices.length === 0 || storeIds.length === 0) return 0;
+
+  const perfToRetail = await mapPerformanceToRetailStore(storeIds);
+  const retailIds = [...(await collectRetailIdsForTargets(storeIds, perfToRetail))];
+  if (retailIds.length === 0) return 0;
+
+  const targetRows = await prisma.storeTarget.findMany({
+    where: {
+      storeId: { in: retailIds },
+      OR: slices.map(({ year, month }) => ({ year, month })),
+    },
+    select: { salesTarget: true },
+  });
+
+  return targetRows.reduce((sum, r) => sum + Number(r.salesTarget ?? 0), 0);
+}
+
 /** 各月目標合計（營運 catalog 全部門市） */
 export async function sumOpsCatalogTargetByMonth(
   startYmd: string,
