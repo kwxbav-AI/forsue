@@ -109,6 +109,8 @@ type OverviewData = {
     green: number;
     yellow: number;
     red: number;
+    yoyGrowthRate?: number | null;
+    regionLabel?: string;
   };
   regionStats: {
     region: string;
@@ -630,19 +632,19 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
             <KpiCard
               title="達成率"
               value={formatPctOne(overview.summary.revenueAchievementRate)}
-              sub={`月業績目標 · 達標 ${overview.summary.green} / ${overview.summary.storeCount} 間`}
+              sub="營收達成值 ÷ 營收目標值"
               icon={<Target className="h-5 w-5" />}
               theme={OPS_COLORS.achievement}
             />
             <KpiCard
               title="成長率"
               value={
-                kpi?.yoyGrowthRate != null ?
-                  `${kpi.yoyGrowthRate > 0 ? "+" : ""}${kpi.yoyGrowthRate.toFixed(1)}%`
+                overview.summary.yoyGrowthRate != null ?
+                  `${overview.summary.yoyGrowthRate > 0 ? "+" : ""}${overview.summary.yoyGrowthRate.toFixed(1)}%`
                 : "—"
               }
-              valueColor={getYoyColor(kpi?.yoyGrowthRate ?? null)}
-              sub={`較去年同期 · ${kpi?.regionLabel ?? "宜蘭區 + 桃園區"}`}
+              valueColor={getYoyColor(overview.summary.yoyGrowthRate ?? null)}
+              sub={`較去年同期 · ${overview.summary.regionLabel ?? "宜蘭區 + 桃園區"}`}
               icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard

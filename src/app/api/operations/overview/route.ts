@@ -13,6 +13,7 @@ import {
   buildDualRegionRevenueShare,
   buildSupervisorPriorityAlerts,
 } from "@/modules/operations/services/operations-overview-alerts.service";
+import { yoyGrowthRate } from "@/lib/operations-yoy";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -97,6 +98,10 @@ export async function GET(request: NextRequest) {
     const totalLaborHours = stores.reduce((a, s) => a + s.laborHours, 0);
     const withTarget = stores.filter((s) => s.status !== "none").length;
 
+    const totalPriorRevenue = stores.reduce((a, s) => a + (s.priorYearRevenue ?? 0), 0);
+    const summaryYoyGrowthRate = yoyGrowthRate(totalRevenue, totalPriorRevenue);
+    const summaryRegionLabel = region || "宜蘭區 + 桃園區";
+
     const withRate = stores.filter((s) => s.revenueAchievementRate != null);
     const topStores = [...withRate]
       .sort((a, b) => (b.revenueAchievementRate ?? 0) - (a.revenueAchievementRate ?? 0))
@@ -132,6 +137,8 @@ export async function GET(request: NextRequest) {
         red,
         achievementRate:
           withTarget > 0 ? Math.round((green / withTarget) * 1000) / 10 : null,
+        yoyGrowthRate: summaryYoyGrowthRate,
+        regionLabel: summaryRegionLabel,
       },
       regionStats,
       topStores,
