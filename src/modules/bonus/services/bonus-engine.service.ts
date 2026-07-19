@@ -9,6 +9,7 @@ const EXCEED_THRESHOLD = 6000;
 const OPS_BONUS_PER_PERSON = 72;
 const FULL_HOURS = 8;
 const MONTHLY_GUARANTEE = new Decimal(2640);
+const DAILY_GUARANTEE = new Decimal(120);
 
 const DEFAULT_MULTIPLIERS: Record<string, number> = {
   進階兼職: 1.4,
@@ -528,7 +529,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
 
     if (isNewStore) {
       // 計算該員工的保障金額（按兼職比例 = 表訂工時/8，一律套用，不分全兼職）
-      // 公式：22 * 120 * nhRatio * (表訂工時/8)，取最常出現的排班時數為代表值
+      // 公式：實際出勤天數 * 120 * nhRatio * (表訂工時/8)，扣除請假天不給保障
       const allDetails = details.filter((d) => d.calcHours > 0);
       let representativeScheduled = FULL_HOURS;
       if (allDetails.length > 0) {
@@ -536,7 +537,7 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
         for (const d of allDetails) counts.set(d.scheduledHours, (counts.get(d.scheduledHours) ?? 0) + 1);
         representativeScheduled = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
       }
-      const guarantee = MONTHLY_GUARANTEE.mul(representativeScheduled).div(FULL_HOURS).mul(nhRatio);
+      const guarantee = DAILY_GUARANTEE.mul(allDetails.length).mul(representativeScheduled).div(FULL_HOURS).mul(nhRatio);
       if (subtotalBonus.lessThan(guarantee)) {
         subtotalBonus = guarantee;
         guaranteeAmount = guarantee;
