@@ -529,8 +529,8 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
 
     if (isNewStore) {
       // 計算該員工的保障金額（按兼職比例 = 表訂工時/8，一律套用，不分全兼職）
-      // 公式：實際出勤天數 * 120 * nhRatio * (表訂工時/8)，扣除請假天不給保障
-      const allDetails = details.filter((d) => d.calcHours > 0);
+      // 公式：實際出勤平日天數 * 120 * nhRatio * (表訂工時/8)，扣除請假天；六日不計入保障基數
+      const allDetails = details.filter((d) => d.calcHours > 0 && d.weekday >= 1 && d.weekday <= 5);
       let representativeScheduled = FULL_HOURS;
       if (allDetails.length > 0) {
         const counts = new Map<number, number>();
