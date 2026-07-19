@@ -527,18 +527,16 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
     let isNewStoreGuarantee = false;
 
     if (isNewStore) {
-      // 計算該員工的保障金額（按兼職比例）
+      // 計算該員工的保障金額（按兼職比例 = 表訂工時/8，一律套用，不分全兼職）
+      // 公式：22 * 120 * nhRatio * (表訂工時/8)，取最常出現的排班時數為代表值
       const allDetails = details.filter((d) => d.calcHours > 0);
-      const pt = allDetails.length > 0 && isPartTime(null, allDetails[0].scheduledHours);
-      let guarantee = MONTHLY_GUARANTEE;
-      if (pt) {
-        const avgScheduled =
-          allDetails.length > 0
-            ? allDetails.reduce((s, d) => s + d.scheduledHours, 0) / allDetails.length
-            : FULL_HOURS;
-        guarantee = MONTHLY_GUARANTEE.div(FULL_HOURS).mul(avgScheduled);
+      let representativeScheduled = FULL_HOURS;
+      if (allDetails.length > 0) {
+        const counts = new Map<number, number>();
+        for (const d of allDetails) counts.set(d.scheduledHours, (counts.get(d.scheduledHours) ?? 0) + 1);
+        representativeScheduled = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
       }
-      guarantee = guarantee.mul(nhRatio);
+      const guarantee = MONTHLY_GUARANTEE.mul(representativeScheduled).div(FULL_HOURS).mul(nhRatio);
       if (subtotalBonus.lessThan(guarantee)) {
         subtotalBonus = guarantee;
         guaranteeAmount = guarantee;
