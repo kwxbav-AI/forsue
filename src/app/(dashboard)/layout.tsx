@@ -103,7 +103,7 @@ export default async function DashboardLayout({
             ) : null}
             {showLogout ? <AuthLogoutButton /> : null}
           </div>
-          <nav className="flex flex-wrap gap-3 text-sm">
+          <nav className="flex flex-wrap gap-3 text-sm" style={{ marginRight: "5cm" }}>
             {canUploads ? (
               <Link href="/uploads" className="text-slate-600 hover:text-sky-600">
                 資料上傳中心
