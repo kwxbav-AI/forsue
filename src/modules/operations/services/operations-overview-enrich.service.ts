@@ -304,10 +304,16 @@ export async function buildEnrichedOverviewStores(input: {
     : filterStores.filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region));
   const scopedStoreIds = scopedFilterStores.map((s) => s.id);
 
-  const [allPerStore, metDaysMap, perfToRetail] = await Promise.all([
+  const priorStartYmd = shiftYear(startYmd, -1);
+  const priorEndYmd = shiftYear(endYmd, -1);
+
+  const [allPerStore, allPriorPerStore, metDaysMap, perfToRetail] = await Promise.all([
     isNorth
       ? fetchChartsPerStoreForStoreIds(startYmd, endYmd, scopedStoreIds)
       : fetchChartsPerStore(startYmd, endYmd),
+    isNorth
+      ? fetchChartsPerStoreForStoreIds(priorStartYmd, priorEndYmd, scopedStoreIds)
+      : fetchChartsPerStore(priorStartYmd, priorEndYmd),
     countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
     mapPerformanceToRetailStore(scopedStoreIds),
   ]);
@@ -316,6 +322,9 @@ export async function buildEnrichedOverviewStores(input: {
   const perStore = region
     ? allPerStore
     : filterChartsByCatalogRegions(allPerStore, DUAL_OPS_REGIONS);
+  const priorPerStore = region
+    ? allPriorPerStore
+    : filterChartsByCatalogRegions(allPriorPerStore, DUAL_OPS_REGIONS);
 
   const retailIds = [
     ...new Set([...perfToRetail.values()].map((v) => v.retailId).filter(Boolean)),
@@ -324,7 +333,7 @@ export async function buildEnrichedOverviewStores(input: {
   const [filterResult, customerMetrics] = await Promise.all([
     buildDashboardFilterResult({
       perStore,
-      priorPerStore: [],
+      priorPerStore,
       startYmd,
       endYmd,
       filterLabel: region || "全部",
