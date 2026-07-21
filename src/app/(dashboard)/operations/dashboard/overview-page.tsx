@@ -644,7 +644,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
                 : "—"
               }
               valueColor={getYoyColor(overview.summary.yoyGrowthRate ?? null)}
-              sub={`較去年同期 · ${overview.summary.regionLabel ?? "宜蘭區 + 桃園區"}`}
+              sub={overview.summary.regionLabel ? `較去年同期 · ${overview.summary.regionLabel}` : "較去年同期"}
               icon={<Activity className="h-5 w-5" />}
             />
             <KpiCard

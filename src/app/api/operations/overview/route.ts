@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     const totalPriorRevenue = stores.reduce((a, s) => a + (s.priorYearRevenue ?? 0), 0);
     const summaryYoyGrowthRate = yoyGrowthRate(totalRevenue, totalPriorRevenue);
-    const summaryRegionLabel = region || "全部區域";
+    const summaryRegionLabel = region || "";
 
     const withRate = stores.filter((s) => s.revenueAchievementRate != null);
     const topStores = [...withRate]
