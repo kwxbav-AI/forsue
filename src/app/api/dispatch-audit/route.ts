@@ -4,11 +4,16 @@ import { parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
+function dateKey(d: Date) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const startDate = sp.get("startDate")?.trim();
   const endDate = sp.get("endDate")?.trim();
-  const storeId = sp.get("storeId")?.trim();
+  const filterDefaultStoreId = sp.get("defaultStoreId")?.trim() || "";
+  const filterWorkedStoreId = sp.get("workedStoreId")?.trim() || "";
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "請提供 startDate 與 endDate" }, { status: 400 });
@@ -18,22 +23,24 @@ export async function GET(request: NextRequest) {
     workDate: { gte: parseDateOnlyUTC(startDate), lte: parseDateOnlyUTC(endDate) },
   };
 
-  // 查出所有員工的本店
+  // 查出所有員工（含非在職，避免漏掉已離職但仍有出勤資料的員工）
   const employees = await prisma.employee.findMany({
-    where: { isActive: true },
     select: {
       id: true,
       employeeCode: true,
       name: true,
       defaultStoreId: true,
-      defaultStore: { select: { name: true } },
     },
   });
   const empMap = new Map(employees.map((e) => [e.id, e]));
 
-  // 查出範圍內的出勤紀錄
-  const attendanceWhere: object = storeId
-    ? { ...workDateWhere, originalStoreId: storeId }
+  // 查門市名稱（供本店 / 實際出勤門市顯示）
+  const stores = await prisma.store.findMany({ select: { id: true, name: true } });
+  const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
+
+  // 查出勤紀錄
+  const attendanceWhere: object = filterWorkedStoreId
+    ? { ...workDateWhere, originalStoreId: filterWorkedStoreId }
     : workDateWhere;
   const attendances = await prisma.attendanceRecord.findMany({
     where: attendanceWhere,
@@ -42,36 +49,18 @@ export async function GET(request: NextRequest) {
       workDate: true,
       employeeId: true,
       originalStoreId: true,
-      clockInStoreId: true,
       workHours: true,
     },
   });
 
-  // 查出範圍內的調度紀錄
+  // 查調度紀錄，建立 index
   const dispatches = await prisma.dispatchRecord.findMany({
     where: workDateWhere,
-    select: {
-      id: true,
-      workDate: true,
-      employeeId: true,
-      fromStoreId: true,
-      toStoreId: true,
-      dispatchHours: true,
-      confirmStatus: true,
-    },
+    select: { employeeId: true, workDate: true },
   });
-
-  // 建立調度紀錄 index：key = `${employeeId}|${dateStr}`
-  function dateKey(d: Date) {
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  }
   const dispatchSet = new Set(
     dispatches.map((d) => `${d.employeeId}|${dateKey(d.workDate)}`)
   );
-
-  // 查門市名稱
-  const stores = await prisma.store.findMany({ select: { id: true, name: true } });
-  const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
 
   type AuditRow = {
     attendanceId: string;
@@ -91,13 +80,16 @@ export async function GET(request: NextRequest) {
   for (const att of attendances) {
     const emp = empMap.get(att.employeeId);
     if (!emp) continue;
-    // 只關心有實際工時的紀錄
     if (Number(att.workHours) <= 0) continue;
-    // originalStoreId 即出勤的門市
+
     const workedStoreId = att.originalStoreId;
     if (!workedStoreId) continue;
-    // 若出勤門市 = 本店，不需調度
+
+    // 出勤門市 = 本店 → 不需調度
     if (workedStoreId === emp.defaultStoreId) continue;
+
+    // 本店篩選
+    if (filterDefaultStoreId && emp.defaultStoreId !== filterDefaultStoreId) continue;
 
     const key = `${att.employeeId}|${dateKey(att.workDate)}`;
     if (!dispatchSet.has(key)) {
@@ -108,15 +100,14 @@ export async function GET(request: NextRequest) {
         employeeCode: emp.employeeCode,
         employeeName: emp.name,
         defaultStoreId: emp.defaultStoreId ?? null,
-        defaultStoreName: emp.defaultStoreId ? (storeNameById.get(emp.defaultStoreId) ?? null) : null,
+        defaultStoreName: emp.defaultStoreId ? (storeNameById.get(emp.defaultStoreId) ?? `(${emp.defaultStoreId})`) : null,
         workedStoreId,
-        workedStoreName: storeNameById.get(workedStoreId) ?? null,
+        workedStoreName: storeNameById.get(workedStoreId) ?? `(${workedStoreId})`,
         workHours: Number(att.workHours),
       });
     }
   }
 
-  // 排序：日期 desc, 員工名
   missingDispatch.sort((a, b) =>
     b.workDate.localeCompare(a.workDate) || a.employeeName.localeCompare(b.employeeName)
   );
@@ -124,6 +115,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     startDate,
     endDate,
+    stores: stores.map((s) => ({ id: s.id, name: s.name })),
     missingDispatch,
     total: missingDispatch.length,
   });
