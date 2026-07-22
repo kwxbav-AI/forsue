@@ -4,8 +4,27 @@ import { parseDateOnlyUTC } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
+// 額外排除的部門關鍵字（後勤/客服/司機等非門市人員）
+const EXTRA_EXCLUDED_KEYWORDS = ["後勤", "客服", "司機", "採購", "長興倉", "台北司機", "會計"];
+
 function dateKey(d: Date) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function normalizeDept(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function isDeptExcluded(department: string | null, excludedList: string[]): boolean {
+  if (!department) return false;
+  const dept = department.trim();
+  if (!dept) return false;
+  const deptNorm = normalizeDept(dept);
+  // 完全符合排除清單
+  if (excludedList.some((ex) => normalizeDept(ex) === deptNorm)) return true;
+  // 額外關鍵字：部門名稱包含即排除
+  if (EXTRA_EXCLUDED_KEYWORDS.some((kw) => dept.includes(kw))) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -33,8 +52,16 @@ export async function GET(request: NextRequest) {
   const stores = await prisma.store.findMany({ select: { id: true, name: true } });
   const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
 
-  // 查出勤紀錄：取 clockInStoreId（J欄）判斷實際出勤門市
-  // 同時取 originalStoreId（C欄），供 defaultStoreId=null 時作為本店備援
+  // 讀系統設定的排除部門清單（與出勤上傳共用同一份）
+  const settingRow = await prisma.appSetting.findUnique({
+    where: { key: "attendance.location.excludedDepartments" },
+    select: { valueJson: true },
+  });
+  const excludedDepts: string[] = Array.isArray(settingRow?.valueJson)
+    ? (settingRow!.valueJson as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+
+  // 查出勤紀錄
   const attendanceWhere: object = filterWorkedStoreId
     ? { ...workDateWhere, clockInStoreId: filterWorkedStoreId }
     : workDateWhere;
@@ -44,7 +71,8 @@ export async function GET(request: NextRequest) {
       id: true,
       workDate: true,
       employeeId: true,
-      originalStoreId: true,  // C欄，本店備援
+      department: true,       // C欄，用於排除非門市人員
+      originalStoreId: true,  // C欄解析結果，本店備援
       clockInStoreId: true,   // J欄，實際打卡門市
       workHours: true,
     },
@@ -79,17 +107,19 @@ export async function GET(request: NextRequest) {
     if (!emp) continue;
     if (Number(att.workHours) <= 0) continue;
 
+    // 排除後勤/客服/司機等非門市人員
+    if (isDeptExcluded(att.department, excludedDepts)) continue;
+
     const clockInStoreId = att.clockInStoreId;
-    // 沒有打卡地點 → 無法判斷是否跨店
     if (!clockInStoreId) continue;
 
     // defaultStoreId 為 null 時，以 C欄 originalStoreId 作為本店備援
     const effectiveDefaultStoreId = emp.defaultStoreId ?? att.originalStoreId ?? null;
 
-    // 打卡門市 = 本店（或備援本店）→ 不需調度
+    // 打卡門市 = 本店 → 不需調度
     if (clockInStoreId === effectiveDefaultStoreId) continue;
 
-    // 本店篩選：同時比對正式本店與備援本店
+    // 本店篩選
     if (filterDefaultStoreId && effectiveDefaultStoreId !== filterDefaultStoreId) continue;
 
     const key = `${att.employeeId}|${dateKey(att.workDate)}`;
