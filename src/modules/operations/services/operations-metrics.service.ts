@@ -277,6 +277,43 @@ export async function fetchDualRegionRevenueTotal(
   return revenue;
 }
 
+/**
+ * 依 OPS_REGION_CATALOG 指定區域直接查 revenueRecord 加總（含已閉店門市）。
+ * 與 fetchDualRegionRevenueTotal 邏輯一致，但可指定任意區域組合。
+ * 供第二排成長率 YoY 使用，確保閉店門市去年同期營收被正確納入分母。
+ */
+export async function fetchOpsRegionRevenueTotalByRecord(
+  startDate: string,
+  endDate: string,
+  regions: readonly string[]
+): Promise<number> {
+  const catalogNames = OPS_REGION_CATALOG
+    .filter((g) => (regions as string[]).includes(g.region))
+    .flatMap((g) => [...g.storeNames]);
+
+  if (catalogNames.length === 0) return 0;
+
+  const allStores = await prisma.store.findMany({
+    where: { hideInReports: false },
+    select: { id: true, name: true },
+  });
+
+  const storeIds = allStores
+    .filter((s) => catalogNames.some((cn) => storeNameMatchesCatalogKey(s.name, cn)))
+    .map((s) => s.id);
+
+  if (storeIds.length === 0) return 0;
+
+  const { start, end } = toDateRange(startDate, endDate);
+  const grouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: { storeId: { in: storeIds }, revenueDate: { gte: start, lte: end } },
+    _sum: { revenueAmount: true },
+  });
+
+  return grouped.reduce((a, g) => a + Number(g._sum.revenueAmount ?? 0), 0);
+}
+
 function catalogStoreNameRank(name: string, catalogKey: string): number {
   const n = name.trim();
   if (n === catalogKey) return 0;
