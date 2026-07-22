@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
   const stores = await prisma.store.findMany({ select: { id: true, name: true } });
   const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
 
-  // 查出勤紀錄：改取 clockInStoreId（J欄打卡地點）判斷實際出勤門市
-  // 如有 filterWorkedStoreId，直接在 DB 層篩選
+  // 查出勤紀錄：取 clockInStoreId（J欄）判斷實際出勤門市
+  // 同時取 originalStoreId（C欄），供 defaultStoreId=null 時作為本店備援
   const attendanceWhere: object = filterWorkedStoreId
     ? { ...workDateWhere, clockInStoreId: filterWorkedStoreId }
     : workDateWhere;
@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
       id: true,
       workDate: true,
       employeeId: true,
-      clockInStoreId: true,   // 實際打卡門市（J欄）
+      originalStoreId: true,  // C欄，本店備援
+      clockInStoreId: true,   // J欄，實際打卡門市
       workHours: true,
     },
   });
@@ -82,24 +83,28 @@ export async function GET(request: NextRequest) {
     // 沒有打卡地點 → 無法判斷是否跨店
     if (!clockInStoreId) continue;
 
-    // 打卡門市 = 本店 → 不需調度
-    if (clockInStoreId === emp.defaultStoreId) continue;
+    // defaultStoreId 為 null 時，以 C欄 originalStoreId 作為本店備援
+    const effectiveDefaultStoreId = emp.defaultStoreId ?? att.originalStoreId ?? null;
 
-    // 本店篩選
-    if (filterDefaultStoreId && emp.defaultStoreId !== filterDefaultStoreId) continue;
+    // 打卡門市 = 本店（或備援本店）→ 不需調度
+    if (clockInStoreId === effectiveDefaultStoreId) continue;
+
+    // 本店篩選：同時比對正式本店與備援本店
+    if (filterDefaultStoreId && effectiveDefaultStoreId !== filterDefaultStoreId) continue;
 
     const key = `${att.employeeId}|${dateKey(att.workDate)}`;
     if (!dispatchSet.has(key)) {
+      const defaultStoreName = effectiveDefaultStoreId
+        ? (storeNameById.get(effectiveDefaultStoreId) ?? `(${effectiveDefaultStoreId})`)
+        : null;
       missingDispatch.push({
         attendanceId: att.id,
         workDate: dateKey(att.workDate),
         employeeId: att.employeeId,
         employeeCode: emp.employeeCode,
         employeeName: emp.name,
-        defaultStoreId: emp.defaultStoreId ?? null,
-        defaultStoreName: emp.defaultStoreId
-          ? (storeNameById.get(emp.defaultStoreId) ?? `(${emp.defaultStoreId})`)
-          : null,
+        defaultStoreId: effectiveDefaultStoreId,
+        defaultStoreName,
         clockInStoreId,
         clockInStoreName: storeNameById.get(clockInStoreId) ?? `(${clockInStoreId})`,
         workHours: Number(att.workHours),
