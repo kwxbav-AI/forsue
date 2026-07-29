@@ -6,12 +6,13 @@ import { countTargetMetDaysByStore } from "@/modules/performance/services/target
 import {
   fetchRevenueByStoreAndMonth,
   sumRevenueTotalsByMonth,
-  sumTargetByMonthForPerformanceStores,
+  sumTargetByMonthPerStore,
 } from "@/modules/operations/services/operations-revenue-bulk.service";
 import {
   fetchChartsPerStore,
   listPerformanceStoresForFilter,
 } from "@/modules/operations/services/operations-metrics.service";
+import { aggregateStoreMetricsByMonth } from "@/modules/performance/services/performance-daily-range.service";
 
 type FilterStore = Awaited<ReturnType<typeof listPerformanceStoresForFilter>>[number];
 
@@ -88,12 +89,37 @@ export async function buildPerformanceAnalysis(input: {
 
   const catalogStoreIds = filterStores.map((s) => s.id);
 
-  const [byStoreMonth, targetByMonth, rangeResult, metDaysMap] = await Promise.all([
+  // 一次查所有門市目標，供 activeStoreIds 合計與各區域分組共用，避免重複打 DB
+  const [byStoreMonth, allStoreTargetsByMonth, rangeResult, metDaysMap] = await Promise.all([
     fetchRevenueByStoreAndMonth(startYmd, endYmd, catalogStoreIds),
-    sumTargetByMonthForPerformanceStores(startYmd, endYmd, activeStoreIds),
+    sumTargetByMonthPerStore(startYmd, endYmd, catalogStoreIds),
     rangeMetrics(startYmd, endYmd, selection, filterStores),
     countTargetMetDaysByStore(startYmd, endYmd, activeStoreIds),
   ]);
+
+  const targetByMonth = new Map<string, number>();
+  for (const storeId of activeStoreIds) {
+    const storeTargets = allStoreTargetsByMonth.get(storeId);
+    if (!storeTargets) continue;
+    for (const [ym, target] of storeTargets) {
+      targetByMonth.set(ym, (targetByMonth.get(ym) ?? 0) + target);
+    }
+  }
+
+  const targetByRegion = new Map<string, Map<string, number>>(
+    DUAL_OPS_REGIONS.map((region) => {
+      const regionIds = filterStores.filter((s) => s.region === region).map((s) => s.id);
+      const byMonth = new Map<string, number>();
+      for (const storeId of regionIds) {
+        const storeTargets = allStoreTargetsByMonth.get(storeId);
+        if (!storeTargets) continue;
+        for (const [ym, target] of storeTargets) {
+          byMonth.set(ym, (byMonth.get(ym) ?? 0) + target);
+        }
+      }
+      return [region, byMonth];
+    })
+  );
 
   const revenueByMonth = sumRevenueTotalsByMonth(byStoreMonth, activeStoreIds);
 
@@ -119,40 +145,27 @@ export async function buildPerformanceAnalysis(input: {
       },
     ];
   } else {
-    const monthLaborResults = await Promise.all(
-      monthsList.map(async (m) => {
-        const perStore = await fetchChartsPerStore(m.start, m.end);
-        const filtered = selection.storeId ?
-          perStore.filter((r) => r.storeId === selection.storeId)
-        : selection.region ?
-          perStore.filter((r) => {
+    // 整段區間只呼叫一次 DB（取代原本逐月各打一次 fetchChartsPerStore）
+    const chartsByMonth = await aggregateStoreMetricsByMonth(startYmd, endYmd);
+    productivityTrend = monthsList.map((m) => {
+      const ym = `${m.year}-${String(m.month).padStart(2, "0")}`;
+      const rows = chartsByMonth.get(ym) ?? [];
+      const filtered = selection.storeId
+        ? rows.filter((r) => r.storeId === selection.storeId)
+        : selection.region
+        ? rows.filter((r) => {
             const meta = filterStores.find((s) => s.id === r.storeId);
             return meta?.region === selection.region;
           })
-        : perStore;
-        const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
-        const laborHours = filtered.reduce((a, r) => a + r.hoursSum, 0);
-        return {
-          label: m.label,
-          perCapita: laborHours > 0 ? Math.round(revenue / laborHours) : null,
-        };
-      })
-    );
-    productivityTrend = monthLaborResults;
+        : rows;
+      const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
+      const laborHours = filtered.reduce((a, r) => a + r.hoursSum, 0);
+      return {
+        label: m.label,
+        perCapita: laborHours > 0 ? Math.round(revenue / laborHours) : null,
+      };
+    });
   }
-
-  const dualRegionTargets = await Promise.all(
-    DUAL_OPS_REGIONS.map(async (region) => {
-      const regionIds = filterStores.filter((s) => s.region === region).map((s) => s.id);
-      const targets = await sumTargetByMonthForPerformanceStores(
-        startYmd,
-        endYmd,
-        regionIds
-      );
-      return { region, targets };
-    })
-  );
-  const targetByRegion = new Map(dualRegionTargets.map((r) => [r.region, r.targets]));
 
   const regionalBenchmark = DUAL_OPS_REGIONS.map((region) => {
     const regionIds = filterStores.filter((s) => s.region === region).map((s) => s.id);

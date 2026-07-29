@@ -296,6 +296,100 @@ export function sumPerformanceDailyRangeRows(
   };
 }
 
+/**
+ * 與 aggregateStoreMetricsForRange 相同公式，但依月份分桶回傳。
+ * 整段區間只呼叫一次 buildRangeDailyMetricsPrefetch，避免逐月重複查 DB。
+ * 回傳 Map<"YYYY-MM", PerformanceDailyRangeRow[]>。
+ */
+export async function aggregateStoreMetricsByMonth(
+  startDate: string,
+  endDate: string
+): Promise<Map<string, PerformanceDailyRangeRow[]>> {
+  const revenueStartYmd = getRevenueMetricsDataStartYmd();
+  const { startDate: effStart, endDate: effEnd } = clampMetricsDateRange(
+    startDate,
+    endDate,
+    revenueStartYmd
+  );
+  if (effStart > effEnd) return new Map();
+
+  const attendanceStartYmd = formatDateOnly(await getAttendanceDataStartDate());
+
+  const stores = await prisma.store.findMany({
+    where: { hideInReports: false },
+    select: { id: true, name: true },
+  });
+  const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
+
+  type AccumRow = { storeId: string; storeName: string; revenueSum: number; hoursSum: number; dayCount: number };
+  const byMonthStore = new Map<string, Map<string, AccumRow>>();
+
+  function accumulate(ym: string, storeId: string, revenue: number, hours: number) {
+    let monthMap = byMonthStore.get(ym);
+    if (!monthMap) {
+      monthMap = new Map();
+      byMonthStore.set(ym, monthMap);
+    }
+    let row = monthMap.get(storeId);
+    if (!row) {
+      row = { storeId, storeName: storeNameById.get(storeId) ?? "", revenueSum: 0, hoursSum: 0, dayCount: 0 };
+      monthMap.set(storeId, row);
+    }
+    row.revenueSum += revenue;
+    row.hoursSum += hours;
+    if (revenue > 0 || hours > 0) row.dayCount += 1;
+  }
+
+  // 出勤上傳起日之前：只有營收，逐筆歸月
+  const revenueOnlyEnd =
+    effEnd < attendanceStartYmd ? effEnd : addCalendarDaysUTC(attendanceStartYmd, -1);
+  if (effStart <= revenueOnlyEnd && effStart < attendanceStartYmd) {
+    const { start, end } = toDateRange(effStart, revenueOnlyEnd);
+    const preRows = await prisma.revenueRecord.findMany({
+      where: { revenueDate: { gte: start, lte: end } },
+      select: { storeId: true, revenueDate: true, revenueAmount: true },
+    });
+    for (const r of preRows) {
+      const rev = Number(r.revenueAmount ?? 0);
+      if (rev <= 0) continue;
+      accumulate(formatDateOnly(r.revenueDate).slice(0, 7), r.storeId, rev, 0);
+    }
+  }
+
+  // 出勤資料區間：整段只 prefetch 一次
+  const dayLoopStart = effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
+  if (dayLoopStart <= effEnd) {
+    const prefetch = await buildRangeDailyMetricsPrefetch(dayLoopStart, effEnd);
+    const dayStrs = listDateStrings(dayLoopStart, effEnd);
+    const dailyMaps = await mapWithConcurrency(dayStrs, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
+      computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch)
+    );
+    for (let i = 0; i < dayStrs.length; i++) {
+      const ym = dayStrs[i].slice(0, 7);
+      for (const [storeId, m] of dailyMaps[i]) {
+        if (!(m.revenue > 0 || m.laborHours > 0)) continue;
+        accumulate(ym, storeId, m.revenue, m.laborHours);
+      }
+    }
+  }
+
+  const result = new Map<string, PerformanceDailyRangeRow[]>();
+  for (const [ym, monthMap] of byMonthStore) {
+    const rows = [...monthMap.values()]
+      .filter((s) => s.storeName && hasActivity(s))
+      .map((s) => ({
+        storeId: s.storeId,
+        storeName: s.storeName,
+        revenueSum: s.revenueSum,
+        hoursSum: s.hoursSum,
+        efficiencyRatio: s.hoursSum > 0 ? s.revenueSum / s.hoursSum : null,
+        dayCount: s.dayCount,
+      }));
+    if (rows.length > 0) result.set(ym, rows);
+  }
+  return result;
+}
+
 export async function resolveEffectiveMetricsDateRange(
   startDate: string,
   endDate: string

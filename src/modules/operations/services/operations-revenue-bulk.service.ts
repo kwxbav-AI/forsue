@@ -280,6 +280,56 @@ export async function sumFullMonthTargetForPerformanceStores(
   return targetRows.reduce((sum, r) => sum + Number(r.salesTarget ?? 0), 0);
 }
 
+/**
+ * 指定績效門市各月目標合計（按門市拆分）。
+ * 回傳 Map<perfStoreId, Map<"YYYY-MM", target>>，供呼叫端依區域加總，避免重複查 DB。
+ */
+export async function sumTargetByMonthPerStore(
+  startYmd: string,
+  endYmd: string,
+  perfStoreIds: string[]
+): Promise<Map<string, Map<string, number>>> {
+  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  if (slices.length === 0 || perfStoreIds.length === 0) return new Map();
+
+  const [holidaySet, perfToRetail] = await Promise.all([
+    loadHolidaySet(startYmd, endYmd),
+    mapPerformanceToRetailStore(perfStoreIds),
+  ]);
+
+  const retailToPerfId = await buildRetailToPerfStoreMap(perfStoreIds, perfToRetail);
+  const retailIds = [...retailToPerfId.keys()];
+
+  const targetRows =
+    retailIds.length > 0
+      ? await prisma.storeTarget.findMany({
+          where: {
+            storeId: { in: retailIds },
+            OR: slices.map(({ year, month }) => ({ year, month })),
+          },
+          select: { storeId: true, year: true, month: true, salesTarget: true },
+        })
+      : [];
+
+  const result = new Map<string, Map<string, number>>();
+  for (const slice of slices) {
+    const ym = `${slice.year}-${String(slice.month).padStart(2, "0")}`;
+    for (const retailId of retailIds) {
+      const perfId = retailToPerfId.get(retailId);
+      if (!perfId) continue;
+      const prorated = prorateTargetForSlice(retailId, slice, targetRows, holidaySet);
+      if (prorated <= 0) continue;
+      let storeMap = result.get(perfId);
+      if (!storeMap) {
+        storeMap = new Map();
+        result.set(perfId, storeMap);
+      }
+      storeMap.set(ym, (storeMap.get(ym) ?? 0) + prorated);
+    }
+  }
+  return result;
+}
+
 /** 各月目標合計（營運 catalog 全部門市） */
 export async function sumOpsCatalogTargetByMonth(
   startYmd: string,
