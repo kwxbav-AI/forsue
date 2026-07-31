@@ -155,6 +155,13 @@ function resolveStoreIdFromStoreText(
   const exact = candidates.find((c) => c.depKey === key || c.nameKey === key);
   if (exact) return exact.id;
 
+  // 格式「XX區-YY店」→ 先嘗試用「-」後段精確比對（避免被前段「XX區」誤導）
+  const lastSegment = key.includes("-") ? key.split("-").pop()! : null;
+  if (lastSegment) {
+    const suffixExact = candidates.find((c) => c.depKey === lastSegment || c.nameKey === lastSegment);
+    if (suffixExact) return suffixExact.id;
+  }
+
   const contains = candidates
     .filter(
       (c) =>

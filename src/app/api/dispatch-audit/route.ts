@@ -71,9 +71,10 @@ export async function GET(request: NextRequest) {
       id: true,
       workDate: true,
       employeeId: true,
-      department: true,       // C欄，用於排除非門市人員
-      originalStoreId: true,  // C欄解析結果，本店備援
-      clockInStoreId: true,   // J欄，實際打卡門市
+      department: true,        // C欄，用於排除非門市人員
+      originalStoreId: true,   // C欄解析結果，本店備援
+      clockInStoreId: true,    // J欄，實際打卡門市（解析後 ID）
+      clockInStoreText: true,  // J欄，打卡原始文字（含「XX區-YY店」格式）
       workHours: true,
     },
   });
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
     if (!emp) continue;
     if (Number(att.workHours) <= 0) continue;
 
-    // 排除後勤/客服/司機等非門市人員
+    // 排除後勤/客服/司機等非門市人員（依 C欄文字）
     if (isDeptExcluded(att.department, excludedDepts)) continue;
 
     const clockInStoreId = att.clockInStoreId;
@@ -115,18 +116,25 @@ export async function GET(request: NextRequest) {
 
     // defaultStoreId 為 null 時，以 C欄 originalStoreId 作為本店備援
     const effectiveDefaultStoreId = emp.defaultStoreId ?? att.originalStoreId ?? null;
+    const homeStoreName = effectiveDefaultStoreId
+      ? (storeNameById.get(effectiveDefaultStoreId) ?? null)
+      : null;
+
+    // 本店本身屬於非門市設施（如長興倉、校舍等）→ 排除
+    if (homeStoreName && isDeptExcluded(homeStoreName, excludedDepts)) continue;
 
     // 打卡門市 = 本店 → 不需調度
     if (clockInStoreId === effectiveDefaultStoreId) continue;
+
+    // J欄打卡文字明確包含本店名稱（如「宜蘭區-校舍店」而 ID 誤解析為宜蘭）→ 排除
+    if (homeStoreName && att.clockInStoreText && att.clockInStoreText.includes(homeStoreName)) continue;
 
     // 本店篩選
     if (filterDefaultStoreId && effectiveDefaultStoreId !== filterDefaultStoreId) continue;
 
     const key = `${att.employeeId}|${dateKey(att.workDate)}`;
     if (!dispatchSet.has(key)) {
-      const defaultStoreName = effectiveDefaultStoreId
-        ? (storeNameById.get(effectiveDefaultStoreId) ?? `(${effectiveDefaultStoreId})`)
-        : null;
+      const defaultStoreName = homeStoreName ?? (effectiveDefaultStoreId ? `(${effectiveDefaultStoreId})` : null);
       missingDispatch.push({
         attendanceId: att.id,
         workDate: dateKey(att.workDate),
