@@ -26,6 +26,12 @@ export type PerformanceDailyRangeRow = {
 
 const DAY_COMPUTE_CONCURRENCY = 16;
 
+const metricsByMonthCache = new Map<string, {
+  expiresAt: number;
+  data: Map<string, PerformanceDailyRangeRow[]>;
+}>();
+const METRICS_BY_MONTH_CACHE_MS = 3 * 60 * 1000;
+
 function hasActivity(row: Pick<PerformanceDailyRangeRow, "revenueSum" | "hoursSum">): boolean {
   return row.revenueSum > 0 || row.hoursSum > 0;
 }
@@ -305,6 +311,11 @@ export async function aggregateStoreMetricsByMonth(
   startDate: string,
   endDate: string
 ): Promise<Map<string, PerformanceDailyRangeRow[]>> {
+  const cacheKey = `${startDate}|${endDate}`;
+  const now = Date.now();
+  const cached = metricsByMonthCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.data;
+
   const revenueStartYmd = getRevenueMetricsDataStartYmd();
   const { startDate: effStart, endDate: effEnd } = clampMetricsDateRange(
     startDate,
@@ -387,6 +398,7 @@ export async function aggregateStoreMetricsByMonth(
       }));
     if (rows.length > 0) result.set(ym, rows);
   }
+  metricsByMonthCache.set(cacheKey, { expiresAt: now + METRICS_BY_MONTH_CACHE_MS, data: result });
   return result;
 }
 
