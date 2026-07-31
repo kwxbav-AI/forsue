@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatDateOnly, parseDateOnlyUTC, toDateRangeTaipei } from "@/lib/date";
+import { formatDateOnly, parseDateOnlyUTC, toDateRangeTaipei, toDateRange } from "@/lib/date";
 import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import { countWorkingDaysInRangeUTC } from "@/lib/month-working-calendar";
 import {
@@ -102,22 +102,28 @@ export async function fetchRevenueByStoreAndMonth(
   return byStoreMonth;
 }
 
-/** 營運 catalog 各月營收加總（與區間營業額相同：PerformanceDaily，供月趨勢圖） */
+/** 營運 catalog 各月營收加總（單次查 revenueRecord，供月趨勢圖） */
 export async function sumOpsCatalogRevenueByMonth(
   startYmd: string,
   endYmd: string
 ): Promise<Map<string, number>> {
-  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  const filterStores = await listPerformanceStoresForFilter();
+  const storeIds = filterStores.map((s) => s.id);
+  if (storeIds.length === 0) return new Map();
+
+  const { start, end } = toDateRange(startYmd, endYmd);
+  const rows = await prisma.revenueRecord.findMany({
+    where: { storeId: { in: storeIds }, revenueDate: { gte: start, lte: end } },
+    select: { revenueDate: true, revenueAmount: true },
+  });
+
   const monthTotals = new Map<string, number>();
-
-  for (const slice of slices) {
-    const ym = `${slice.year}-${String(slice.month).padStart(2, "0")}`;
-    const charts = await fetchChartsPerStore(slice.overlapStart, slice.overlapEnd);
-    const filtered = filterChartsByOpsCatalog(charts);
-    const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
-    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + revenue);
+  for (const r of rows) {
+    const ym = formatDateOnly(r.revenueDate).slice(0, 7);
+    const rev = Number(r.revenueAmount ?? 0);
+    if (rev <= 0) continue;
+    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + rev);
   }
-
   return monthTotals;
 }
 
@@ -386,19 +392,29 @@ export async function sumFullMonthTargetByPerformanceStore(
   return result;
 }
 
-/** 桃+宜各月營收加總（只含 DUAL_OPS_REGIONS，供月度業績趨勢圖使用） */
+/** 桃+宜各月營收加總（單次查 revenueRecord，供月度業績趨勢圖使用） */
 export async function sumDualRegionRevenueByMonth(
   startYmd: string,
   endYmd: string
 ): Promise<Map<string, number>> {
-  const slices = listMonthSlicesInRange(startYmd, endYmd);
+  const filterStores = await listPerformanceStoresForFilter();
+  const dualStoreIds = filterStores
+    .filter((s) => (DUAL_OPS_REGIONS as readonly string[]).includes(s.region))
+    .map((s) => s.id);
+  if (dualStoreIds.length === 0) return new Map();
+
+  const { start, end } = toDateRange(startYmd, endYmd);
+  const rows = await prisma.revenueRecord.findMany({
+    where: { storeId: { in: dualStoreIds }, revenueDate: { gte: start, lte: end } },
+    select: { revenueDate: true, revenueAmount: true },
+  });
+
   const monthTotals = new Map<string, number>();
-  for (const slice of slices) {
-    const ym = `${slice.year}-${String(slice.month).padStart(2, "0")}`;
-    const charts = await fetchChartsPerStore(slice.overlapStart, slice.overlapEnd);
-    const filtered = filterChartsByCatalogRegions(charts, DUAL_OPS_REGIONS);
-    const revenue = filtered.reduce((a, r) => a + r.revenueSum, 0);
-    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + revenue);
+  for (const r of rows) {
+    const ym = formatDateOnly(r.revenueDate).slice(0, 7);
+    const rev = Number(r.revenueAmount ?? 0);
+    if (rev <= 0) continue;
+    monthTotals.set(ym, (monthTotals.get(ym) ?? 0) + rev);
   }
   return monthTotals;
 }

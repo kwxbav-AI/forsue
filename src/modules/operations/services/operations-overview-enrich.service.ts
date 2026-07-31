@@ -77,6 +77,29 @@ function computeOvertimeRateOnTarget(
   return Math.round((overtimeHours / periodLaborHourTarget) * 1000) / 10;
 }
 
+/** 去年同期各門市營收（只查 revenueRecord，不算工時）供 YoY 營收比較使用 */
+async function fetchPriorYearRevenuePerStore(
+  storeIds: string[],
+  startYmd: string,
+  endYmd: string
+) {
+  if (storeIds.length === 0) return [];
+  const { start, end } = toDateRange(startYmd, endYmd);
+  const grouped = await prisma.revenueRecord.groupBy({
+    by: ["storeId"],
+    where: { storeId: { in: storeIds }, revenueDate: { gte: start, lte: end } },
+    _sum: { revenueAmount: true },
+  });
+  return grouped.map((g) => ({
+    storeId: g.storeId,
+    storeName: "",
+    revenueSum: Number(g._sum.revenueAmount ?? 0),
+    hoursSum: 0,
+    efficiencyRatio: null as number | null,
+    dayCount: 0,
+  }));
+}
+
 function shiftYear(dateStr: string, deltaYears: number): string {
   const d = parseDateOnlyUTC(dateStr);
   d.setUTCFullYear(d.getUTCFullYear() + deltaYears);
@@ -307,13 +330,12 @@ export async function buildEnrichedOverviewStores(input: {
   const priorStartYmd = shiftYear(startYmd, -1);
   const priorEndYmd = shiftYear(endYmd, -1);
 
-  const [allPerStore, allPriorPerStore, metDaysMap, perfToRetail] = await Promise.all([
+  const [allPerStore, priorPerStore, metDaysMap, perfToRetail] = await Promise.all([
     isNorth
       ? fetchChartsPerStoreForStoreIds(startYmd, endYmd, scopedStoreIds)
       : fetchChartsPerStore(startYmd, endYmd),
-    isNorth
-      ? fetchChartsPerStoreForStoreIds(priorStartYmd, priorEndYmd, scopedStoreIds)
-      : fetchChartsPerStore(priorStartYmd, priorEndYmd),
+    // 去年只需要營收（YoY 比較），不需要工時，直接查 revenueRecord 省去整個績效引擎計算
+    fetchPriorYearRevenuePerStore(scopedStoreIds, priorStartYmd, priorEndYmd),
     countTargetMetDaysByStore(startYmd, endYmd, scopedStoreIds),
     mapPerformanceToRetailStore(scopedStoreIds),
   ]);
@@ -322,9 +344,6 @@ export async function buildEnrichedOverviewStores(input: {
   const perStore = region
     ? allPerStore
     : filterChartsByCatalogRegions(allPerStore, DUAL_OPS_REGIONS);
-  const priorPerStore = region
-    ? allPriorPerStore
-    : filterChartsByCatalogRegions(allPriorPerStore, DUAL_OPS_REGIONS);
 
   const retailIds = [
     ...new Set([...perfToRetail.values()].map((v) => v.retailId).filter(Boolean)),
