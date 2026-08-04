@@ -139,6 +139,11 @@ function normalizeStoreText(value: string): string {
     .toLowerCase();
 }
 
+// 打卡文字別名對照（normalize 後的 key → normalize 後的正式門市名）
+const STORE_TEXT_ALIASES: Record<string, string> = {
+  "南門": "中正南",
+};
+
 function resolveStoreIdFromStoreText(
   storeText: string,
   stores: { id: string; department: string | null; name: string }[]
@@ -158,7 +163,9 @@ function resolveStoreIdFromStoreText(
   // 格式「XX區-YY店」→ 先嘗試用「-」後段精確比對（避免被前段「XX區」誤導）
   const lastSegment = key.includes("-") ? key.split("-").pop()! : null;
   if (lastSegment) {
-    const suffixExact = candidates.find((c) => c.depKey === lastSegment || c.nameKey === lastSegment);
+    // 別名對照：先將後段轉換為正式門市名再比對
+    const aliasedSegment = STORE_TEXT_ALIASES[lastSegment] ?? lastSegment;
+    const suffixExact = candidates.find((c) => c.depKey === aliasedSegment || c.nameKey === aliasedSegment);
     if (suffixExact) return suffixExact.id;
   }
 

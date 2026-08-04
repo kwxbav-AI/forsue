@@ -7,6 +7,23 @@ export const dynamic = "force-dynamic";
 // 額外排除的部門關鍵字（後勤/客服/司機等非門市人員）
 const EXTRA_EXCLUDED_KEYWORDS = ["後勤", "客服", "司機", "採購", "長興倉", "台北司機", "會計"];
 
+// 打卡文字別名 → 正式門市名（與 upload.service.ts 的 STORE_TEXT_ALIASES 一致）
+const CLOCK_IN_TEXT_ALIASES: Record<string, string> = {
+  "南門店": "中正南店",
+  "南門":   "中正南店",
+};
+
+/** 打卡文字是否實質上指向本店（含別名比對） */
+function clockInTextMatchesHomeStore(clockInStoreText: string, homeStoreName: string): boolean {
+  if (clockInStoreText.includes(homeStoreName)) return true;
+  for (const [alias, canonical] of Object.entries(CLOCK_IN_TEXT_ALIASES)) {
+    if (clockInStoreText.includes(alias) && homeStoreName.includes(canonical.replace(/店$/, ""))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function dateKey(d: Date) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
@@ -126,8 +143,8 @@ export async function GET(request: NextRequest) {
     // 打卡門市 = 本店 → 不需調度
     if (clockInStoreId === effectiveDefaultStoreId) continue;
 
-    // J欄打卡文字明確包含本店名稱（如「宜蘭區-校舍店」而 ID 誤解析為宜蘭）→ 排除
-    if (homeStoreName && att.clockInStoreText && att.clockInStoreText.includes(homeStoreName)) continue;
+    // J欄打卡文字實質上指向本店（含別名，如「南門店」=「中正南店」）→ 排除
+    if (homeStoreName && att.clockInStoreText && clockInTextMatchesHomeStore(att.clockInStoreText, homeStoreName)) continue;
 
     // 本店篩選
     if (filterDefaultStoreId && effectiveDefaultStoreId !== filterDefaultStoreId) continue;
