@@ -267,33 +267,56 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    try {
-      const params = new URLSearchParams({ startDate, endDate });
-      if (region) params.set("region", region);
-      const ovRes = await fetch(`/api/operations/overview?${params}`, { cache: "no-store" });
-      if (ovRes.ok) {
-        const data = await ovRes.json();
-        const { kpiMetrics: kpiData, northKpiMetrics: northKpiData, ...overviewData } = data as OverviewData & {
-          kpiMetrics?: KpiMetrics;
-          northKpiMetrics?: NorthKpiMetrics;
-        };
-        setOverview({ ...overviewData });
-        if (kpiData) setKpi(kpiData);
-        if (northKpiData) setNorthKpi(northKpiData);
-      } else {
+    setRetrying(false);
+
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 5000; // 5 秒後重試，讓 server 有時間完成背景計算
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const params = new URLSearchParams({ startDate, endDate });
+        if (region) params.set("region", region);
+        const ovRes = await fetch(`/api/operations/overview?${params}`, { cache: "no-store" });
+        if (ovRes.ok) {
+          const data = await ovRes.json();
+          const { kpiMetrics: kpiData, northKpiMetrics: northKpiData, ...overviewData } = data as OverviewData & {
+            kpiMetrics?: KpiMetrics;
+            northKpiMetrics?: NorthKpiMetrics;
+          };
+          setOverview({ ...overviewData });
+          if (kpiData) setKpi(kpiData);
+          if (northKpiData) setNorthKpi(northKpiData);
+          setLoadError(null);
+          setRetrying(false);
+          break;
+        }
+        // 5xx 且還有重試次數：等待後重試
+        if (ovRes.status >= 500 && attempt < MAX_RETRIES) {
+          setRetrying(true);
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+          continue;
+        }
         let detail = "";
         try { const j = await ovRes.json(); detail = j?.error ?? ""; } catch { /* ignore */ }
         setLoadError(`載入失敗（${ovRes.status}${detail ? `：${detail}` : ""}），請稍後再試`);
+        break;
+      } catch (e) {
+        if (attempt < MAX_RETRIES) {
+          setRetrying(true);
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+          continue;
+        }
+        setLoadError(`網路錯誤：${e instanceof Error ? e.message : String(e)}`);
       }
-    } catch (e) {
-      setLoadError(`網路錯誤：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
+    setRetrying(false);
   }, [startDate, endDate, region]);
 
   useEffect(() => {
@@ -450,7 +473,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
             className="rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
             style={{ backgroundColor: OPS_COLORS.revenue.value }}
           >
-            {loading ? "載入中…" : "重新整理"}
+            {retrying ? "計算中，重試…" : loading ? "載入中…" : "重新整理"}
           </button>
           {loadError && (
             <span className="text-xs text-red-600">{loadError}</span>
