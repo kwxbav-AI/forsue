@@ -51,21 +51,34 @@ const chartsPerStoreCache = new Map<string, {
   expiresAt: number;
   data: ChartsPerStoreRow[];
 }>();
+const chartsPerStoreInFlight = new Map<string, Promise<ChartsPerStoreRow[]>>();
 const CHARTS_CACHE_MS = 3 * 60 * 1000; // 3 分鐘
 
-export async function fetchChartsPerStore(
+export function fetchChartsPerStore(
   startDate: string,
   endDate: string
 ): Promise<ChartsPerStoreRow[]> {
   const key = `${startDate}|${endDate}`;
   const now = Date.now();
   const cached = chartsPerStoreCache.get(key);
-  if (cached && cached.expiresAt > now) return cached.data;
+  if (cached && cached.expiresAt > now) return Promise.resolve(cached.data);
 
-  const rows = await aggregateStoreMetricsForRange(startDate, endDate);
-  const data = rows.map(toChartsRow);
-  chartsPerStoreCache.set(key, { expiresAt: now + CHARTS_CACHE_MS, data });
-  return data;
+  const inFlight = chartsPerStoreInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = aggregateStoreMetricsForRange(startDate, endDate)
+    .then((rows) => {
+      const data = rows.map(toChartsRow);
+      chartsPerStoreCache.set(key, { expiresAt: Date.now() + CHARTS_CACHE_MS, data });
+      chartsPerStoreInFlight.delete(key);
+      return data;
+    })
+    .catch((err: unknown) => {
+      chartsPerStoreInFlight.delete(key);
+      throw err;
+    });
+  chartsPerStoreInFlight.set(key, promise);
+  return promise;
 }
 
 /** 同 fetchChartsPerStore，但以指定門市 ID 為範圍，繞過 hideInReports 篩選（供北區 Dashboard） */

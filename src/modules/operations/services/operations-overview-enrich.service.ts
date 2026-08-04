@@ -145,6 +145,7 @@ let kpiMetricsCache: {
   expiresAt: number;
   data: Awaited<ReturnType<typeof buildOpsKpiMetricsUncached>>;
 } | null = null;
+let kpiMetricsInFlight: Map<string, Promise<Awaited<ReturnType<typeof buildOpsKpiMetricsUncached>>>> = new Map();
 
 const KPI_METRICS_CACHE_MS = 5 * 60 * 1000;
 
@@ -153,6 +154,7 @@ let ytdTrendCache: {
   expiresAt: number;
   data: Awaited<ReturnType<typeof buildMonthlyRevenueTrend>>;
 } | null = null;
+let ytdTrendInFlight: Promise<Awaited<ReturnType<typeof buildMonthlyRevenueTrend>>> | null = null;
 
 const YTD_TREND_CACHE_MS = 10 * 60 * 1000;
 
@@ -211,16 +213,24 @@ async function fetchRevenueForStoreIds(
 }
 
 /** KPI 指標：依篩選日期區間與區域累計（5 分鐘快取） */
-export async function buildOpsKpiMetrics(startYmd: string, endYmd: string, region?: string) {
+export function buildOpsKpiMetrics(startYmd: string, endYmd: string, region?: string) {
   // 全公司 KPI 固定桃園+宜蘭，與 region 無關，快取 key 不帶 region
   const key = `${startYmd}|${endYmd}`;
   const now = Date.now();
   if (kpiMetricsCache && kpiMetricsCache.key === key && kpiMetricsCache.expiresAt > now) {
-    return kpiMetricsCache.data;
+    return Promise.resolve(kpiMetricsCache.data);
   }
-  const data = await buildOpsKpiMetricsUncached(startYmd, endYmd, region);
-  kpiMetricsCache = { key, expiresAt: now + KPI_METRICS_CACHE_MS, data };
-  return data;
+  const inFlight = kpiMetricsInFlight.get(key);
+  if (inFlight) return inFlight;
+  const promise = buildOpsKpiMetricsUncached(startYmd, endYmd, region)
+    .then((data) => {
+      kpiMetricsCache = { key, expiresAt: Date.now() + KPI_METRICS_CACHE_MS, data };
+      kpiMetricsInFlight.delete(key);
+      return data;
+    })
+    .catch((err: unknown) => { kpiMetricsInFlight.delete(key); throw err; });
+  kpiMetricsInFlight.set(key, promise);
+  return promise;
 }
 
 let northKpiCache: {
@@ -271,18 +281,24 @@ export async function buildNorthRegionKpiMetrics(startYmd: string, endYmd: strin
 }
 
 /** 當年度 1 月 1 日至今的月度業績趨勢（不受總覽日期篩選影響，10 分鐘快取） */
-export async function buildYearToDateMonthlyRevenueTrend() {
+export function buildYearToDateMonthlyRevenueTrend() {
   const todayYmd = formatDateOnlyTaipei();
   const year = todayYmd.slice(0, 4);
   const key = `${year}|${todayYmd}`;
   const now = Date.now();
   if (ytdTrendCache && ytdTrendCache.key === key && ytdTrendCache.expiresAt > now) {
-    return ytdTrendCache.data;
+    return Promise.resolve(ytdTrendCache.data);
   }
+  if (ytdTrendInFlight) return ytdTrendInFlight;
   const startYmd = `${year}-01-01`;
-  const data = await buildMonthlyRevenueTrend(startYmd, todayYmd);
-  ytdTrendCache = { key, expiresAt: now + YTD_TREND_CACHE_MS, data };
-  return data;
+  ytdTrendInFlight = buildMonthlyRevenueTrend(startYmd, todayYmd)
+    .then((data) => {
+      ytdTrendCache = { key, expiresAt: Date.now() + YTD_TREND_CACHE_MS, data };
+      ytdTrendInFlight = null;
+      return data;
+    })
+    .catch((err: unknown) => { ytdTrendInFlight = null; throw err; });
+  return ytdTrendInFlight;
 }
 
 /** 月度業績趨勢：單次營收查詢 + 批次目標，避免每月重跑 dashboard filter */

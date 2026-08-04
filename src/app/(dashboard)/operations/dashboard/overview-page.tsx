@@ -285,10 +285,12 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
         if (kpiData) setKpi(kpiData);
         if (northKpiData) setNorthKpi(northKpiData);
       } else {
-        setLoadError("載入失敗，請稍後再試");
+        let detail = "";
+        try { const j = await ovRes.json(); detail = j?.error ?? ""; } catch { /* ignore */ }
+        setLoadError(`載入失敗（${ovRes.status}${detail ? `：${detail}` : ""}），請稍後再試`);
       }
-    } catch {
-      setLoadError("網路錯誤，請稍後再試");
+    } catch (e) {
+      setLoadError(`網路錯誤：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
