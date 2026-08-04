@@ -531,8 +531,9 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
       homeStoreId = Array.from(storeIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
     }
 
-    // 主力門市為後勤（hideInReports）且完全沒有達標獎金（從未調度到正式門市）→ 跳過
-    if (hiddenStoreIds.has(homeStoreId) && targetBonus === 0) continue;
+    // 主力門市為後勤（hideInReports）且達標獎金、營運成果獎金皆為 0
+    // （從未調度到正式門市，或調度的門市當天都沒達標也沒貢獻工時池）→ 跳過
+    if (hiddenStoreIds.has(homeStoreId) && targetBonus === 0 && operationsBonus === 0) continue;
 
     const isNewStore = newStoreIds.has(homeStoreId);
     let guaranteeAmount: Decimal | null = null;
