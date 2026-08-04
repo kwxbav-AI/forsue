@@ -31,6 +31,16 @@ const DEFAULT_MULTIPLIERS: Record<string, number> = {
   蔬果處理人員: 1,
 };
 
+// ─── 調度事由解析：remark 格式為「事由(X)? / 備註」或純事由，
+// 僅「人力支援」調度享 1.5 倍獎金，其餘事由（跨店學習／後勤支援門市／門市支援客服等）
+// 正常以 1 倍計算，不加乘 ──────────────────────────────────────────────────────
+function dispatchReasonBase(remark: string | null): string {
+  const raw = remark ?? "";
+  const slashIdx = raw.indexOf(" / ");
+  const reasonRaw = slashIdx >= 0 ? raw.slice(0, slashIdx) : raw;
+  return reasonRaw.replace(/\(X\)$/, "").trim();
+}
+
 // ─── 工時計算規則 (Rule 7) ─────────────────────────────────────────────────────
 function calcBonusHours(actualHours: number, scheduledHours: number): number {
   const effective = actualHours + 0.1 > 8 ? 8 : actualHours;
@@ -300,11 +310,12 @@ export async function calculateMonthlyBonus(yearMonth: string): Promise<BonusEmp
             isExceeded = baseBonus === EXCEED_BONUS;
             dispatchNote = "調店(X)";
           } else {
-            // 正常調度：1.5倍
+            // 正常調度：僅「人力支援」享 1.5 倍，其餘事由
+            // （跨店學習／後勤支援門市／門市支援客服等）正常以 1 倍計算
             const anyExceeded = fromExceeded || toExceeded;
             isExceeded = anyExceeded;
             baseBonus = anyExceeded ? EXCEED_BONUS : BASE_BONUS;
-            dispatchNote = "調店×1.5";
+            dispatchNote = dispatchReasonBase(disp.remark) === "人力支援" ? "調店×1.5" : "調店";
           }
           // 使用到店的門市資訊顯示
           storeId = toStoreId;
