@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatLocalDateInput } from "@/lib/date";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
@@ -266,35 +266,29 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
   const [northKpi, setNorthKpi] = useState<NorthKpiMetrics | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const heavyLoadedRef = useRef(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const includeMonthlyTrend = !heavyLoadedRef.current;
       const params = new URLSearchParams({ startDate, endDate });
-      if (!includeMonthlyTrend) {
-        params.set("includeMonthlyTrend", "0");
-      }
-
       if (region) params.set("region", region);
-      const ovRes = await fetch(`/api/operations/overview?${params}`);
+      const ovRes = await fetch(`/api/operations/overview?${params}`, { cache: "no-store" });
       if (ovRes.ok) {
         const data = await ovRes.json();
         const { kpiMetrics: kpiData, northKpiMetrics: northKpiData, ...overviewData } = data as OverviewData & {
           kpiMetrics?: KpiMetrics;
           northKpiMetrics?: NorthKpiMetrics;
         };
-        setOverview((prev) => ({
-          ...overviewData,
-          monthlyTrend: includeMonthlyTrend ?
-            (overviewData.monthlyTrend ?? [])
-          : (prev?.monthlyTrend ?? []),
-        }));
+        setOverview({ ...overviewData });
         if (kpiData) setKpi(kpiData);
         if (northKpiData) setNorthKpi(northKpiData);
-        if (includeMonthlyTrend) heavyLoadedRef.current = true;
+      } else {
+        setLoadError("載入失敗，請稍後再試");
       }
+    } catch {
+      setLoadError("網路錯誤，請稍後再試");
     } finally {
       setLoading(false);
     }
@@ -456,6 +450,9 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
           >
             {loading ? "載入中…" : "重新整理"}
           </button>
+          {loadError && (
+            <span className="text-xs text-red-600">{loadError}</span>
+          )}
         </div>
       </div>
 
