@@ -6,6 +6,7 @@ import {
   canAccessReportsSectionDb,
   canAccessWorkhourRelatedSectionDb,
 } from "@/lib/permissions-db";
+import { MissingUploadAlert } from "@/components/missing-upload-alert";
 
 export default async function HomePage() {
   const authOn = isAuthEnabled();
@@ -82,6 +83,7 @@ export default async function HomePage() {
 
   return (
     <div className="p-6 sm:p-8">
+      <MissingUploadAlert />
       <p className="mb-8 text-slate-600">
         在瀏覽器中使用：上傳 Excel、查詢工效比、達標統計、工時異動與目標設定
       </p>
