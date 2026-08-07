@@ -524,17 +524,19 @@ export async function computeStoreHoursByEmployee(
     const isBackoffice = reason === "後勤支援門市" && disp.confirmStatus === "已確認";
     if (isBackoffice && disp.actualHours == null) {
       const dateStr = formatDateOnly(d);
-      throw new Error(
-        `後勤支援門市已確認但未填調度工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}`
+      console.warn(
+        `後勤支援門市已確認但未填調度工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}，略過此筆調度`
       );
+      continue;
     }
 
     const fromCurrent = storeHours[fromStoreIdResolved] ?? 0;
     if (fromCurrent < dispatchH) {
       const dateStr = formatDateOnly(d);
-      throw new Error(
-        `調度工時大於出勤工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}，原店 ${fromCurrent}h，調出 ${dispatchH}h`
+      console.warn(
+        `調度工時大於出勤工時：員工 ${formatEmployee(disp.employeeId)}，日期 ${dateStr}，原店 ${fromCurrent}h，調出 ${dispatchH}h，略過此筆調度`
       );
+      continue;
     }
 
     storeHours[fromStoreIdResolved] = fromCurrent - dispatchH;
@@ -567,9 +569,10 @@ export async function computeStoreHoursByEmployee(
     const current = storeHours[storeId] ?? 0;
     const after = current + Number(adj.adjustmentHours);
     if (after < 0) {
-      throw new Error(
-        `調整後工時不得小於 0：員工 ${formatEmployee(adj.employeeId)}，門市 ${storeId}，結果 ${after}h`
+      console.warn(
+        `調整後工時不得小於 0：員工 ${formatEmployee(adj.employeeId)}，門市 ${storeId}，結果 ${after}h，略過此筆調整`
       );
+      continue;
     }
     storeHours[storeId] = after;
   }
