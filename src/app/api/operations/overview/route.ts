@@ -14,6 +14,7 @@ import {
   buildSupervisorPriorityAlerts,
 } from "@/modules/operations/services/operations-overview-alerts.service";
 import { fetchOpsRegionRevenueTotalByRecord } from "@/modules/operations/services/operations-metrics.service";
+import { prisma } from "@/lib/prisma";
 import { yoyGrowthRate } from "@/lib/operations-yoy";
 import { resolveEffectiveMetricsDateRange } from "@/modules/performance/services/performance-daily-range.service";
 export const dynamic = "force-dynamic";
@@ -102,9 +103,10 @@ export async function GET(request: NextRequest) {
     const scopedRegions = region ? [region] : [...DUAL_OPS_REGIONS];
     const priorStart = (() => { const d = parseDateOnlyUTC(effective.startDate); d.setUTCFullYear(d.getUTCFullYear() - 1); return formatDateOnly(d); })();
     const priorEnd   = (() => { const d = parseDateOnlyUTC(effective.endDate);   d.setUTCFullYear(d.getUTCFullYear() - 1); return formatDateOnly(d); })();
+    const yoyStores = await prisma.store.findMany({ where: { hideInReports: false }, select: { id: true, name: true } });
     const [currentRevenueForYoy, priorRevenueForYoy] = await Promise.all([
-      fetchOpsRegionRevenueTotalByRecord(effective.startDate, effective.endDate, scopedRegions),
-      fetchOpsRegionRevenueTotalByRecord(priorStart, priorEnd, scopedRegions),
+      fetchOpsRegionRevenueTotalByRecord(effective.startDate, effective.endDate, scopedRegions, yoyStores),
+      fetchOpsRegionRevenueTotalByRecord(priorStart, priorEnd, scopedRegions, yoyStores),
     ]);
     const summaryYoyGrowthRate = yoyGrowthRate(currentRevenueForYoy, priorRevenueForYoy);
     const summaryRegionLabel = region || "";

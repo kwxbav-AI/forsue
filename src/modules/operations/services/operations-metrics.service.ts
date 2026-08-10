@@ -202,9 +202,10 @@ export function getCatalogKeysForRegions(regions: readonly string[]): Set<string
 
 export function rowMatchesCatalogRegions(
   row: Pick<ChartsPerStoreRow, "storeName">,
-  regions: readonly string[]
+  regions: readonly string[],
+  allowedKeys?: Set<string>
 ): boolean {
-  const allowed = getCatalogKeysForRegions(regions);
+  const allowed = allowedKeys ?? getCatalogKeysForRegions(regions);
   const key = normalizeStoreKey(row.storeName);
   if (allowed.has(key)) return true;
   for (const catalogKey of allowed) {
@@ -220,7 +221,8 @@ export function filterChartsByCatalogRegions(
   rows: ChartsPerStoreRow[],
   regions: readonly string[]
 ): ChartsPerStoreRow[] {
-  return rows.filter((r) => rowMatchesCatalogRegions(r, regions));
+  const allowedKeys = getCatalogKeysForRegions(regions);
+  return rows.filter((r) => rowMatchesCatalogRegions(r, regions, allowedKeys));
 }
 
 /** @deprecated 請改用 filterChartsByCatalogRegions */
@@ -298,7 +300,8 @@ export async function fetchDualRegionRevenueTotal(
 export async function fetchOpsRegionRevenueTotalByRecord(
   startDate: string,
   endDate: string,
-  regions: readonly string[]
+  regions: readonly string[],
+  preloadedStores?: { id: string; name: string }[]
 ): Promise<number> {
   const catalogNames = OPS_REGION_CATALOG
     .filter((g) => (regions as string[]).includes(g.region))
@@ -306,7 +309,7 @@ export async function fetchOpsRegionRevenueTotalByRecord(
 
   if (catalogNames.length === 0) return 0;
 
-  const allStores = await prisma.store.findMany({
+  const allStores = preloadedStores ?? await prisma.store.findMany({
     where: { hideInReports: false },
     select: { id: true, name: true },
   });

@@ -2,7 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { getActiveRetailStores } from "@/modules/operations/services/retail-store-match.service";
 import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import { addCalendarDaysUTC, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
-import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
+import {
+  buildRangeDailyMetricsPrefetch,
+  computeDailyMetricsByStoreResilientWithPrefetch,
+} from "@/modules/performance/services/range-daily-metrics-prefetch.service";
 import {
   countWorkingDaysInRangeUTC,
   monthStartEndYmd,
@@ -635,16 +638,14 @@ export async function fetchDailyTrendForSelection(input: {
   };
   applyOpsCatalogWhenEmpty: boolean;
 }): Promise<DashboardDailyTrendPoint[]> {
-  const stores = await prisma.store.findMany({
-    where: { isActive: true, hideInReports: false },
-    select: { id: true, name: true },
-  });
-  const nameById = new Map(stores.map((s) => [s.id, s.name]));
+  const prefetch = await buildRangeDailyMetricsPrefetch(input.startYmd, input.endYmd, { reportVisibleOnly: true });
+  const nameById = new Map(prefetch.stores.map((s) => [s.id, s.name]));
 
   const dayStrs = listDateStrings(input.startYmd, input.endYmd);
-  const dailyTotals = await mapDaysWithConcurrency(dayStrs, 4, async (dayStr) => {
-    const daily = await computeDailyMetricsByStoreResilient(
+  const dailyTotals = await Promise.all(dayStrs.map(async (dayStr) => {
+    const daily = await computeDailyMetricsByStoreResilientWithPrefetch(
       parseDateOnlyUTC(dayStr),
+      prefetch,
       { reportVisibleOnly: true }
     );
     const chartRows: ChartsPerStoreRow[] = [];
@@ -665,7 +666,7 @@ export async function fetchDailyTrendForSelection(input: {
     }
     const totals = metricsFromChartRows(filtered);
     return { dayStr, revenue: totals.revenue, laborHours: totals.laborHours };
-  });
+  }));
 
   return dailyTotals.map((d) => ({
     date: d.dayStr,
@@ -712,11 +713,12 @@ export async function buildDashboardFilterResult(input: {
   const priorByStoreId = new Map(priorCharts.map((r) => [r.storeId, r.revenueSum]));
 
   const storeIds = filteredCharts.map((r) => r.storeId);
-  const [holidaySet, perfToRetail] = await Promise.all([
+  const [holidaySet, perfToRetail, activeRetail] = await Promise.all([
     loadHolidaySet(input.startYmd, input.endYmd),
     input.perfToRetailPreloaded ?
       Promise.resolve(input.perfToRetailPreloaded)
     : mapPerformanceToRetailStore(storeIds),
+    getActiveRetailStores(),
   ]);
 
   const workingDaysInRange = countWorkingDaysInRangeUTC(
@@ -727,7 +729,6 @@ export async function buildDashboardFilterResult(input: {
 
   const slices = listMonthSlicesInRange(input.startYmd, input.endYmd);
 
-  const activeRetail = await getActiveRetailStores();
   const retailIdByStoreNameKey = new Map(
     activeRetail.map((r) => [normalizeStoreKey(r.storeName), r.id])
   );

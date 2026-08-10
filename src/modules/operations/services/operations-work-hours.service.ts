@@ -903,18 +903,27 @@ export async function buildWorkHoursCalendar(input: {
   const homeEmployeeIds = [...new Set(homeAtts.map((a) => a.employeeId))];
   const outgoingOrConditions: object[] = [{ fromStoreId: input.storeId }];
   if (homeEmployeeIds.length > 0) outgoingOrConditions.push({ employeeId: { in: homeEmployeeIds } });
-  const outgoingDispatches = await prisma.dispatchRecord.findMany({
-    where: {
-      workDate: { in: workDates },
-      toStoreId: { not: input.storeId },
-      OR: outgoingOrConditions,
-    },
-    select: {
-      workDate: true,
-      employeeId: true,
-      toStoreId: true,
-    },
-  });
+  const dispatchEmpIds = [...new Set(dispatches.map((d) => d.employee.id))];
+  const [outgoingDispatches, rawSuppAtts] = await Promise.all([
+    prisma.dispatchRecord.findMany({
+      where: {
+        workDate: { in: workDates },
+        toStoreId: { not: input.storeId },
+        OR: outgoingOrConditions,
+      },
+      select: {
+        workDate: true,
+        employeeId: true,
+        toStoreId: true,
+      },
+    }),
+    dispatchEmpIds.length > 0
+      ? prisma.attendanceRecord.findMany({
+          where: { employeeId: { in: dispatchEmpIds }, workDate: { in: workDates } },
+          select: { workDate: true, department: true, employeeId: true },
+        })
+      : Promise.resolve([] as { workDate: Date; department: string | null; employeeId: string }[]),
+  ]);
 
   // 解析調出目標門市名稱
   const outgoingToStoreIds = [...new Set(outgoingDispatches.map((d) => d.toStoreId))];
@@ -982,19 +991,12 @@ export async function buildWorkHoursCalendar(input: {
     OTHER: "其他",
   };
 
-  // 撈跨店支援人員的出勤紀錄（取 department 用於顯示所屬門市名稱）
-  const dispatchEmpIds = [...new Set(dispatches.map((d) => d.employee.id))];
+  // 跨店支援人員出勤紀錄（用於顯示所屬門市名稱），已於 outgoingDispatches 並行載入
   const supportAttMap = new Map<string, Map<string, { department: string | null }>>();
-  if (dispatchEmpIds.length > 0) {
-    const suppAtts = await prisma.attendanceRecord.findMany({
-      where: { employeeId: { in: dispatchEmpIds }, workDate: { in: workDates } },
-      select: { workDate: true, department: true, employeeId: true },
-    });
-    for (const sa of suppAtts) {
-      const ymd = workDateYmd(sa.workDate);
-      if (!supportAttMap.has(sa.employeeId)) supportAttMap.set(sa.employeeId, new Map());
-      supportAttMap.get(sa.employeeId)!.set(ymd, { department: sa.department ?? null });
-    }
+  for (const sa of rawSuppAtts) {
+    const ymd = workDateYmd(sa.workDate);
+    if (!supportAttMap.has(sa.employeeId)) supportAttMap.set(sa.employeeId, new Map());
+    supportAttMap.get(sa.employeeId)!.set(ymd, { department: sa.department ?? null });
   }
 
   // 取得 HR Store 名稱，作為判斷跨店的基準
