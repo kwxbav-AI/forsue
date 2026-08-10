@@ -1,8 +1,23 @@
+import { prisma } from "@/lib/prisma";
 import {
   normalizeStoreKey,
   storeNameMatchesCatalogKey,
   storeNamesEquivalent,
 } from "@/lib/operations-dashboard";
+
+const RETAIL_STORE_CACHE_MS = 5 * 60 * 1000;
+let _retailStoreCache: { data: RetailStoreMatchRow[]; expiresAt: number } | null = null;
+
+/** 取得所有啟用中的營運門市，5 分鐘快取避免重複查詢 */
+export async function getActiveRetailStores(): Promise<RetailStoreMatchRow[]> {
+  if (_retailStoreCache && _retailStoreCache.expiresAt > Date.now()) return _retailStoreCache.data;
+  const data = await prisma.retailStore.findMany({
+    where: { isActive: true },
+    select: { id: true, storeName: true, region: true },
+  });
+  _retailStoreCache = { data, expiresAt: Date.now() + RETAIL_STORE_CACHE_MS };
+  return data;
+}
 
 export type RetailStoreMatchRow = {
   id: string;

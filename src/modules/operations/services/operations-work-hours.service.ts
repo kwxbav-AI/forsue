@@ -12,7 +12,7 @@ import {
 import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
 import { DUAL_OPS_REGIONS, normalizeStoreKey } from "@/lib/operations-dashboard";
 import { addCalendarDaysUTC } from "@/lib/date";
-import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
+import { getActiveRetailStores, resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 import {
   buildRangeDailyMetricsPrefetch,
   computeDailyMetricsByStoreResilientWithPrefetch,
@@ -763,10 +763,7 @@ export async function buildOperationsWorkHours(input: {
   if (input.storeId) {
     const hrName = filterStores.find((s) => s.id === input.storeId)?.storeName ?? null;
     if (hrName) {
-      const allRetail = await prisma.retailStore.findMany({
-        where: { isActive: true },
-        select: { id: true, storeName: true, region: true },
-      });
+      const allRetail = await getActiveRetailStores();
       const matched = resolveRetailStore(normalizeStoreKey(hrName), hrName, allRetail);
       if (matched) {
         storeTarget = await prisma.storeTarget.findUnique({
@@ -829,7 +826,7 @@ export async function buildWorkHoursCalendar(input: {
   // Map HR Store → RetailStore via name matching
   const [hrStore, allRetailStores, holidays] = await Promise.all([
     prisma.store.findUnique({ where: { id: input.storeId }, select: { name: true } }),
-    prisma.retailStore.findMany({ where: { isActive: true }, select: { id: true, storeName: true, region: true } }),
+    getActiveRetailStores(),
     prisma.holiday.findMany({
       where: {
         isActive: true,

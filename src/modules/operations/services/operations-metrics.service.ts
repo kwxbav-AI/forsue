@@ -438,7 +438,13 @@ export function filterChartsByOpsCatalog(rows: ChartsPerStoreRow[]): ChartsPerSt
   });
 }
 
-export async function listPerformanceStoresForFilter() {
+type PerformanceStoreFilterRow = { id: string; storeName: string; region: string; catalogKey: string };
+let _perfStoreCache: { data: PerformanceStoreFilterRow[]; expiresAt: number } | null = null;
+const PERF_STORE_CACHE_MS = 5 * 60 * 1000;
+
+export async function listPerformanceStoresForFilter(): Promise<PerformanceStoreFilterRow[]> {
+  if (_perfStoreCache && _perfStoreCache.expiresAt > Date.now()) return _perfStoreCache.data;
+
   const catalogKeys = new Set(
     OPS_REGION_CATALOG.flatMap((g) => g.storeNames).map(normalizeStoreKey)
   );
@@ -488,6 +494,7 @@ export async function listPerformanceStoresForFilter() {
     }
   }
 
+  _perfStoreCache = { data: result, expiresAt: Date.now() + PERF_STORE_CACHE_MS };
   return result;
 }
 

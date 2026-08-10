@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveRetailStores } from "@/modules/operations/services/retail-store-match.service";
 import { resolveScheduledHours } from "@/lib/scheduled-hours";
 import { addCalendarDaysUTC, parseDateOnlyUTC, formatDateOnly } from "@/lib/date";
 import { computeDailyMetricsByStoreResilient } from "@/modules/performance/services/daily-store-metrics.service";
@@ -726,10 +727,7 @@ export async function buildDashboardFilterResult(input: {
 
   const slices = listMonthSlicesInRange(input.startYmd, input.endYmd);
 
-  const activeRetail = await prisma.retailStore.findMany({
-    where: { isActive: true },
-    select: { id: true, storeName: true },
-  });
+  const activeRetail = await getActiveRetailStores();
   const retailIdByStoreNameKey = new Map(
     activeRetail.map((r) => [normalizeStoreKey(r.storeName), r.id])
   );
