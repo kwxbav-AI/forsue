@@ -627,6 +627,21 @@ async function mapDaysWithConcurrency<T>(
   return results;
 }
 
+/** 將查詢區間依月份切片，每月獨立 prefetch 避免跨月大量資料一次載入 */
+function splitIntoMonthSlices(startYmd: string, endYmd: string): { start: string; end: string }[] {
+  const slices: { start: string; end: string }[] = [];
+  let cur = startYmd;
+  while (cur <= endYmd) {
+    const [y, m] = cur.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const monthEnd = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const sliceEnd = monthEnd < endYmd ? monthEnd : endYmd;
+    slices.push({ start: cur, end: sliceEnd });
+    cur = addCalendarDaysUTC(sliceEnd, 1);
+  }
+  return slices;
+}
+
 export async function fetchDailyTrendForSelection(input: {
   startYmd: string;
   endYmd: string;
@@ -638,42 +653,50 @@ export async function fetchDailyTrendForSelection(input: {
   };
   applyOpsCatalogWhenEmpty: boolean;
 }): Promise<DashboardDailyTrendPoint[]> {
-  const prefetch = await buildRangeDailyMetricsPrefetch(input.startYmd, input.endYmd, { reportVisibleOnly: true });
-  const nameById = new Map(prefetch.stores.map((s) => [s.id, s.name]));
+  // 按月切片 prefetch：每月各自載入，避免跨月大量資料同時進記憶體
+  const monthSlices = splitIntoMonthSlices(input.startYmd, input.endYmd);
+  const allPoints: DashboardDailyTrendPoint[] = [];
 
-  const dayStrs = listDateStrings(input.startYmd, input.endYmd);
-  const dailyTotals = await Promise.all(dayStrs.map(async (dayStr) => {
-    const daily = await computeDailyMetricsByStoreResilientWithPrefetch(
-      parseDateOnlyUTC(dayStr),
-      prefetch,
-      { reportVisibleOnly: true }
-    );
-    const chartRows: ChartsPerStoreRow[] = [];
-    for (const [storeId, m] of daily) {
-      if (!(m.revenue > 0 || m.laborHours > 0)) continue;
-      chartRows.push({
-        storeId,
-        storeName: nameById.get(storeId) ?? "",
-        revenueSum: m.revenue,
-        hoursSum: m.laborHours,
-        efficiencyRatio: m.laborHours > 0 ? m.revenue / m.laborHours : null,
-      });
-    }
+  for (const slice of monthSlices) {
+    const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end, { reportVisibleOnly: true });
+    const nameById = new Map(prefetch.stores.map((s) => [s.id, s.name]));
+    const dayStrs = listDateStrings(slice.start, slice.end);
 
-    let filtered = filterChartsBySelection(chartRows, new Map(), input.selection);
-    if (input.applyOpsCatalogWhenEmpty) {
-      filtered = filterChartsByOpsCatalog(filtered);
-    }
-    const totals = metricsFromChartRows(filtered);
-    return { dayStr, revenue: totals.revenue, laborHours: totals.laborHours };
-  }));
+    const monthPoints = await Promise.all(dayStrs.map(async (dayStr) => {
+      const daily = await computeDailyMetricsByStoreResilientWithPrefetch(
+        parseDateOnlyUTC(dayStr),
+        prefetch,
+        { reportVisibleOnly: true }
+      );
+      const chartRows: ChartsPerStoreRow[] = [];
+      for (const [storeId, m] of daily) {
+        if (!(m.revenue > 0 || m.laborHours > 0)) continue;
+        chartRows.push({
+          storeId,
+          storeName: nameById.get(storeId) ?? "",
+          revenueSum: m.revenue,
+          hoursSum: m.laborHours,
+          efficiencyRatio: m.laborHours > 0 ? m.revenue / m.laborHours : null,
+        });
+      }
 
-  return dailyTotals.map((d) => ({
-    date: d.dayStr,
-    label: formatTrendLabel(d.dayStr),
-    revenue: d.revenue,
-    laborHours: d.laborHours,
-  }));
+      let filtered = filterChartsBySelection(chartRows, new Map(), input.selection);
+      if (input.applyOpsCatalogWhenEmpty) {
+        filtered = filterChartsByOpsCatalog(filtered);
+      }
+      const totals = metricsFromChartRows(filtered);
+      return {
+        date: dayStr,
+        label: formatTrendLabel(dayStr),
+        revenue: totals.revenue,
+        laborHours: totals.laborHours,
+      };
+    }));
+
+    allPoints.push(...monthPoints);
+  }
+
+  return allPoints;
 }
 
 export async function buildDashboardFilterResult(input: {
