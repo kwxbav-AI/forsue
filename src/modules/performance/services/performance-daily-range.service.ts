@@ -181,10 +181,10 @@ async function computeEngineRangeRows(
   const dayLoopStart =
     effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
 
-  // 按月切片 prefetch：避免跨多月大量資料一次載入
+  // 按月切片並行 prefetch：各月同時載入（prefetch 層有快取去重），月內日期仍並行計算
   if (dayLoopStart <= effEnd) {
     const monthSlices = splitIntoMonthSlices(dayLoopStart, effEnd);
-    for (const slice of monthSlices) {
+    await Promise.all(monthSlices.map(async (slice) => {
       const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end, {
         reportVisibleOnly: !bypassHideFilter,
       });
@@ -207,7 +207,7 @@ async function computeEngineRangeRows(
           row.hoursSum += m.laborHours;
         }
       }
-    }
+    }));
   }
 
   const unresolvedIds = [...accum.entries()]
@@ -373,11 +373,11 @@ export async function aggregateStoreMetricsByMonth(
     }
   }
 
-  // 出勤資料區間：按月切片 prefetch，避免跨多月大量資料一次載入
+  // 出勤資料區間：按月切片並行 prefetch（prefetch 層有快取去重），月內日期仍並行計算
   const dayLoopStart = effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
   if (dayLoopStart <= effEnd) {
     const monthSlices = splitIntoMonthSlices(dayLoopStart, effEnd);
-    for (const slice of monthSlices) {
+    await Promise.all(monthSlices.map(async (slice) => {
       const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end);
       const sliceDays = listDateStrings(slice.start, slice.end);
       const sliceMaps = await mapWithConcurrency(sliceDays, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
@@ -390,7 +390,7 @@ export async function aggregateStoreMetricsByMonth(
           accumulate(ym, storeId, m.revenue, m.laborHours);
         }
       }
-    }
+    }));
   }
 
   const result = new Map<string, PerformanceDailyRangeRow[]>();

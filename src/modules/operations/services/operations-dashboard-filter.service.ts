@@ -653,16 +653,15 @@ export async function fetchDailyTrendForSelection(input: {
   };
   applyOpsCatalogWhenEmpty: boolean;
 }): Promise<DashboardDailyTrendPoint[]> {
-  // 按月切片 prefetch：每月各自載入，避免跨月大量資料同時進記憶體
+  // 按月切片並行 prefetch（prefetch 層有快取去重，同月份 DB 只打一次）
   const monthSlices = splitIntoMonthSlices(input.startYmd, input.endYmd);
-  const allPoints: DashboardDailyTrendPoint[] = [];
 
-  for (const slice of monthSlices) {
+  const sliceResults = await Promise.all(monthSlices.map(async (slice) => {
     const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end, { reportVisibleOnly: true });
     const nameById = new Map(prefetch.stores.map((s) => [s.id, s.name]));
     const dayStrs = listDateStrings(slice.start, slice.end);
 
-    const monthPoints = await Promise.all(dayStrs.map(async (dayStr) => {
+    return Promise.all(dayStrs.map(async (dayStr) => {
       const daily = await computeDailyMetricsByStoreResilientWithPrefetch(
         parseDateOnlyUTC(dayStr),
         prefetch,
@@ -692,11 +691,9 @@ export async function fetchDailyTrendForSelection(input: {
         laborHours: totals.laborHours,
       };
     }));
+  }));
 
-    allPoints.push(...monthPoints);
-  }
-
-  return allPoints;
+  return sliceResults.flat();
 }
 
 export async function buildDashboardFilterResult(input: {

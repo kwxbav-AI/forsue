@@ -49,8 +49,38 @@ function indexByExactWorkDate<T extends { workDate: Date }>(
   return map;
 }
 
+// 短期快取（60s）+ in-flight 去重：同月份資料只打一次 DB，多個呼叫端共享
+const _prefetchCache = new Map<string, { expiresAt: number; data: RangeDailyMetricsPrefetch }>();
+const _prefetchInFlight = new Map<string, Promise<RangeDailyMetricsPrefetch>>();
+const PREFETCH_CACHE_MS = 60 * 1000;
+
 /** 區間一次載入出勤／調度／營收等，供逐日重複使用既有公式 */
-export async function buildRangeDailyMetricsPrefetch(
+export function buildRangeDailyMetricsPrefetch(
+  startYmd: string,
+  endYmd: string,
+  options: ComputeOptions = {}
+): Promise<RangeDailyMetricsPrefetch> {
+  const key = `${startYmd}|${endYmd}|${options.reportVisibleOnly ?? true}`;
+  const now = Date.now();
+  const cached = _prefetchCache.get(key);
+  if (cached && cached.expiresAt > now) return Promise.resolve(cached.data);
+  const inFlight = _prefetchInFlight.get(key);
+  if (inFlight) return inFlight;
+  const promise = _buildRangeDailyMetricsPrefetch(startYmd, endYmd, options)
+    .then((data) => {
+      _prefetchCache.set(key, { expiresAt: Date.now() + PREFETCH_CACHE_MS, data });
+      _prefetchInFlight.delete(key);
+      return data;
+    })
+    .catch((err: unknown) => {
+      _prefetchInFlight.delete(key);
+      throw err;
+    });
+  _prefetchInFlight.set(key, promise);
+  return promise;
+}
+
+async function _buildRangeDailyMetricsPrefetch(
   startYmd: string,
   endYmd: string,
   options: ComputeOptions = {}
