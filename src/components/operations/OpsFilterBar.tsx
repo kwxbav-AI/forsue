@@ -1,36 +1,37 @@
 "use client";
 
 import { OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
-import { OPS_REVENUE_METRICS_START_YMD } from "@/lib/performance-metrics-range";
 import type { OpsStoreOption } from "@/types/operations";
 
+const OPS_REVENUE_METRICS_START_YM = "2025-01";
+
 export type OpsFilterBarProps = {
-  startDate: string;
-  endDate: string;
+  startMonth: string;
+  endMonth: string;
   region: string;
   storeId: string;
   stores: OpsStoreOption[];
   regionOptions?: string[];
   fixedRegion?: string;
   loading?: boolean;
-  onStartDateChange: (value: string) => void;
-  onEndDateChange: (value: string) => void;
+  onStartMonthChange: (value: string) => void;
+  onEndMonthChange: (value: string) => void;
   onRegionChange: (region: string, firstStoreIdInRegion: string) => void;
   onStoreIdChange: (storeId: string) => void;
   onRefresh: () => void;
 };
 
 export function OpsFilterBar({
-  startDate,
-  endDate,
+  startMonth,
+  endMonth,
   region,
   storeId,
   stores,
   regionOptions,
   fixedRegion,
   loading = false,
-  onStartDateChange,
-  onEndDateChange,
+  onStartMonthChange,
+  onEndMonthChange,
   onRegionChange,
   onStoreIdChange,
   onRefresh,
@@ -46,21 +47,22 @@ export function OpsFilterBar({
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
       <label className="text-sm">
-        <span className="mb-1 block text-xs text-slate-500">開始日期</span>
+        <span className="mb-1 block text-xs text-slate-500">開始月份</span>
         <input
-          type="date"
-          value={startDate}
-          min={OPS_REVENUE_METRICS_START_YMD}
-          onChange={(e) => onStartDateChange(e.target.value)}
+          type="month"
+          value={startMonth}
+          min={OPS_REVENUE_METRICS_START_YM}
+          onChange={(e) => onStartMonthChange(e.target.value)}
           className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
         />
       </label>
       <label className="text-sm">
-        <span className="mb-1 block text-xs text-slate-500">結束日期</span>
+        <span className="mb-1 block text-xs text-slate-500">結束月份</span>
         <input
-          type="date"
-          value={endDate}
-          onChange={(e) => onEndDateChange(e.target.value)}
+          type="month"
+          value={endMonth}
+          min={OPS_REVENUE_METRICS_START_YM}
+          onChange={(e) => onEndMonthChange(e.target.value)}
           className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
         />
       </label>

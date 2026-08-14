@@ -19,9 +19,8 @@ import {
   YAxis,
 } from "recharts";
 import { OpsFilterBar } from "@/components/operations/OpsFilterBar";
-import { formatLocalDateInput } from "@/lib/date";
 import { DUAL_OPS_REGIONS, OPS_FILTER_REGIONS } from "@/lib/operations-dashboard";
-import { currentMonthStartYmdLocal } from "@/lib/operations-default-dates";
+import { currentMonthYmLocal, monthToStartDate, monthToEndDate } from "@/lib/operations-default-dates";
 import {
   OPS_COLORS,
   getYoyColor,
@@ -264,7 +263,6 @@ function PanelCard({
 
 export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: string } = {}) {
   const searchParams = useSearchParams();
-  const today = formatLocalDateInput();
 
   const [meta, setMeta] = useState<OpsDashboardMeta | null>(null);
   const [filtered, setFiltered] = useState<FilteredMetrics | null>(null);
@@ -281,8 +279,8 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
   const [queried, setQueried] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
 
-  const [startDate, setStartDate] = useState(currentMonthStartYmdLocal);
-  const [endDate, setEndDate] = useState(today);
+  const [startMonth, setStartMonth] = useState(currentMonthYmLocal);
+  const [endMonth, setEndMonth] = useState(currentMonthYmLocal);
   const [region, setRegion] = useState(fixedRegion ?? "");
   const [storeId, setStoreId] = useState("");
 
@@ -292,7 +290,7 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
   const companyPerfCacheRef = useRef<{ key: string; data: PerfData } | null>(null);
   const storePerfCacheRef = useRef<{ key: string; data: PerfData } | null>(null);
 
-  const storeQueryKey = `${startDate}|${endDate}|${region}|${storeId}`;
+  const storeQueryKey = `${startMonth}|${endMonth}|${region}|${storeId}`;
 
   const loadMeta = useCallback(async () => {
     const res = await fetch("/api/operations/dashboard");
@@ -310,10 +308,10 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
   }, [loadMeta]);
 
   useEffect(() => {
-    const urlStart = searchParams.get("startDate");
-    const urlEnd = searchParams.get("endDate");
-    if (urlStart) setStartDate(urlStart);
-    if (urlEnd) setEndDate(urlEnd);
+    const urlStart = searchParams.get("startMonth");
+    const urlEnd = searchParams.get("endMonth");
+    if (urlStart) setStartMonth(urlStart);
+    if (urlEnd) setEndMonth(urlEnd);
   }, [searchParams]);
 
   useEffect(() => {
@@ -345,7 +343,10 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
 
   const handleRefresh = useCallback(async () => {
     setMessage(null);
-    if (!startDate || !endDate || startDate > endDate) return;
+    if (!startMonth || !endMonth || startMonth > endMonth) return;
+
+    const startDate = monthToStartDate(startMonth);
+    const endDate = monthToEndDate(endMonth);
 
     setLoading(true);
     setQueried(true);
@@ -366,15 +367,13 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     if (storeId) params.set("storeId", storeId);
     else if (region) params.set("region", region);
 
-    const companyKey = `${startDate}|${endDate}`;
+    const companyKey = `${startMonth}|${endMonth}`;
     setCompanyPerfLoading(true);
 
     try {
       const [dashRes, companyRes] = await Promise.all([
         fetch(`/api/operations/dashboard?${params}`),
-        fetch(
-          `/api/operations/performance-analysis?${new URLSearchParams({ startDate, endDate })}`
-        ),
+        fetch(`/api/operations/performance-analysis?${new URLSearchParams({ startDate, endDate })}`),
       ]);
       const data = await dashRes.json().catch(() => ({}));
       if (!dashRes.ok) {
@@ -402,15 +401,15 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
       setLoading(false);
       setCompanyPerfLoading(false);
     }
-  }, [startDate, endDate, region, storeId]);
+  }, [startMonth, endMonth, region, storeId]);
 
   useEffect(() => {
     const urlStore = searchParams.get("storeId") || searchParams.get("store");
     if (didAutoFromUrl.current || !urlStore || !meta?.stores.length) return;
-    if (storeId !== urlStore || !startDate || !endDate) return;
+    if (storeId !== urlStore || !startMonth || !endMonth) return;
     didAutoFromUrl.current = true;
     void handleRefresh();
-  }, [storeId, startDate, endDate, meta, searchParams, handleRefresh]);
+  }, [storeId, startMonth, endMonth, meta, searchParams, handleRefresh]);
 
   useEffect(() => {
     if (didAutoLoadDefault.current || didAutoFromUrl.current || !meta?.stores.length || !storeId) {
@@ -418,7 +417,7 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     }
     didAutoLoadDefault.current = true;
     void handleRefresh();
-  }, [meta, storeId, startDate, endDate, handleRefresh]);
+  }, [meta, storeId, startMonth, endMonth, handleRefresh]);
 
   useEffect(() => {
     if (!queried || tab !== "trend") return;
@@ -433,7 +432,10 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
 
     void (async () => {
       try {
-        const params = new URLSearchParams({ startDate, endDate });
+        const params = new URLSearchParams({
+          startDate: monthToStartDate(startMonth),
+          endDate: monthToEndDate(endMonth),
+        });
         if (storeId) params.set("storeId", storeId);
         else if (region) params.set("region", region);
         const res = await fetch(`/api/operations/performance-analysis?${params}`);
@@ -454,12 +456,12 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     return () => {
       cancelled = true;
     };
-  }, [tab, storeQueryKey, queried, startDate, endDate, region, storeId]);
+  }, [tab, storeQueryKey, queried, startMonth, endMonth, region, storeId]);
 
   const loadCalendar = useCallback(async () => {
     if (!storeId) { setCalData(null); return; }
-    const year = parseInt(startDate.slice(0, 4), 10);
-    const month = parseInt(startDate.slice(5, 7), 10);
+    const year = parseInt(startMonth.slice(0, 4), 10);
+    const month = parseInt(startMonth.slice(5, 7), 10);
     setCalLoading(true);
     try {
       const params = new URLSearchParams({ storeId, year: String(year), month: String(month) });
@@ -469,7 +471,7 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
     } finally {
       setCalLoading(false);
     }
-  }, [storeId, startDate]);
+  }, [storeId, startMonth]);
 
   useEffect(() => {
     if (!queried || tab !== "calendar") return;
@@ -490,8 +492,8 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
 
   const subtitle =
     queried && m ?
-      `${startDate} ~ ${endDate} · ${m.filterLabel}`
-    : "篩選日期與門市後按「重新整理」查看績效指標";
+      `${startMonth} ~ ${endMonth} · ${m.filterLabel}`
+    : "篩選月份與門市後按「重新整理」查看績效指標";
 
   return (
     <div className="space-y-5 pb-8 max-w-7xl">
@@ -522,16 +524,16 @@ export default function OperationsAnalysisPage({ fixedRegion }: { fixedRegion?: 
       </div>
 
       <OpsFilterBar
-        startDate={startDate}
-        endDate={endDate}
+        startMonth={startMonth}
+        endMonth={endMonth}
         region={region}
         storeId={storeId}
         stores={meta?.stores ?? []}
         regionOptions={regionOptions}
         fixedRegion={fixedRegion}
         loading={loading}
-        onStartDateChange={setStartDate}
-        onEndDateChange={setEndDate}
+        onStartMonthChange={setStartMonth}
+        onEndMonthChange={setEndMonth}
         onRegionChange={(newRegion, firstStoreId) => {
           setRegion(newRegion);
           setStoreId(newRegion ? firstStoreId : "");
