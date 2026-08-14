@@ -46,6 +46,20 @@ function listDateStrings(startDate: string, endDate: string): string[] {
   return days;
 }
 
+function splitIntoMonthSlices(startYmd: string, endYmd: string): { start: string; end: string }[] {
+  const slices: { start: string; end: string }[] = [];
+  let cur = startYmd;
+  while (cur <= endYmd) {
+    const [y, m] = cur.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const monthEnd = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const sliceEnd = monthEnd < endYmd ? monthEnd : endYmd;
+    slices.push({ start: cur, end: sliceEnd });
+    cur = addCalendarDaysUTC(sliceEnd, 1);
+  }
+  return slices;
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -166,41 +180,33 @@ async function computeEngineRangeRows(
 
   const dayLoopStart =
     effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
-  const dayStrs =
-    dayLoopStart <= effEnd ? listDateStrings(dayLoopStart, effEnd) : [];
 
-  let dailyMaps: Map<string, { revenue: number; laborHours: number }>[];
-  if (dayStrs.length > 0) {
-    const prefetch = await buildRangeDailyMetricsPrefetch(dayLoopStart, effEnd, {
-      reportVisibleOnly: !bypassHideFilter,
-    });
-    dailyMaps = await mapWithConcurrency(dayStrs, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
-      computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch, {
+  // 按月切片 prefetch：避免跨多月大量資料一次載入
+  if (dayLoopStart <= effEnd) {
+    const monthSlices = splitIntoMonthSlices(dayLoopStart, effEnd);
+    for (const slice of monthSlices) {
+      const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end, {
         reportVisibleOnly: !bypassHideFilter,
-      })
-    );
-  } else {
-    dailyMaps = [];
-  }
-
-  for (const daily of dailyMaps) {
-    for (const [storeId, m] of daily) {
-      if (!(m.revenue > 0 || m.laborHours > 0)) continue;
-
-      let row = accum.get(storeId);
-      if (!row) {
-        row = {
-          storeId,
-          storeName: "",
-          revenueSum: 0,
-          hoursSum: 0,
-          dayCount: 0,
-        };
-        accum.set(storeId, row);
+      });
+      const sliceDays = listDateStrings(slice.start, slice.end);
+      const sliceMaps = await mapWithConcurrency(sliceDays, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
+        computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch, {
+          reportVisibleOnly: !bypassHideFilter,
+        })
+      );
+      for (const daily of sliceMaps) {
+        for (const [storeId, m] of daily) {
+          if (!(m.revenue > 0 || m.laborHours > 0)) continue;
+          let row = accum.get(storeId);
+          if (!row) {
+            row = { storeId, storeName: "", revenueSum: 0, hoursSum: 0, dayCount: 0 };
+            accum.set(storeId, row);
+          }
+          row.dayCount += 1;
+          row.revenueSum += m.revenue;
+          row.hoursSum += m.laborHours;
+        }
       }
-      row.dayCount += 1;
-      row.revenueSum += m.revenue;
-      row.hoursSum += m.laborHours;
     }
   }
 
@@ -367,19 +373,22 @@ export async function aggregateStoreMetricsByMonth(
     }
   }
 
-  // 出勤資料區間：整段只 prefetch 一次
+  // 出勤資料區間：按月切片 prefetch，避免跨多月大量資料一次載入
   const dayLoopStart = effStart >= attendanceStartYmd ? effStart : attendanceStartYmd;
   if (dayLoopStart <= effEnd) {
-    const prefetch = await buildRangeDailyMetricsPrefetch(dayLoopStart, effEnd);
-    const dayStrs = listDateStrings(dayLoopStart, effEnd);
-    const dailyMaps = await mapWithConcurrency(dayStrs, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
-      computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch)
-    );
-    for (let i = 0; i < dayStrs.length; i++) {
-      const ym = dayStrs[i].slice(0, 7);
-      for (const [storeId, m] of dailyMaps[i]) {
-        if (!(m.revenue > 0 || m.laborHours > 0)) continue;
-        accumulate(ym, storeId, m.revenue, m.laborHours);
+    const monthSlices = splitIntoMonthSlices(dayLoopStart, effEnd);
+    for (const slice of monthSlices) {
+      const prefetch = await buildRangeDailyMetricsPrefetch(slice.start, slice.end);
+      const sliceDays = listDateStrings(slice.start, slice.end);
+      const sliceMaps = await mapWithConcurrency(sliceDays, DAY_COMPUTE_CONCURRENCY, (dayStr) =>
+        computeDailyMetricsByStoreResilientWithPrefetch(parseDateOnlyUTC(dayStr), prefetch)
+      );
+      for (let i = 0; i < sliceDays.length; i++) {
+        const ym = sliceDays[i].slice(0, 7);
+        for (const [storeId, m] of sliceMaps[i]) {
+          if (!(m.revenue > 0 || m.laborHours > 0)) continue;
+          accumulate(ym, storeId, m.revenue, m.laborHours);
+        }
       }
     }
   }
