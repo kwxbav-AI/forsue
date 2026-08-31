@@ -14,6 +14,7 @@ type CalStaff = {
   homeStore: string | null;
   isSupport: boolean;
   outgoingTo: string | null;
+  reserveStaffLabel?: string | null;
   newHireLabel?: string | null;
   temporaryLabel?: string | null;
 };
@@ -306,6 +307,9 @@ export default function StoreCalendarPage() {
                                 ) : s.isSupport && s.homeStore ? (
                                   <span className="text-amber-600 ml-0.5">（{s.homeStore}）</span>
                                 ) : null}
+                                {s.reserveStaffLabel && (
+                                  <span className="text-blue-600 ml-0.5">（{s.reserveStaffLabel}）</span>
+                                )}
                                 {s.newHireLabel && (
                                   <span className="text-orange-500 ml-0.5">（{s.newHireLabel}）</span>
                                 )}

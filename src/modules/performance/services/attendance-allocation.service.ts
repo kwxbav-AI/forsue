@@ -477,8 +477,10 @@ export async function computeStoreHoursByEmployee(
     // 新進員工工時折算：依「有上班日」天數套用工時%
     // 第一周(1-5)：0%，第二周(6-10)：50%，第三周(11-15)：70%，第四周(16-20)：90%，滿月(>=21)：100%
     // 到職日在門檻日之前者不套用（與出勤報表一致）
+    // 儲備人力期間以儲備人力比例計算為準，不疊加新人折算
     if (
       !isTrial &&
+      !reserveSetting.isReserveStaff &&
       att.employee.hireDate &&
       Number(att.workHours) > 0 &&
       isEligibleForNewHireWorkPercent(att.employee.hireDate)

@@ -28,6 +28,7 @@ import {
   newHirePercentByWorkedDays,
   isTemporaryStaffCode,
 } from "@/lib/attendance-data";
+import { getReserveStaffSettingsByEmployeeDate } from "@/lib/reserve-staff-periods";
 
 const DAY_CONCURRENCY = 12;
 
@@ -1120,6 +1121,19 @@ export async function buildWorkHoursCalendar(input: {
     }
   }
 
+  // 建立儲備人力設定索引（employeeId -> ymd -> setting）
+  const allCalendarEmpIds = [
+    ...new Set([
+      ...homeAtts.map((a) => a.employeeId),
+      ...dispatches.map((d) => d.employee.id),
+    ]),
+  ];
+  const reserveSettingsByEmpDate = await getReserveStaffSettingsByEmployeeDate(
+    parseDateOnlyUTC(startYmd),
+    parseDateOnlyUTC(endYmd),
+    allCalendarEmpIds
+  );
+
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
     const eff = dateToEff.get(ymd) ?? { ratio: null, ratioExact: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
@@ -1130,9 +1144,14 @@ export async function buildWorkHoursCalendar(input: {
       .map((a) => {
         const outTarget = outgoingByEmpDate.get(`${a.employeeId}|${ymd}`) ?? null;
         const dateStr = formatDateOnly(parseDateOnlyUTC(ymd));
+        const reserveSettingForDay = reserveSettingsByEmpDate.get(a.employeeId)?.[dateStr];
         const nhPercent = newHirePercentByEmpDate.get(a.employeeId)?.get(dateStr);
+        // 儲備人力期間優先顯示儲備人力 label，不再顯示新人 label
+        const reserveStaffLabel = reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
+          ? `儲備人力計${reserveSettingForDay.reserveWorkPercent}%`
+          : null;
         const newHireLabel =
-          nhPercent != null && nhPercent < 1
+          !reserveSettingForDay?.isReserveStaff && nhPercent != null && nhPercent < 1
             ? `新人計${Math.round(nhPercent * 100)}%`
             : null;
         const temporaryLabel = isTemporaryStaffCode(a.employee.employeeCode ?? "") ? "臨時人員50%" : null;
@@ -1144,6 +1163,7 @@ export async function buildWorkHoursCalendar(input: {
           homeStore: stripRegionPrefix(a.department ?? homeStoreName),
           isSupport: false,
           outgoingTo: outTarget,
+          reserveStaffLabel,
           newHireLabel,
           temporaryLabel,
         };
@@ -1156,9 +1176,13 @@ export async function buildWorkHoursCalendar(input: {
       .map((d) => {
         const sa = supportAttMap.get(d.employee.id)?.get(ymd);
         const dateStr = formatDateOnly(parseDateOnlyUTC(ymd));
+        const reserveSettingForDay = reserveSettingsByEmpDate.get(d.employee.id)?.[dateStr];
         const nhPercent = newHirePercentByEmpDate.get(d.employee.id)?.get(dateStr);
+        const reserveStaffLabel = reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
+          ? `儲備人力計${reserveSettingForDay.reserveWorkPercent}%`
+          : null;
         const newHireLabel =
-          nhPercent != null && nhPercent < 1
+          !reserveSettingForDay?.isReserveStaff && nhPercent != null && nhPercent < 1
             ? `新人計${Math.round(nhPercent * 100)}%`
             : null;
         const temporaryLabel = isTemporaryStaffCode(d.employee.employeeCode ?? "") ? "臨時人員50%" : null;
@@ -1170,6 +1194,7 @@ export async function buildWorkHoursCalendar(input: {
           homeStore: sa?.department ? stripRegionPrefix(sa.department) : null,
           isSupport: true,
           outgoingTo: null,
+          reserveStaffLabel,
           newHireLabel,
           temporaryLabel,
         };
