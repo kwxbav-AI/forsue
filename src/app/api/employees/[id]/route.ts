@@ -120,6 +120,12 @@ export async function PATCH(
     const previousEffectiveTo = parseDateOnlyUTC(addCalendarDaysUTC(effectiveFromStr, -1));
 
     const updated = await prisma.$transaction(async (tx) => {
+      // 讀取設定前的員工狀態，供後續判斷是否需要補建歷史期間
+      const currentEmployee = await tx.employee.findUnique({
+        where: { id },
+        select: { isReserveStaff: true, hireDate: true },
+      });
+
       await tx.employeeReserveStaffPeriod.deleteMany({
         where: { employeeId: id, effectiveFrom: { gte: effectiveFrom } },
       });
@@ -131,6 +137,30 @@ export async function PATCH(
         },
         data: { effectiveTo: previousEffectiveTo },
       });
+
+      // 若設定儲備人力期間，且 effectiveFrom 之前沒有任何期間記錄，
+      // 補建「從到職日到 effectiveFrom-1 = 非儲備人力」的歷史期間。
+      // 目的：避免計算邏輯回退到已更新的 employee.isReserveStaff，
+      // 把 effectiveFrom 之前的工時也錯誤套用儲備人力折算。
+      // （即使 employee.isReserveStaff 已為 true，重新儲存時也會補建）
+      if (nextIsReserveStaff) {
+        const existingPrePeriod = await tx.employeeReserveStaffPeriod.findFirst({
+          where: { employeeId: id, effectiveFrom: { lt: effectiveFrom } },
+        });
+        if (!existingPrePeriod) {
+          const historyStart = currentEmployee?.hireDate ?? parseDateOnlyUTC("2020-01-01");
+          await tx.employeeReserveStaffPeriod.create({
+            data: {
+              employeeId: id,
+              effectiveFrom: historyStart,
+              effectiveTo: previousEffectiveTo,
+              isReserveStaff: false,
+              reserveWorkPercent: null,
+            },
+          });
+        }
+      }
+
       await tx.employeeReserveStaffPeriod.create({
         data: {
           employeeId: id,
