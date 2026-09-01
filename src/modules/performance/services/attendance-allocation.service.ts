@@ -133,6 +133,8 @@ export function deriveReserveStaffContext(input: {
   // - 以「名冊上的人當天是否有實際上班（workHours > 0）」判定是否到齊（避免用 8 小時門檻誤傷兼職）
   // - 只要該店名冊上任一人被標示為請假（含半天），也視為未到齊 → 儲備人力 100%
   // - 若有「表定工時」欄（scheduledWorkHours），則以「實際工時 < 表定工時」視為請假/未到齊（可涵蓋請假 2 小時等情境）
+  //   例外：班別以「PT」開頭（兼職班別，如 PT-16:00-20:00）時，跳過 scheduledWorkHours 比較，
+  //         避免兼職員工因出勤時數本就低於全職 8h 而被誤判為請假。
   // - 你目前的業務定義：即使是排休，只要沒有調人補進來，也應視為未到齊
   const attendanceEmployeeIds = new Set(
     attendances.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId)
@@ -142,7 +144,9 @@ export function deriveReserveStaffContext(input: {
       .filter((a) => {
         const actual = Number(a.workHours);
         const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
+        const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");
         const byScheduled =
+          !isPartTimeShift &&
           scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
         return byScheduled || isLeaveShiftType(a.shiftType);
       })

@@ -862,7 +862,7 @@ export async function buildWorkHoursCalendar(input: {
   // 本店出勤：employee.defaultStoreId = input.storeId (HR Store ID)
   // 跨店支援：DispatchRecord.toStoreId = input.storeId，再撈其 AttendanceRecord
   // 工效比：與每日工效比報表相同公式（prefetch 預載整月）
-  const [homeAtts, dispatches, prefetch] = await Promise.all([
+  const [homeAtts, dispatches, prefetch, storeRoster] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         workDate: { in: workDates },
@@ -875,6 +875,8 @@ export async function buildWorkHoursCalendar(input: {
       select: {
         workDate: true,
         workHours: true,
+        scheduledWorkHours: true,
+        shiftType: true,
         startTime: true,
         endTime: true,
         department: true,
@@ -896,7 +898,13 @@ export async function buildWorkHoursCalendar(input: {
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
     buildRangeDailyMetricsPrefetch(startYmd, endYmd),
+    // 本店名冊（用於 storeFull 判斷）
+    prisma.employee.findMany({
+      where: { defaultStoreId: input.storeId, isActive: true },
+      select: { id: true },
+    }),
   ]);
+  const storeRosterIds = new Set(storeRoster.map((e) => e.id));
 
   // 本店人員調出到他店，兩種情況都要涵蓋：
   // 1. homeAtts 員工（originalStoreId 或 defaultStoreId 確認為本店）→ 建立調度時 fromStoreId 可能為 null
@@ -1134,11 +1142,35 @@ export async function buildWorkHoursCalendar(input: {
     allCalendarEmpIds
   );
 
+  // 每日「全店到齊」判斷（用於決定是否顯示儲備人力 label）
+  // 邏輯與 deriveReserveStaffContext 一致，但只針對本店（storeRosterIds）
+  const storeFullByYmd = new Map<string, boolean>();
+  for (const ymd of days) {
+    const dayAtts = homeAtts.filter((a) => workDateYmd(a.workDate) === ymd);
+    const presentIds = new Set(dayAtts.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId));
+    const allPresent = storeRosterIds.size > 0 && [...storeRosterIds].every((id) => presentIds.has(id));
+    const hasLeave = dayAtts.some((a) => {
+      const actual = Number(a.workHours);
+      const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
+      const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");
+      const byScheduled =
+        !isPartTimeShift &&
+        scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
+      return byScheduled || /(特休|事假|病假|公假|補休|喪假|婚假|產假|育嬰|請假|休假|半天)/.test(a.shiftType ?? "");
+    });
+    // 有調出（非跨店學習）→ 不算全店到齊
+    const hasOutgoing = outgoingDispatches.some(
+      (d) => workDateYmd(d.workDate) === ymd
+    );
+    storeFullByYmd.set(ymd, allPresent && !hasLeave && !hasOutgoing);
+  }
+
   const calendarDays = days.map((ymd) => {
     const dow = parseDateOnlyUTC(ymd).getUTCDay();
     const eff = dateToEff.get(ymd) ?? { ratio: null, ratioExact: null, isAchieved: false, isExceed: false, revenue: 0, laborHours: 0, rawHours: 0 };
 
     // 本店人員（若當日有調出到他店，標記 outgoingTo）
+    const isStoreFull = storeFullByYmd.get(ymd) ?? false;
     const homeStaff = homeAtts
       .filter((a) => workDateYmd(a.workDate) === ymd)
       .map((a) => {
@@ -1146,8 +1178,8 @@ export async function buildWorkHoursCalendar(input: {
         const dateStr = formatDateOnly(parseDateOnlyUTC(ymd));
         const reserveSettingForDay = reserveSettingsByEmpDate.get(a.employeeId)?.[dateStr];
         const nhPercent = newHirePercentByEmpDate.get(a.employeeId)?.get(dateStr);
-        // 儲備人力期間優先顯示儲備人力 label，不再顯示新人 label
-        const reserveStaffLabel = reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
+        // 儲備人力 label：只在全店到齊（isStoreFull）時才顯示，避免非全員到齊日誤標
+        const reserveStaffLabel = isStoreFull && reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
           ? `儲備人力計${reserveSettingForDay.reserveWorkPercent}%`
           : null;
         const newHireLabel =
@@ -1178,7 +1210,8 @@ export async function buildWorkHoursCalendar(input: {
         const dateStr = formatDateOnly(parseDateOnlyUTC(ymd));
         const reserveSettingForDay = reserveSettingsByEmpDate.get(d.employee.id)?.[dateStr];
         const nhPercent = newHirePercentByEmpDate.get(d.employee.id)?.get(dateStr);
-        const reserveStaffLabel = reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
+        // 跨店支援人員的儲備人力 label 同樣只在全店到齊時顯示
+        const reserveStaffLabel = isStoreFull && reserveSettingForDay?.isReserveStaff && reserveSettingForDay.reserveWorkPercent != null
           ? `儲備人力計${reserveSettingForDay.reserveWorkPercent}%`
           : null;
         const newHireLabel =
