@@ -1149,7 +1149,9 @@ export async function buildWorkHoursCalendar(input: {
     const dayAtts = homeAtts.filter((a) => workDateYmd(a.workDate) === ymd);
     const presentIds = new Set(dayAtts.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId));
     const allPresent = storeRosterIds.size > 0 && [...storeRosterIds].every((id) => presentIds.has(id));
-    const hasLeave = dayAtts.some((a) => {
+    // hasLeave 只檢查名冊成員，與 deriveReserveStaffContext 一致
+    const rosterDayAtts = dayAtts.filter((a) => storeRosterIds.has(a.employeeId));
+    const hasLeave = rosterDayAtts.some((a) => {
       const actual = Number(a.workHours);
       const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
       const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");

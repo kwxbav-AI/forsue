@@ -202,10 +202,6 @@ export function deriveReserveStaffContext(input: {
     const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
     const storeFull = allPresent && !hasNetDispatchOut && !hasLeave;
     storeFullByStoreId.set(storeId, storeFull);
-    // [DEBUG] 記錄 storeFull 計算詳情（查明 Bug#2 後移除）
-    if (!storeFull || empIds.length >= 3) {
-      console.log(`[DEBUG storeFull] storeId=${storeId} empIds=${empIds.length} allPresent=${allPresent} hasLeave=${hasLeave} otherOut=${otherOut} learningOut=${learningOut} learningIn=${learningIn} storeFull=${storeFull} absent=${empIds.filter(id=>!attendanceEmployeeIds.has(id)).join(',')}`);
-    }
   });
 
   const storeOvertimeByStoreId = new Map<string, number>();
@@ -342,11 +338,13 @@ export async function computeStoreHoursByEmployee(
   }
   const assignedByStore = new Map<string, string[]>();
   for (const e of activeEmployees) {
-    const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
-    if (!homeStoreId) continue;
-    const list = assignedByStore.get(homeStoreId) ?? [];
+    // 只用 defaultStoreId 明確指派的員工判斷「全店到齊」，
+    // 避免 fallback（最近出勤門市）把已非該店成員的人算進名冊，
+    // 導致名冊上永遠有人缺席，使 storeFull 永遠為 false。
+    if (!e.defaultStoreId) continue;
+    const list = assignedByStore.get(e.defaultStoreId) ?? [];
     list.push(e.id);
-    assignedByStore.set(homeStoreId, list);
+    assignedByStore.set(e.defaultStoreId, list);
   }
 
   // 「全店到齊 / 加班時數 / 是否有已確認調度」判斷，與出勤報表共用同一份邏輯（deriveReserveStaffContext）
@@ -367,14 +365,10 @@ export async function computeStoreHoursByEmployee(
           getReserveStaffSettingForEmployeeDate(
             prefetch.reserveSettingsByEmployeeDate,
             employeeId,
-            dateStr,
-            {
-              isReserveStaff: att.employee.isReserveStaff,
-              reserveWorkPercent:
-                att.employee.reserveWorkPercent == null
-                  ? null
-                  : Number(att.employee.reserveWorkPercent),
-            }
+            dateStr
+            // 不帶 fallback：讓函式預設回傳 { isReserveStaff: false }。
+            // 若帶 att.employee.isReserveStaff 作 fallback，會讓「有期間記錄但期間
+            // 開始前」的日期也被視為儲備人力，導致新進折算被跳過（Bug #1-3）。
           ),
         ])
       )
@@ -452,9 +446,8 @@ export async function computeStoreHoursByEmployee(
     // 後勤支援門市：不在出勤工時階段折算，改在調度拆分時處理（原店扣全額、支援店加 70%）
 
     const reserveSetting = reserveSettingsByEmployee.get(att.employeeId) ?? {
-      isReserveStaff: att.employee.isReserveStaff,
-      reserveWorkPercent:
-        att.employee.reserveWorkPercent == null ? null : Number(att.employee.reserveWorkPercent),
+      isReserveStaff: false,
+      reserveWorkPercent: null,
     };
     if (reserveSetting.isReserveStaff) {
       const homeStoreId =
