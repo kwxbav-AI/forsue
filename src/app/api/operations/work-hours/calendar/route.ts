@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     const data = await buildWorkHoursCalendar({ storeId, year, month });
     return NextResponse.json(data);
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error("GET /api/operations/work-hours/calendar failed", error);
-    return NextResponse.json({ error: "查詢失敗" }, { status: 500 });
+    return NextResponse.json({ error: "查詢失敗", detail: msg }, { status: 500 });
   }
 }
