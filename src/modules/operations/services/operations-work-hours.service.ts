@@ -881,6 +881,7 @@ export async function buildWorkHoursCalendar(input: {
         endTime: true,
         department: true,
         employeeId: true,
+        originalStoreId: true,
         employee: { select: { name: true, defaultStoreId: true, employeeCode: true, hireDate: true } },
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
@@ -905,6 +906,14 @@ export async function buildWorkHoursCalendar(input: {
     }),
   ]);
   const storeRosterIds = new Set(storeRoster.map((e) => e.id));
+  // 把「本月在本店出勤（originalStoreId=本店）但 defaultStoreId=null」的員工
+  // 也納入名冊，與引擎 assignedByStore（含 fallback）邏輯一致，
+  // 確保這類「非正式成員」缺勤時也能正確判斷 storeFull=false。
+  for (const a of homeAtts) {
+    if (!a.employee.defaultStoreId && a.originalStoreId === input.storeId) {
+      storeRosterIds.add(a.employeeId);
+    }
+  }
 
   // 本店人員調出到他店，兩種情況都要涵蓋：
   // 1. homeAtts 員工（originalStoreId 或 defaultStoreId 確認為本店）→ 建立調度時 fromStoreId 可能為 null
@@ -1149,9 +1158,8 @@ export async function buildWorkHoursCalendar(input: {
     const dayAtts = homeAtts.filter((a) => workDateYmd(a.workDate) === ymd);
     const presentIds = new Set(dayAtts.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId));
     const allPresent = storeRosterIds.size > 0 && [...storeRosterIds].every((id) => presentIds.has(id));
-    // hasLeave 只檢查名冊成員，與 deriveReserveStaffContext 一致
-    const rosterDayAtts = dayAtts.filter((a) => storeRosterIds.has(a.employeeId));
-    const hasLeave = rosterDayAtts.some((a) => {
+    // hasLeave 檢查所有本店出勤員工（含 originalStoreId=本店但 defaultStoreId=null 者）
+    const hasLeave = dayAtts.some((a) => {
       const actual = Number(a.workHours);
       const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
       const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");

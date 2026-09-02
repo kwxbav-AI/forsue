@@ -338,13 +338,11 @@ export async function computeStoreHoursByEmployee(
   }
   const assignedByStore = new Map<string, string[]>();
   for (const e of activeEmployees) {
-    // 只用 defaultStoreId 明確指派的員工判斷「全店到齊」，
-    // 避免 fallback（最近出勤門市）把已非該店成員的人算進名冊，
-    // 導致名冊上永遠有人缺席，使 storeFull 永遠為 false。
-    if (!e.defaultStoreId) continue;
-    const list = assignedByStore.get(e.defaultStoreId) ?? [];
+    const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
+    if (!homeStoreId) continue;
+    const list = assignedByStore.get(homeStoreId) ?? [];
     list.push(e.id);
-    assignedByStore.set(e.defaultStoreId, list);
+    assignedByStore.set(homeStoreId, list);
   }
 
   // 「全店到齊 / 加班時數 / 是否有已確認調度」判斷，與出勤報表共用同一份邏輯（deriveReserveStaffContext）
