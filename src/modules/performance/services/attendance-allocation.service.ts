@@ -200,7 +200,12 @@ export function deriveReserveStaffContext(input: {
     // 例外：若事由為「跨店學習」且一調出一調入（成對），則仍視為全店到齊
     const learningPaired = learningOut > 0 && learningIn === learningOut;
     const hasNetDispatchOut = otherOut > 0 || (learningOut > 0 && !learningPaired);
-    storeFullByStoreId.set(storeId, allPresent && !hasNetDispatchOut && !hasLeave);
+    const storeFull = allPresent && !hasNetDispatchOut && !hasLeave;
+    storeFullByStoreId.set(storeId, storeFull);
+    // [DEBUG] 記錄 storeFull 計算詳情（查明 Bug#2 後移除）
+    if (!storeFull || empIds.length >= 3) {
+      console.log(`[DEBUG storeFull] storeId=${storeId} empIds=${empIds.length} allPresent=${allPresent} hasLeave=${hasLeave} otherOut=${otherOut} learningOut=${learningOut} learningIn=${learningIn} storeFull=${storeFull} absent=${empIds.filter(id=>!attendanceEmployeeIds.has(id)).join(',')}`);
+    }
   });
 
   const storeOvertimeByStoreId = new Map<string, number>();
