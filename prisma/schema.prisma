@@ -97,6 +97,41 @@ model Employee {
   adjustments         WorkhourAdjustment[]
   reserveStaffPeriods EmployeeReserveStaffPeriod[]
   bonusResults        MonthlyBonusResult[]
+  promotionTracking   EmployeePromotionTracking?
+  promotionExams      PromotionExamRecord[] @relation("EmployeeExams")
+}
+
+model EmployeePromotionTracking {
+  id             String    @id @default(cuid())
+  employeeId     String    @unique
+  currentGrade   String    // 目前職等，e.g. "三級營業員"、"初階兼職"
+  targetGrade    String?   // 目標職等；null 表示已達頂（最高職等）
+  hoursRequired  Decimal?  @db.Decimal(8, 2) // 時數標準；null 表示無時數門檻
+  hoursCarryOver Decimal   @default(0) @db.Decimal(8, 2) // 截至 carryOverDate 的累計時數（已扣歷史考核扣除）
+  carryOverDate  DateTime  @db.Date // 本次匯入的截止日，通常為 2026-02-28
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  examRecords    PromotionExamRecord[]
+}
+
+// 考核報名紀錄（無論通過與否均記錄，時數一律扣除）
+model PromotionExamRecord {
+  id              String    @id @default(cuid())
+  employeeId      String
+  examDate        DateTime  @db.Date
+  fromGrade       String    // 報考時的職等
+  toGrade         String    // 報考目標職等
+  hoursDeducted   Decimal   @db.Decimal(8, 2) // 扣除的時數（通常 = 該職等的時數標準）
+  result          String?   // null=待確認 | PASSED=通過 | FAILED=未通過
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  employee        Employee  @relation("EmployeeExams", fields: [employeeId], references: [id], map: "PromotionExamRecord_emp_fkey")
+  tracking        EmployeePromotionTracking @relation(fields: [employeeId], references: [employeeId], map: "PromotionExamRecord_tracking_fkey")
+
+  @@index([employeeId, examDate])
 }
 
 model EmployeeReserveStaffPeriod {
