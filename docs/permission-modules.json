@@ -392,6 +392,16 @@
     },
 
     {
+      "key": "promotion-tracking",
+      "label": "跨店時數追蹤",
+      "description": "追蹤人員調度跨店時數累積進度，供晉升考核參考",
+      "group": "資料區",
+      "sortOrder": 515,
+      "parentKey": "data",
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/data/promotion-tracking", "method": null }]
+    },
+
+    {
       "key": "settings",
       "label": "設定區（入口）",
       "description": "設定入口頁",
