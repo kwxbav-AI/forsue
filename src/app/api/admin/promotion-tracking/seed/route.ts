@@ -91,13 +91,16 @@ const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
 export async function POST() {
-  // 偵錯：確認 Store vs RetailStore 對應
+  // 偵錯：直接查 stores 表前 10 筆
   const storeCheck = await prisma.$queryRawUnsafe<{ storeName: string; rsName: string | null; region: string | null }[]>(`
     SELECT s.name as "storeName", rs.store_name as "rsName", rs.region
     FROM "Store" s
     LEFT JOIN stores rs ON rs.store_name = s.name || '店'
     ORDER BY s.name LIMIT 10
   `);
+  const rsRaw = await prisma.$queryRawUnsafe<{ store_name: string; region: string }[]>(
+    `SELECT store_name, region FROM stores ORDER BY store_name LIMIT 15`
+  );
 
   // 只處理有所屬門市、且門市在宜蘭區或桃園區的員工（排除台北區及非門市人員）
   const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(`
@@ -177,6 +180,7 @@ export async function POST() {
     inserted,
     unmatchedInExcel: unmatched,
     debug_storeCheck: storeCheck,
+    debug_rsRaw: rsRaw,
     detail: results,
   });
 }
