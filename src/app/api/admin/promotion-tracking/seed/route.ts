@@ -91,16 +91,33 @@ const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
 export async function GET() {
-  const storeCompare = await prisma.$queryRawUnsafe<{ storeName: string; rsName: string | null; region: string | null }[]>(`
-    SELECT s.name as "storeName", rs.store_name as "rsName", rs.region
-    FROM "Store" s
-    LEFT JOIN stores rs ON rs.store_name = s.name
-    ORDER BY s.name LIMIT 20
+  const empStats = await prisma.$queryRawUnsafe<{ total: number; hasStore: number; noStore: number }[]>(`
+    SELECT
+      COUNT(*) as total,
+      COUNT("defaultStoreId") as "hasStore",
+      COUNT(*) - COUNT("defaultStoreId") as "noStore"
+    FROM "Employee"
+    WHERE "leaveDate" IS NULL
   `);
-  const rsRaw = await prisma.$queryRawUnsafe<{ store_name: string; region: string | null }[]>(
-    `SELECT store_name, region FROM stores ORDER BY store_name LIMIT 20`
-  );
-  return NextResponse.json({ storeCompare, rsRaw });
+  const regionDist = await prisma.$queryRawUnsafe<{ region: string | null; cnt: number }[]>(`
+    SELECT rs.region, COUNT(*) as cnt
+    FROM "Employee" e
+    JOIN "Store" s ON s.id = e."defaultStoreId"
+    LEFT JOIN stores rs ON rs.store_name = s.name
+    WHERE e."leaveDate" IS NULL
+    GROUP BY rs.region
+    ORDER BY cnt DESC
+  `);
+  const excelNamesFound = await prisma.$queryRawUnsafe<{ name: string; storeName: string | null; region: string | null }[]>(`
+    SELECT e.name, s.name as "storeName", rs.region
+    FROM "Employee" e
+    LEFT JOIN "Store" s ON s.id = e."defaultStoreId"
+    LEFT JOIN stores rs ON rs.store_name = s.name
+    WHERE e."leaveDate" IS NULL
+      AND e.name IN ('石元甫','林郁映','游雅筑','陳怡瑄','巫思樺','廖祐君','林偉婷','王楚翔','趙家賢','石佳蓉','陳梓欣','林嘉琪','謝樂盈','程佳欣','王盈嵐')
+    ORDER BY e.name
+  `);
+  return NextResponse.json({ empStats, regionDist, excelNamesFound });
 }
 
 export async function POST() {
