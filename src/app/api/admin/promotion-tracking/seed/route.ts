@@ -10,9 +10,7 @@
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateApiKey } from "@/lib/api-key-auth";
 import { randomBytes } from "crypto";
-import type { NextRequest } from "next/server";
 
 const createId = () => randomBytes(14).toString("base64url");
 
@@ -92,11 +90,7 @@ const EXCEL_DATA = [
 const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r) => [r.name, r]));
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
-export async function POST(request: NextRequest) {
-  const apiKeyResult = validateApiKey(request);
-  if (apiKeyResult === "unauthorized") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function POST() {
   const employees = await prisma.employee.findMany({
     where: { leaveDate: null },
     select: { id: true, name: true, position: true },
