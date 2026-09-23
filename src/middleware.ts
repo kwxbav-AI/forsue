@@ -72,6 +72,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Admin seed endpoint: authenticated via X-API-Key in the route handler itself.
+  if (pathname.startsWith("/api/admin/")) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session = token ? await decodeSessionToken(token) : null;
   let effectiveStatus: string = "skip";
