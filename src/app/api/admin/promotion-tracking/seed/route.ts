@@ -85,9 +85,9 @@ const EXCEL_DATA = [
   { name: "徐維志",  carryOver: 167.65, excelGrade: "初階兼職"   },
   { name: "鄧曉郁",  carryOver: 0,      excelGrade: "新進營業員" },
   { name: "阮宥緁",  carryOver: 93.71,  excelGrade: "新進營業員" },
-] as const;
+];
 
-const EXCEL_MAP = new Map(EXCEL_DATA.map((r) => [r.name, r]));
+const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r) => [r.name, r]));
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
 export async function POST() {
