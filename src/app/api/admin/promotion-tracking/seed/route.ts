@@ -91,10 +91,28 @@ const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
 export async function POST() {
-  const employees = await prisma.employee.findMany({
-    where: { leaveDate: null },
-    select: { id: true, name: true, position: true },
-  });
+  // 只處理有所屬門市、且門市在宜蘭區或桃園區的員工（排除台北區及非門市人員）
+  const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(`
+    SELECT e.id, e.name, e.position
+    FROM "Employee" e
+    JOIN "Store" s ON s.id = e."defaultStoreId"
+    JOIN stores rs ON rs.store_name = s.name || '店'
+    WHERE e."leaveDate" IS NULL
+      AND rs.region NOT IN ('台北區')
+  `);
+
+  // 刪除非門市（或台北區）的 tracking 紀錄
+  await prisma.$executeRawUnsafe(`
+    DELETE FROM "EmployeePromotionTracking"
+    WHERE "employeeId" NOT IN (
+      SELECT e.id FROM "Employee" e
+      JOIN "Store" s ON s.id = e."defaultStoreId"
+      JOIN stores rs ON rs.store_name = s.name || '店'
+      WHERE rs.region NOT IN ('台北區')
+    )
+  `);
+
+  const employees = storeEmployees;
 
   const results: string[] = [];
   let inserted = 0;

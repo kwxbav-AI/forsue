@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     FROM "EmployeePromotionTracking" t
     JOIN "Employee" e ON e.id = t."employeeId"
     LEFT JOIN "Store" s ON s.id = e."defaultStoreId"
-    LEFT JOIN stores rs ON rs.store_name = s.name
+    LEFT JOIN stores rs ON rs.store_name = s.name || '店'
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(COALESCE(d2."actualHours", d2."dispatchHours")), 0) AS total
       FROM "DispatchRecord" d2
@@ -69,7 +69,9 @@ export async function GET(request: NextRequest) {
       WHERE ex2."employeeId" = t."employeeId"
         AND ex2."examDate" > t."carryOverDate"
     ) ex ON TRUE
-    WHERE TRUE ${regionFilter}
+    WHERE rs.region IS NOT NULL
+      AND rs.region NOT IN ('台北區')
+      ${regionFilter}
     ORDER BY rs.region, s.name, e.name
   `);
 
