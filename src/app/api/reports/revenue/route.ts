@@ -5,10 +5,33 @@ import {
   formatDateOnlyTaipei,
   toDateRange,
 } from "@/lib/date";
+import { validateApiKey } from "@/lib/api-key-auth";
+import { isAuthEnabled } from "@/lib/auth-config";
+import { getSessionFromRequest } from "@/lib/auth-request";
+import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // 支援兩種認證方式：
+  // 1. Cookie session（網頁使用者）
+  // 2. X-API-Key header（外部系統，需設 EXTERNAL_API_KEY 環境變數）
+  if (isAuthEnabled()) {
+    const apiKeyResult = validateApiKey(request);
+    if (apiKeyResult === "unauthorized") {
+      // API Key 存在但不正確
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (apiKeyResult === "disabled") {
+      // 未設定 API Key → 回退到 cookie session 驗證
+      const session = await getSessionFromRequest(request);
+      if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+    // apiKeyResult === "ok" → 外部系統 API Key 驗證通過
+  }
+
   const { searchParams } = new URL(request.url);
 
   const todayStr = formatDateOnlyTaipei();

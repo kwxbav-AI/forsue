@@ -20,6 +20,12 @@ export default async function DataHubPage() {
       title: "每日營收報表",
       desc: "依門市與部門查詢每日營收與短溢",
     },
+    {
+      key: "promotion-tracking",
+      href: "/data/promotion-tracking",
+      title: "跨店時數追蹤",
+      desc: "追蹤人員調度跨店時數累積進度，供晉升考核參考",
+    },
   ] as const;
 
   const visible = !authOn
