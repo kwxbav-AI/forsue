@@ -90,6 +90,19 @@ const EXCEL_DATA = [
 const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r) => [r.name, r]));
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
+export async function GET() {
+  const storeCompare = await prisma.$queryRawUnsafe<{ storeName: string; rsName: string | null; region: string | null }[]>(`
+    SELECT s.name as "storeName", rs.store_name as "rsName", rs.region
+    FROM "Store" s
+    LEFT JOIN stores rs ON rs.store_name = s.name
+    ORDER BY s.name LIMIT 20
+  `);
+  const rsRaw = await prisma.$queryRawUnsafe<{ store_name: string; region: string | null }[]>(
+    `SELECT store_name, region FROM stores ORDER BY store_name LIMIT 20`
+  );
+  return NextResponse.json({ storeCompare, rsRaw });
+}
+
 export async function POST() {
   // 只處理有所屬門市、且門市在宜蘭區或桃園區的員工（排除台北區及非門市人員）
   const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(`
