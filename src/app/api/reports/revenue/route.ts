@@ -19,11 +19,12 @@ export async function GET(request: NextRequest) {
   if (isAuthEnabled()) {
     const apiKeyResult = validateApiKey(request);
     if (apiKeyResult === "unauthorized") {
-      // API Key 存在但不正確
+      // 有帶金鑰但不正確 → 直接拒絕，不回退（避免掩蓋外部系統的設定錯誤）
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (apiKeyResult === "disabled") {
-      // 未設定 API Key → 回退到 cookie session 驗證
+    if (apiKeyResult !== "ok") {
+      // "disabled"（未設環境變數）或 "absent"（網頁使用者，不會送此 header）
+      // → 回退到 cookie session 驗證
       const session = await getSessionFromRequest(request);
       if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

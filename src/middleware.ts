@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { isAuthEnabled, SESSION_COOKIE_NAME } from "@/lib/auth-config";
 import { decodeSessionToken } from "@/lib/auth-session";
 import { canAccessApi, canAccessPage } from "@/lib/permissions";
-import { validateApiKey } from "@/lib/api-key-auth";
+import { isExternalApiPath, validateApiKey } from "@/lib/api-key-auth";
 
 const PERMISSIONS_CACHE_TTL_MS = 5000;
 const effectivePermsCache = new Map<
@@ -84,6 +84,22 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/api/admin/")) {
     if (validateApiKey(request) !== "ok") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  // 外部系統（店務平台）唯讀存取白名單端點：帶了 X-API-Key 就放行到 route handler，
+  // 由該 handler 以 validateApiKey 實際驗證金鑰。middleware 這層只負責不要用
+  // cookie session 把它擋在外面——否則 route handler 裡的金鑰驗證永遠執行不到，
+  // 外部呼叫只會收到「未授權，請先登入」這種與金鑰無關的誤導性訊息。
+  //
+  // 僅限 GET：外部金鑰不得寫入任何資料。
+  if (isExternalApiPath(pathname) && request.headers.get("x-api-key")) {
+    if (request.method !== "GET") {
+      return NextResponse.json(
+        { error: "外部金鑰僅允許 GET 請求" },
+        { status: 405 }
+      );
     }
     return NextResponse.next();
   }
