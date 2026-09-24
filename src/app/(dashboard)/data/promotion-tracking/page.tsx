@@ -77,6 +77,9 @@ export default function PromotionTrackingPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("storeName");
   const [sortAsc, setSortAsc] = useState(true);
+  const [filterStore, setFilterStore] = useState("");
+  const [filterCurrentGrade, setFilterCurrentGrade] = useState("");
+  const [filterTargetGrade, setFilterTargetGrade] = useState("");
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortAsc((a) => !a);
@@ -306,7 +309,21 @@ export default function PromotionTrackingPage() {
     load();
   }
 
-  const grouped = rows.reduce<Record<string, TrackingRow[]>>((acc, r) => {
+  const filteredRows = rows.filter((r) => {
+    if (filterStore && r.storeName !== filterStore) return false;
+    if (filterCurrentGrade && r.currentGrade !== filterCurrentGrade) return false;
+    if (filterTargetGrade) {
+      if (filterTargetGrade === "__none__") { if (r.targetGrade !== null) return false; }
+      else if (r.targetGrade !== filterTargetGrade) return false;
+    }
+    return true;
+  });
+
+  const storeOptions = [...new Set(rows.map((r) => r.storeName).filter(Boolean) as string[])].sort();
+  const currentGradeOptions = [...new Set(rows.map((r) => r.currentGrade))].sort();
+  const targetGradeOptions = [...new Set(rows.map((r) => r.targetGrade).filter(Boolean) as string[])].sort();
+
+  const grouped = filteredRows.reduce<Record<string, TrackingRow[]>>((acc, r) => {
     const key = r.region ?? "其他";
     (acc[key] ??= []).push(r);
     return acc;
@@ -335,6 +352,31 @@ export default function PromotionTrackingPage() {
           <option value="">全部區域</option>
           <option value="宜蘭區">宜蘭區</option>
           <option value="桃園區">桃園區</option>
+        </select>
+        <select
+          value={filterStore}
+          onChange={(e) => setFilterStore(e.target.value)}
+          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">全部門市</option>
+          {storeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={filterCurrentGrade}
+          onChange={(e) => setFilterCurrentGrade(e.target.value)}
+          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">全部目前職等</option>
+          {currentGradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select
+          value={filterTargetGrade}
+          onChange={(e) => setFilterTargetGrade(e.target.value)}
+          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">全部目標職等</option>
+          {targetGradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+          <option value="__none__">（已達頂）</option>
         </select>
         <label className="flex items-center gap-1.5 text-sm text-slate-600">
           <input
