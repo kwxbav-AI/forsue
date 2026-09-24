@@ -1,0 +1,39 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { employeeId: string } }
+) {
+  const { employeeId } = params;
+  const body = await request.json();
+
+  const {
+    currentGrade,
+    targetGrade,
+    hoursRequired,
+    hoursCarryOver,
+    carryOverDate,
+    note,
+  } = body;
+
+  const updateData: Record<string, unknown> = {};
+  if (currentGrade !== undefined) updateData.currentGrade = currentGrade;
+  if (targetGrade !== undefined) updateData.targetGrade = targetGrade || null;
+  if (hoursRequired !== undefined) updateData.hoursRequired = hoursRequired !== "" && hoursRequired !== null ? Number(hoursRequired) : null;
+  if (hoursCarryOver !== undefined) updateData.hoursCarryOver = Number(hoursCarryOver);
+  if (carryOverDate !== undefined) updateData.carryOverDate = new Date(carryOverDate);
+  if (note !== undefined) updateData.note = note || null;
+
+  try {
+    await prisma.employeePromotionTracking.update({
+      where: { employeeId },
+      data: updateData,
+    });
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "更新失敗" }, { status: 400 });
+  }
+}

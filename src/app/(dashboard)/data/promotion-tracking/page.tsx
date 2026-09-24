@@ -13,6 +13,7 @@ type TrackingRow = {
   targetGrade: string | null;
   hoursRequired: number | null;
   hoursCarryOver: number;
+  carryOverDate: string | null;
   dispatchHours: number;
   examDeductions: number;
   totalHours: number;
@@ -116,6 +117,62 @@ export default function PromotionTrackingPage() {
         </span>
       </th>
     );
+  }
+
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState<TrackingRow | null>(null);
+  const [editForm, setEditForm] = useState({
+    currentGrade: "", targetGrade: "", hoursRequired: "", hoursCarryOver: "", carryOverDate: "", note: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEdit(row: TrackingRow) {
+    setEditTarget(row);
+    setEditForm({
+      currentGrade: row.currentGrade,
+      targetGrade: row.targetGrade ?? "",
+      hoursRequired: row.hoursRequired !== null ? String(row.hoursRequired) : "",
+      hoursCarryOver: String(row.hoursCarryOver),
+      carryOverDate: row.carryOverDate ? new Date(row.carryOverDate).toISOString().slice(0, 10) : "",
+      note: row.note ?? "",
+    });
+  }
+
+  function onGradeChange(grade: string) {
+    const GRADE_NEXT: Record<string, string> = {
+      "新進營業員": "三級營業員", "三級營業員": "二級營業員", "二級營業員": "一級營業員",
+      "兼職新人": "初階兼職", "初階兼職": "進階兼職",
+      "副店長": "三級店長", "三級店長": "二級店長", "二級店長": "一級店長",
+    };
+    const GRADE_CROSS_HOURS: Record<string, number> = {
+      "三級營業員": 40, "二級營業員": 80, "初階兼職": 40,
+    };
+    setEditForm((f) => ({
+      ...f,
+      currentGrade: grade,
+      targetGrade: GRADE_NEXT[grade] ?? "",
+      hoursRequired: GRADE_CROSS_HOURS[grade] !== undefined ? String(GRADE_CROSS_HOURS[grade]) : "",
+    }));
+  }
+
+  async function saveEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    const res = await fetch(`/api/promotion-tracking/${editTarget.employeeId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentGrade: editForm.currentGrade,
+        targetGrade: editForm.targetGrade || null,
+        hoursRequired: editForm.hoursRequired !== "" ? Number(editForm.hoursRequired) : null,
+        hoursCarryOver: Number(editForm.hoursCarryOver),
+        carryOverDate: editForm.carryOverDate,
+        note: editForm.note || null,
+      }),
+    });
+    if (res.ok) { setEditTarget(null); load(); }
+    else { const j = await res.json(); setMsg(`錯誤：${j.error}`); }
+    setEditSaving(false);
   }
 
   // Exam modal state
@@ -289,6 +346,12 @@ export default function PromotionTrackingPage() {
                     <td className="px-3 py-2 text-center">
                       <div className="flex justify-center gap-1.5">
                         <button
+                          onClick={() => openEdit(row)}
+                          className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50"
+                        >
+                          編輯
+                        </button>
+                        <button
                           onClick={() => loadHistory(row)}
                           className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50"
                         >
@@ -314,6 +377,95 @@ export default function PromotionTrackingPage() {
 
       {!loading && rows.length === 0 && (
         <p className="text-sm text-slate-400">目前無資料。請確認已執行資料回填腳本。</p>
+      )}
+
+      {/* 編輯 Modal */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-base font-semibold text-slate-800">
+              編輯：{editTarget.employeeName}
+            </h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="mb-1 block text-slate-600">目前職等</label>
+                <select
+                  value={editForm.currentGrade}
+                  onChange={(e) => onGradeChange(e.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                >
+                  {["新進營業員","三級營業員","二級營業員","一級營業員","兼職新人","初階兼職","進階兼職","副店長","三級店長","二級店長","一級店長"].map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">目標職等</label>
+                <input
+                  type="text"
+                  value={editForm.targetGrade}
+                  onChange={(e) => setEditForm((f) => ({ ...f, targetGrade: e.target.value }))}
+                  placeholder="（留空表示無目標）"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">跨店時數門檻（小時）</label>
+                <input
+                  type="number"
+                  value={editForm.hoursRequired}
+                  onChange={(e) => setEditForm((f) => ({ ...f, hoursRequired: e.target.value }))}
+                  placeholder="（留空表示不需跨店時數）"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">歷史累計時數（CarryOver）</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.hoursCarryOver}
+                  onChange={(e) => setEditForm((f) => ({ ...f, hoursCarryOver: e.target.value }))}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">累計基準日</label>
+                <input
+                  type="date"
+                  value={editForm.carryOverDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, carryOverDate: e.target.value }))}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">備註</label>
+                <input
+                  type="text"
+                  value={editForm.note}
+                  onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="選填"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setEditTarget(null)}
+                className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={editSaving}
+                className="rounded bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {editSaving ? "儲存中…" : "確認儲存"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 登錄考核 Modal */}
