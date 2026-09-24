@@ -97,83 +97,84 @@ const CARRY_OVER_MAP = new Map([
 ]);
 
 // 2026-08-17 在職名冊（全部 76 人）
+// storeName = Store.name（不含「店」字，與 DB Store 表一致）
 const ROSTER = [
-  { name: "陳怡瑄",  currentGrade: "進階兼職"   },
-  { name: "游雅筑",  currentGrade: "二級營業員" },
-  { name: "林郁映",  currentGrade: "一級營業員" },
-  { name: "簡千蕙",  currentGrade: "進階兼職"   },
-  { name: "陳葦庭",  currentGrade: "副店長"     },
-  { name: "王珮慈",  currentGrade: "一級營業員" },
-  { name: "林雅雯",  currentGrade: "三級店長"   },
-  { name: "巫思樺",  currentGrade: "三級營業員" },
-  { name: "俞柔欣",  currentGrade: "兼職新人"   },
-  { name: "游婉婷",  currentGrade: "三級店長"   },
-  { name: "張郁",    currentGrade: "兼職新人"   },
-  { name: "曹家瑜",  currentGrade: "新進營業員" },
-  { name: "林芳琪",  currentGrade: "兼職新人"   },
-  { name: "簡婉茹",  currentGrade: "二級店長"   },
-  { name: "陳韻晴",  currentGrade: "二級營業員" },
-  { name: "戴綺",    currentGrade: "進階兼職"   },
-  { name: "李珮茹",  currentGrade: "新進營業員" },
-  { name: "許翔嫃",  currentGrade: "兼職新人"   },
-  { name: "曾梅芳",  currentGrade: "二級店長"   },
-  { name: "廖祐君",  currentGrade: "二級營業員" },
-  { name: "江環宇",  currentGrade: "副店長"     },
-  { name: "謝樂盈",  currentGrade: "初階兼職"   },
-  { name: "陳羿蓉",  currentGrade: "初階兼職"   },
-  { name: "林奕甫",  currentGrade: "副店長"     },
-  { name: "景怡鈞",  currentGrade: "二級營業員" },
-  { name: "鄭鈺潔",  currentGrade: "一級營業員" },
-  { name: "何芯瑩",  currentGrade: "新進營業員" },
-  { name: "陳念妤",  currentGrade: "二級店長"   },
-  { name: "游宣綺",  currentGrade: "二級營業員" },
-  { name: "石育穎",  currentGrade: "兼職新人"   },
-  { name: "關思婕",  currentGrade: "二級店長"   },
-  { name: "王舒儀",  currentGrade: "兼職新人"   },
-  { name: "伍沛婷",  currentGrade: "新進營業員" },
-  { name: "林玟華",  currentGrade: "新進營業員" },
-  { name: "陳憶慈",  currentGrade: "副店長"     },
-  { name: "林偉婷",  currentGrade: "二級營業員" },
-  { name: "後瓊雯",  currentGrade: "三級店長"   },
-  { name: "吳雅婷",  currentGrade: "一級營業員" },
-  { name: "張郁琳",  currentGrade: "兼職新人"   },
-  { name: "游勝淵",  currentGrade: "二級店長"   },
-  { name: "程佳欣",  currentGrade: "進階兼職"   },
-  { name: "林嘉琪",  currentGrade: "進階兼職"   },
-  { name: "蘇曉生",  currentGrade: "二級店長"   },
-  { name: "張彤緁",  currentGrade: "三級營業員" },
-  { name: "邱璵",    currentGrade: "二級營業員" },
-  { name: "王盈嵐",  currentGrade: "三級營業員" },
-  { name: "張博雅",  currentGrade: "副店長"     },
-  { name: "黃雅貞",  currentGrade: "三級營業員" },
-  { name: "王芊云",  currentGrade: "新進營業員" },
-  { name: "游詩家",  currentGrade: "副店長"     },
-  { name: "胡雅琴",  currentGrade: "三級營業員" },
-  { name: "廖怡玲",  currentGrade: "二級店長"   },
-  { name: "許晴媁",  currentGrade: "進階兼職"   },
-  { name: "張珈寧",  currentGrade: "二級營業員" },
-  { name: "范鈺庭",  currentGrade: "兼職新人"   },
-  { name: "廖苡竹",  currentGrade: "二級店長"   },
-  { name: "石佳蓉",  currentGrade: "一級營業員" },
-  { name: "陳子萱",  currentGrade: "兼職新人"   },
-  { name: "邱競瑩",  currentGrade: "新進營業員" },
-  { name: "游佩菁",  currentGrade: "新進營業員" },
-  { name: "江惠如",  currentGrade: "三級營業員" },
-  { name: "李玉如",  currentGrade: "二級店長"   },
-  { name: "徐怡欣",  currentGrade: "進階兼職"   },
-  { name: "游淑涵",  currentGrade: "副店長"     },
-  { name: "何雅芬",  currentGrade: "新進營業員" },
-  { name: "黃暐博",  currentGrade: "兼職新人"   },
-  { name: "趙家賢",  currentGrade: "一級營業員" },
-  { name: "鄭儀琳",  currentGrade: "二級營業員" },
-  { name: "吳怡樺",  currentGrade: "二級店長"   },
-  { name: "李芸溱",  currentGrade: "一級店長"   },
-  { name: "周士傑",  currentGrade: "兼職新人"   },
-  { name: "謝羽婷",  currentGrade: "新進營業員" },
-  { name: "曾寶方",  currentGrade: "副店長"     },
-  { name: "黃靖雅",  currentGrade: "一級店長"   },
-  { name: "徐維志",  currentGrade: "初階兼職"   },
-  { name: "王少筠",  currentGrade: "新進營業員" },
+  { name: "陳怡瑄",  currentGrade: "進階兼職",   storeName: "女中"  },
+  { name: "游雅筑",  currentGrade: "二級營業員",  storeName: "女中"  },
+  { name: "林郁映",  currentGrade: "一級營業員",  storeName: "女中"  },
+  { name: "簡千蕙",  currentGrade: "進階兼職",   storeName: "女中"  },
+  { name: "陳葦庭",  currentGrade: "副店長",     storeName: "女中"  },
+  { name: "王珮慈",  currentGrade: "一級營業員",  storeName: "中正"  },
+  { name: "林雅雯",  currentGrade: "三級店長",   storeName: "中正"  },
+  { name: "巫思樺",  currentGrade: "三級營業員",  storeName: "中正"  },
+  { name: "俞柔欣",  currentGrade: "兼職新人",   storeName: "中正"  },
+  { name: "游婉婷",  currentGrade: "三級店長",   storeName: "中正南" },
+  { name: "張郁",    currentGrade: "兼職新人",   storeName: "中正南" },
+  { name: "曹家瑜",  currentGrade: "新進營業員",  storeName: "中正南" },
+  { name: "林芳琪",  currentGrade: "兼職新人",   storeName: "中正南" },
+  { name: "簡婉茹",  currentGrade: "二級店長",   storeName: "五結"  },
+  { name: "陳韻晴",  currentGrade: "二級營業員",  storeName: "五結"  },
+  { name: "戴綺",    currentGrade: "進階兼職",   storeName: "五結"  },
+  { name: "李珮茹",  currentGrade: "新進營業員",  storeName: "五結"  },
+  { name: "許翔嫃",  currentGrade: "兼職新人",   storeName: "五結"  },
+  { name: "曾梅芳",  currentGrade: "二級店長",   storeName: "北成"  },
+  { name: "廖祐君",  currentGrade: "二級營業員",  storeName: "北成"  },
+  { name: "江環宇",  currentGrade: "副店長",     storeName: "北成"  },
+  { name: "謝樂盈",  currentGrade: "初階兼職",   storeName: "北成"  },
+  { name: "陳羿蓉",  currentGrade: "初階兼職",   storeName: "宜蘭"  },
+  { name: "林奕甫",  currentGrade: "副店長",     storeName: "宜蘭"  },
+  { name: "景怡鈞",  currentGrade: "二級營業員",  storeName: "宜蘭"  },
+  { name: "鄭鈺潔",  currentGrade: "一級營業員",  storeName: "宜蘭"  },
+  { name: "何芯瑩",  currentGrade: "新進營業員",  storeName: "宜蘭"  },
+  { name: "陳念妤",  currentGrade: "二級店長",   storeName: "校舍"  },
+  { name: "游宣綺",  currentGrade: "二級營業員",  storeName: "校舍"  },
+  { name: "石育穎",  currentGrade: "兼職新人",   storeName: "校舍"  },
+  { name: "關思婕",  currentGrade: "二級店長",   storeName: "馬賽"  },
+  { name: "王舒儀",  currentGrade: "兼職新人",   storeName: "馬賽"  },
+  { name: "伍沛婷",  currentGrade: "新進營業員",  storeName: "馬賽"  },
+  { name: "林玟華",  currentGrade: "新進營業員",  storeName: "馬賽"  },
+  { name: "陳憶慈",  currentGrade: "副店長",     storeName: "義成"  },
+  { name: "林偉婷",  currentGrade: "二級營業員",  storeName: "義成"  },
+  { name: "後瓊雯",  currentGrade: "三級店長",   storeName: "義成"  },
+  { name: "吳雅婷",  currentGrade: "一級營業員",  storeName: "義成"  },
+  { name: "張郁琳",  currentGrade: "兼職新人",   storeName: "義成"  },
+  { name: "游勝淵",  currentGrade: "二級店長",   storeName: "礁溪"  },
+  { name: "程佳欣",  currentGrade: "進階兼職",   storeName: "礁溪"  },
+  { name: "林嘉琪",  currentGrade: "進階兼職",   storeName: "礁溪"  },
+  { name: "蘇曉生",  currentGrade: "二級店長",   storeName: "力行"  },
+  { name: "張彤緁",  currentGrade: "三級營業員",  storeName: "力行"  },
+  { name: "邱璵",    currentGrade: "二級營業員",  storeName: "力行"  },
+  { name: "王盈嵐",  currentGrade: "三級營業員",  storeName: "力行"  },
+  { name: "張博雅",  currentGrade: "副店長",     storeName: "大有"  },
+  { name: "黃雅貞",  currentGrade: "三級營業員",  storeName: "大有"  },
+  { name: "王芊云",  currentGrade: "新進營業員",  storeName: "大有"  },
+  { name: "游詩家",  currentGrade: "副店長",     storeName: "大竹"  },
+  { name: "胡雅琴",  currentGrade: "三級營業員",  storeName: "大竹"  },
+  { name: "廖怡玲",  currentGrade: "二級店長",   storeName: "中北"  },
+  { name: "許晴媁",  currentGrade: "進階兼職",   storeName: "中北"  },
+  { name: "張珈寧",  currentGrade: "二級營業員",  storeName: "中北"  },
+  { name: "范鈺庭",  currentGrade: "兼職新人",   storeName: "中北"  },
+  { name: "廖苡竹",  currentGrade: "二級店長",   storeName: "中埔"  },
+  { name: "石佳蓉",  currentGrade: "一級營業員",  storeName: "中埔"  },
+  { name: "陳子萱",  currentGrade: "兼職新人",   storeName: "中埔"  },
+  { name: "邱競瑩",  currentGrade: "新進營業員",  storeName: "中埔"  },
+  { name: "游佩菁",  currentGrade: "新進營業員",  storeName: "中埔"  },
+  { name: "江惠如",  currentGrade: "三級營業員",  storeName: "五福"  },
+  { name: "李玉如",  currentGrade: "二級店長",   storeName: "五福"  },
+  { name: "徐怡欣",  currentGrade: "進階兼職",   storeName: "五福"  },
+  { name: "游淑涵",  currentGrade: "副店長",     storeName: "五福"  },
+  { name: "何雅芬",  currentGrade: "新進營業員",  storeName: "五福"  },
+  { name: "黃暐博",  currentGrade: "兼職新人",   storeName: "內壢"  },
+  { name: "趙家賢",  currentGrade: "一級營業員",  storeName: "內壢"  },
+  { name: "鄭儀琳",  currentGrade: "二級營業員",  storeName: "昆明"  },
+  { name: "吳怡樺",  currentGrade: "二級店長",   storeName: "昆明"  },
+  { name: "李芸溱",  currentGrade: "一級店長",   storeName: "東勇"  },
+  { name: "周士傑",  currentGrade: "兼職新人",   storeName: "東勇"  },
+  { name: "謝羽婷",  currentGrade: "新進營業員",  storeName: "東勇"  },
+  { name: "曾寶方",  currentGrade: "副店長",     storeName: "南竹"  },
+  { name: "黃靖雅",  currentGrade: "一級店長",   storeName: "南竹"  },
+  { name: "徐維志",  currentGrade: "初階兼職",   storeName: "南竹"  },
+  { name: "王少筠",  currentGrade: "新進營業員",  storeName: "南竹"  },
 ];
 
 const CARRY_OVER_DATE = new Date("2026-02-28");
@@ -188,13 +189,21 @@ export async function POST() {
   );
 
   const empMap = new Map(employees.map((e) => [e.name, e.id]));
-  const rosterMap = new Map(ROSTER.map((r) => [r.name, r.currentGrade]));
+
+  // 查詢所有需要的門市 ID
+  const storeNames = [...new Set(ROSTER.map((r) => r.storeName))];
+  const storePlaceholders = storeNames.map((_, i) => `$${i + 1}`).join(",");
+  const stores = await prisma.$queryRawUnsafe<{ id: string; name: string }[]>(
+    `SELECT id, name FROM "Store" WHERE name IN (${storePlaceholders})`,
+    ...storeNames
+  );
+  const storeMap = new Map(stores.map((s) => [s.name, s.id]));
 
   const results: string[] = [];
   let inserted = 0;
   const notFound: string[] = [];
 
-  for (const { name, currentGrade } of ROSTER) {
+  for (const { name, currentGrade, storeName } of ROSTER) {
     const empId = empMap.get(name);
     if (!empId) {
       notFound.push(name);
@@ -219,25 +228,27 @@ export async function POST() {
 
     const targetGrade = GRADE_NEXT[currentGrade] ?? null;
     const hoursRequired = GRADE_CROSS_HOURS[currentGrade] ?? null;
+    const homeStoreId = storeMap.get(storeName) ?? null;
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO "EmployeePromotionTracking"
-        (id, "employeeId", "currentGrade", "targetGrade", "hoursRequired", "hoursCarryOver", "carryOverDate", note)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (id, "employeeId", "currentGrade", "targetGrade", "hoursRequired", "hoursCarryOver", "carryOverDate", "homeStoreId", note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT ("employeeId") DO UPDATE SET
          "currentGrade"   = EXCLUDED."currentGrade",
          "targetGrade"    = EXCLUDED."targetGrade",
          "hoursRequired"  = EXCLUDED."hoursRequired",
          "hoursCarryOver" = EXCLUDED."hoursCarryOver",
          "carryOverDate"  = EXCLUDED."carryOverDate",
+         "homeStoreId"    = EXCLUDED."homeStoreId",
          note             = EXCLUDED.note,
          "updatedAt"      = CURRENT_TIMESTAMP`,
       createId(), empId, currentGrade, targetGrade,
-      hoursRequired, hoursCarryOver, CARRY_OVER_DATE, note,
+      hoursRequired, hoursCarryOver, CARRY_OVER_DATE, homeStoreId, note,
     );
     inserted++;
     results.push(
-      `${name}：${currentGrade}${targetGrade ? `→${targetGrade}` : "（無門檻）"}，carryOver=${hoursCarryOver.toFixed(1)}h${note ? ` [${note}]` : ""}`
+      `${name}（${storeName}）：${currentGrade}${targetGrade ? `→${targetGrade}` : "（無門檻）"}，carryOver=${hoursCarryOver.toFixed(1)}h${homeStoreId ? "" : " [門市未找到]"}${note ? ` [${note}]` : ""}`
     );
   }
 
