@@ -55,8 +55,17 @@ export async function GET(request: NextRequest) {
       t.note
     FROM "EmployeePromotionTracking" t
     JOIN "Employee" e ON e.id = t."employeeId"
-    LEFT JOIN "Store" s ON s.id = e."defaultStoreId"
-    LEFT JOIN stores rs ON rs.store_name = s.name || '店'
+    LEFT JOIN LATERAL (
+      SELECT d2."fromStoreId"
+      FROM "DispatchRecord" d2
+      WHERE d2."employeeId" = t."employeeId"
+        AND d2."fromStoreId" IS NOT NULL
+      GROUP BY d2."fromStoreId"
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    ) home ON TRUE
+    LEFT JOIN "Store" s ON s.id = COALESCE(e."defaultStoreId", home."fromStoreId")
+    LEFT JOIN stores rs ON rs.store_name = s.name
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(COALESCE(d2."actualHours", d2."dispatchHours")), 0) AS total
       FROM "DispatchRecord" d2
