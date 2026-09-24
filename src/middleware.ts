@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { isAuthEnabled, SESSION_COOKIE_NAME } from "@/lib/auth-config";
 import { decodeSessionToken } from "@/lib/auth-session";
 import { canAccessApi, canAccessPage } from "@/lib/permissions";
+import { validateApiKey } from "@/lib/api-key-auth";
 
 const PERMISSIONS_CACHE_TTL_MS = 5000;
 const effectivePermsCache = new Map<
@@ -72,8 +73,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Admin seed endpoint: authenticated via X-API-Key in the route handler itself.
+  // Admin 端點（seed 等寫入工具）：一律以 X-API-Key 驗證，不接受 cookie session。
+  //
+  // 此處原本無條件放行，註解假設「route handler 自己會驗證金鑰」，但該驗證已於
+  // commit 00fccee 從 route handler 移除，兩邊各自以為對方在擋，導致 /api/admin/*
+  // 完全未認證即可寫入正式資料庫。改為在此確實驗證。
+  //
+  // validateApiKey 在未設定 EXTERNAL_API_KEY 時回傳 "disabled"，此處一併視為不通過
+  // （預設拒絕），避免再次因為漏設環境變數而整個開放。
   if (pathname.startsWith("/api/admin/")) {
+    if (validateApiKey(request) !== "ok") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.next();
   }
 
