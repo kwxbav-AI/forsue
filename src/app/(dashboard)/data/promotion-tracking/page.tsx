@@ -37,6 +37,10 @@ const GRADE_HOURS: Record<string, { target: string; hours: number }> = {
   "初階兼職": { target: "進階兼職", hours: 40 },
 };
 
+const TOP_GRADES = new Set(["一級營業員", "進階兼職", "一級店長"]);
+
+type SortKey = "storeName" | "employeeName" | "currentGrade" | "targetGrade" | "totalHours" | "hoursRequired" | "eligible";
+
 function ProgressBar({ total, required }: { total: number; required: number }) {
   const pct = Math.min(100, Math.round((total / required) * 100));
   const color = pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-400" : "bg-sky-400";
@@ -50,8 +54,12 @@ function ProgressBar({ total, required }: { total: number; required: number }) {
   );
 }
 
-function Badge({ eligible, targetGrade }: { eligible: boolean | null; targetGrade: string | null }) {
-  if (targetGrade === null) return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">已達頂</span>;
+function Badge({ eligible, targetGrade, currentGrade }: { eligible: boolean | null; targetGrade: string | null; currentGrade: string }) {
+  if (targetGrade === null) {
+    if (TOP_GRADES.has(currentGrade))
+      return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">已達頂</span>;
+    return <span className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-400">不追蹤</span>;
+  }
   if (eligible === true) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">可報考</span>;
   return <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-600">累積中</span>;
 }
@@ -68,6 +76,50 @@ export default function PromotionTrackingPage() {
   const [region, setRegion] = useState<string>("");
   const [eligibleOnly, setEligibleOnly] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("storeName");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortAsc((a) => !a);
+    else { setSortKey(key); setSortAsc(true); }
+  }
+
+  function sortRows(arr: TrackingRow[]): TrackingRow[] {
+    return [...arr].sort((a, b) => {
+      let va: string | number | null;
+      let vb: string | number | null;
+      switch (sortKey) {
+        case "storeName": va = a.storeName ?? "zzz"; vb = b.storeName ?? "zzz"; break;
+        case "employeeName": va = a.employeeName; vb = b.employeeName; break;
+        case "currentGrade": va = a.currentGrade; vb = b.currentGrade; break;
+        case "targetGrade": va = a.targetGrade ?? "zzz"; vb = b.targetGrade ?? "zzz"; break;
+        case "totalHours": va = a.totalHours; vb = b.totalHours; break;
+        case "hoursRequired": va = a.hoursRequired ?? 999; vb = b.hoursRequired ?? 999; break;
+        case "eligible": va = a.eligible === true ? 0 : a.eligible === false ? 1 : 2; vb = b.eligible === true ? 0 : b.eligible === false ? 1 : 2; break;
+        default: return 0;
+      }
+      if (va === vb) return 0;
+      const cmp = va < vb ? -1 : 1;
+      return sortAsc ? cmp : -cmp;
+    });
+  }
+
+  function SortTh({ col, label, className }: { col: SortKey; label: string; className?: string }) {
+    const active = sortKey === col;
+    return (
+      <th
+        className={`px-3 py-2.5 cursor-pointer select-none hover:bg-slate-100 ${className ?? "text-left"}`}
+        onClick={() => toggleSort(col)}
+      >
+        <span className="inline-flex items-center gap-1">
+          {label}
+          <span className="text-[10px] text-slate-300">
+            {active ? (sortAsc ? "▲" : "▼") : "⇅"}
+          </span>
+        </span>
+      </th>
+    );
+  }
 
   // Exam modal state
   const [examTarget, setExamTarget] = useState<TrackingRow | null>(null);
@@ -203,19 +255,19 @@ export default function PromotionTrackingPage() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-3 py-2.5 text-left">門市</th>
-                  <th className="px-3 py-2.5 text-left">姓名</th>
-                  <th className="px-3 py-2.5 text-left">目前職等</th>
-                  <th className="px-3 py-2.5 text-left">目標職等</th>
-                  <th className="px-3 py-2.5 text-right">累積時數</th>
-                  <th className="px-3 py-2.5 text-right">門檻</th>
+                  <SortTh col="storeName" label="門市" />
+                  <SortTh col="employeeName" label="姓名" />
+                  <SortTh col="currentGrade" label="目前職等" />
+                  <SortTh col="targetGrade" label="目標職等" />
+                  <SortTh col="totalHours" label="累積時數" className="text-right" />
+                  <SortTh col="hoursRequired" label="門檻" className="text-right" />
                   <th className="px-3 py-2.5 text-left">進度</th>
-                  <th className="px-3 py-2.5 text-center">狀態</th>
+                  <SortTh col="eligible" label="狀態" className="text-center" />
                   <th className="px-3 py-2.5 text-center">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {rgnRows.map((row) => (
+                {sortRows(rgnRows).map((row) => (
                   <tr key={row.employeeId} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-3 py-2 text-slate-600">{row.storeName ?? "—"}</td>
                     <td className="px-3 py-2 font-medium text-slate-800">{row.employeeName}</td>
@@ -235,7 +287,7 @@ export default function PromotionTrackingPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <Badge eligible={row.eligible} targetGrade={row.targetGrade} />
+                      <Badge eligible={row.eligible} targetGrade={row.targetGrade} currentGrade={row.currentGrade} />
                     </td>
                     <td className="px-3 py-2 text-center">
                       <div className="flex justify-center gap-1.5">

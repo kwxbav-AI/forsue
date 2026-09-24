@@ -78,10 +78,9 @@ export async function GET(request: NextRequest) {
       WHERE ex2."employeeId" = t."employeeId"
         AND ex2."examDate" > t."carryOverDate"
     ) ex ON TRUE
-    WHERE rs.region IS NOT NULL
-      AND rs.region NOT IN ('台北區')
+    WHERE 1=1
       ${regionFilter}
-    ORDER BY rs.region, s.name, e.name
+    ORDER BY rs.region NULLS LAST, s.name NULLS LAST, e.name
   `);
 
   const results = trackings.map((t) => {
