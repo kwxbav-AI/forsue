@@ -90,43 +90,17 @@ const EXCEL_DATA = [
 const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r) => [r.name, r]));
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
-export async function GET() {
-  const excelNamesFound = await prisma.$queryRawUnsafe<{ name: string; storeName: string | null; region: string | null; hasDefaultStore: boolean }[]>(`
-    SELECT e.name,
-           s.name as "storeName",
-           rs.region,
-           (e."defaultStoreId" IS NOT NULL) as "hasDefaultStore"
-    FROM "Employee" e
-    LEFT JOIN "Store" s ON s.id = e."defaultStoreId"
-    LEFT JOIN stores rs ON rs.store_name = s.name
-    WHERE e."leaveDate" IS NULL
-      AND e.name IN ('石元甫','林郁映','游雅筑','陳怡瑄','巫思樺','廖祐君','林偉婷','王楚翔','趙家賢','石佳蓉','陳梓欣','林嘉琪','謝樂盈','程佳欣','王盈嵐','廖祐君','吳雅婷','游淑涵','黃雅貞','張珈寧')
-    ORDER BY e.name
-  `);
-  return NextResponse.json({ excelNamesFound });
-}
-
 export async function POST() {
-  // 只處理有所屬門市、且門市在宜蘭區或桃園區的員工（排除台北區及非門市人員）
-  const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(`
-    SELECT e.id, e.name, e.position
-    FROM "Employee" e
-    JOIN "Store" s ON s.id = e."defaultStoreId"
-    JOIN stores rs ON rs.store_name = s.name
-    WHERE e."leaveDate" IS NULL
-      AND rs.region NOT IN ('台北區')
-  `);
-
-  // 刪除非門市（或台北區）的 tracking 紀錄
-  await prisma.$executeRawUnsafe(`
-    DELETE FROM "EmployeePromotionTracking"
-    WHERE "employeeId" NOT IN (
-      SELECT e.id FROM "Employee" e
-      JOIN "Store" s ON s.id = e."defaultStoreId"
-      JOIN stores rs ON rs.store_name = s.name
-      WHERE rs.region NOT IN ('台北區')
-    )
-  `);
+  // 以 Excel 名單為主查詢員工，不依賴 store JOIN（避免 defaultStoreId 未設的問題）
+  const excelNames = EXCEL_DATA.map((r) => r.name);
+  const placeholders = excelNames.map((_, i) => `$${i + 1}`).join(",");
+  const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(
+    `SELECT e.id, e.name, e.position
+     FROM "Employee" e
+     WHERE e."leaveDate" IS NULL
+       AND e.name IN (${placeholders})`,
+    ...excelNames
+  );
 
   const results: string[] = [];
   let inserted = 0;
