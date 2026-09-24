@@ -10,6 +10,7 @@ type TrackingRow = {
   employeeCode: string;
   storeName: string | null;
   region: string | null;
+  homeStoreId: string | null;
   currentGrade: string;
   targetGrade: string | null;
   hoursRequired: number | null;
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
       e."employeeCode",
       s.name                                              AS "storeName",
       rs.region,
+      t."homeStoreId",
       t."currentGrade",
       t."targetGrade",
       CAST(t."hoursRequired"  AS FLOAT)                  AS "hoursRequired",
@@ -73,7 +75,7 @@ export async function GET(request: NextRequest) {
       ORDER BY COUNT(*) DESC
       LIMIT 1
     ) home_att ON TRUE
-    LEFT JOIN "Store" s ON s.id = COALESCE(e."defaultStoreId", home_dispatch."fromStoreId", home_att."originalStoreId")
+    LEFT JOIN "Store" s ON s.id = COALESCE(t."homeStoreId", e."defaultStoreId", home_dispatch."fromStoreId", home_att."originalStoreId")
     LEFT JOIN stores rs ON rs.store_name = s.name
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(COALESCE(d2."actualHours", d2."dispatchHours")), 0) AS total
@@ -104,6 +106,7 @@ export async function GET(request: NextRequest) {
       employeeCode: t.employeeCode,
       storeName: t.storeName,
       region: t.region,
+      homeStoreId: t.homeStoreId,
       currentGrade: t.currentGrade,
       targetGrade: t.targetGrade,
       hoursRequired,

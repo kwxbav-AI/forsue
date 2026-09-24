@@ -109,6 +109,7 @@ model EmployeePromotionTracking {
   hoursRequired  Decimal?  @db.Decimal(8, 2) // 時數標準；null 表示無時數門檻
   hoursCarryOver Decimal   @default(0) @db.Decimal(8, 2) // 截至 carryOverDate 的累計時數（已扣歷史考核扣除）
   carryOverDate  DateTime  @db.Date // 本次匯入的截止日，通常為 2026-02-28
+  homeStoreId    String?   // 明確指定的所屬門市，優先於 DispatchRecord 推算
   note           String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

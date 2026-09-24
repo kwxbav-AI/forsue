@@ -9,6 +9,7 @@ type TrackingRow = {
   employeeCode: string;
   storeName: string | null;
   region: string | null;
+  homeStoreId: string | null;
   currentGrade: string;
   targetGrade: string | null;
   hoursRequired: number | null;
@@ -122,7 +123,7 @@ export default function PromotionTrackingPage() {
   // Edit modal state
   const [editTarget, setEditTarget] = useState<TrackingRow | null>(null);
   const [editForm, setEditForm] = useState({
-    currentGrade: "", targetGrade: "", hoursRequired: "", hoursCarryOver: "", carryOverDate: "", note: "",
+    currentGrade: "", targetGrade: "", hoursRequired: "", hoursCarryOver: "", carryOverDate: "", homeStoreId: "", note: "",
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -134,6 +135,7 @@ export default function PromotionTrackingPage() {
       hoursRequired: row.hoursRequired !== null ? String(row.hoursRequired) : "",
       hoursCarryOver: String(row.hoursCarryOver),
       carryOverDate: row.carryOverDate ? new Date(row.carryOverDate).toISOString().slice(0, 10) : "",
+      homeStoreId: row.homeStoreId ?? "",
       note: row.note ?? "",
     });
   }
@@ -167,12 +169,20 @@ export default function PromotionTrackingPage() {
         hoursRequired: editForm.hoursRequired !== "" ? Number(editForm.hoursRequired) : null,
         hoursCarryOver: Number(editForm.hoursCarryOver),
         carryOverDate: editForm.carryOverDate,
+        homeStoreId: editForm.homeStoreId || null,
         note: editForm.note || null,
       }),
     });
     if (res.ok) { setEditTarget(null); load(); }
     else { const j = await res.json(); setMsg(`錯誤：${j.error}`); }
     setEditSaving(false);
+  }
+
+  async function deleteTracking(row: TrackingRow) {
+    if (!confirm(`確定要刪除「${row.employeeName}」的追蹤紀錄？此操作無法復原。`)) return;
+    const res = await fetch(`/api/promotion-tracking/${row.employeeId}`, { method: "DELETE" });
+    if (res.ok) { setMsg(`已刪除 ${row.employeeName}`); load(); }
+    else setMsg("刪除失敗");
   }
 
   // Dispatch modal state
@@ -412,6 +422,12 @@ export default function PromotionTrackingPage() {
                             登錄考核
                           </button>
                         )}
+                        <button
+                          onClick={() => deleteTracking(row)}
+                          className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          刪除
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -506,6 +522,19 @@ export default function PromotionTrackingPage() {
               編輯：{editTarget.employeeName}
             </h3>
             <div className="space-y-3 text-sm">
+              <div>
+                <label className="mb-1 block text-slate-600">所屬門市</label>
+                <select
+                  value={editForm.homeStoreId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, homeStoreId: e.target.value }))}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                >
+                  <option value="">（自動推算）</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="mb-1 block text-slate-600">目前職等</label>
                 <select
