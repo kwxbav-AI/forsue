@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
       FROM "DispatchRecord" d2
       WHERE d2."employeeId" = t."employeeId"
         AND d2."workDate" > t."carryOverDate"
+        AND (d2.remark IS NULL OR d2.remark NOT IN ('督導支援', '後勤支援門市'))
     ) d ON TRUE
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(ex2."hoursDeducted"), 0) AS total
