@@ -212,7 +212,7 @@ export async function POST() {
       hoursCarryOver = Math.max(0, carry.carryOver);
     } else {
       // 職等已升遷：扣掉舊職等門檻後的剩餘時數
-      const prevHours = GRADE_HOURS[carry.oldGrade]?.hours ?? 0;
+      const prevHours = GRADE_CROSS_HOURS[carry.oldGrade] ?? 0;
       hoursCarryOver = Math.max(0, carry.carryOver - prevHours);
       note = `升職：${carry.oldGrade}→${currentGrade}；AS=${carry.carryOver}，扣${prevHours}h後carryOver=${hoursCarryOver.toFixed(2)}`;
     }
