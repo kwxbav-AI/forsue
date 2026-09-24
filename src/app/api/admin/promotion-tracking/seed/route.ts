@@ -184,7 +184,7 @@ export async function POST() {
   const placeholders = rosterNames.map((_, i) => `$${i + 1}`).join(",");
   const employees = await prisma.$queryRawUnsafe<{ id: string; name: string }[]>(
     `SELECT e.id, e.name FROM "Employee" e
-     WHERE e."leaveDate" IS NULL AND e.name IN (${placeholders})`,
+     WHERE e.name IN (${placeholders})`,
     ...rosterNames
   );
 
