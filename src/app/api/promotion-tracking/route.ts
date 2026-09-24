@@ -63,8 +63,17 @@ export async function GET(request: NextRequest) {
       GROUP BY d2."fromStoreId"
       ORDER BY COUNT(*) DESC
       LIMIT 1
-    ) home ON TRUE
-    LEFT JOIN "Store" s ON s.id = COALESCE(e."defaultStoreId", home."fromStoreId")
+    ) home_dispatch ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT a2."originalStoreId"
+      FROM "AttendanceRecord" a2
+      WHERE a2."employeeId" = t."employeeId"
+        AND a2."originalStoreId" IS NOT NULL
+      GROUP BY a2."originalStoreId"
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    ) home_att ON TRUE
+    LEFT JOIN "Store" s ON s.id = COALESCE(e."defaultStoreId", home_dispatch."fromStoreId", home_att."originalStoreId")
     LEFT JOIN stores rs ON rs.store_name = s.name
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(COALESCE(d2."actualHours", d2."dispatchHours")), 0) AS total

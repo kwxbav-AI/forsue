@@ -37,8 +37,6 @@ const GRADE_HOURS: Record<string, { target: string; hours: number }> = {
   "初階兼職": { target: "進階兼職", hours: 40 },
 };
 
-const TOP_GRADES = new Set(["一級營業員", "進階兼職", "一級店長"]);
-
 type SortKey = "storeName" | "employeeName" | "currentGrade" | "targetGrade" | "totalHours" | "hoursRequired" | "eligible";
 
 function ProgressBar({ total, required }: { total: number; required: number }) {
@@ -54,12 +52,11 @@ function ProgressBar({ total, required }: { total: number; required: number }) {
   );
 }
 
-function Badge({ eligible, targetGrade, currentGrade }: { eligible: boolean | null; targetGrade: string | null; currentGrade: string }) {
-  if (targetGrade === null) {
-    if (TOP_GRADES.has(currentGrade))
-      return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">已達頂</span>;
+function Badge({ eligible, targetGrade, hoursRequired }: { eligible: boolean | null; targetGrade: string | null; hoursRequired: number | null }) {
+  if (targetGrade === null)
+    return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">已達頂</span>;
+  if (hoursRequired === null)
     return <span className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-400">不追蹤</span>;
-  }
   if (eligible === true) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">可報考</span>;
   return <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-600">累積中</span>;
 }
@@ -287,7 +284,7 @@ export default function PromotionTrackingPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <Badge eligible={row.eligible} targetGrade={row.targetGrade} currentGrade={row.currentGrade} />
+                      <Badge eligible={row.eligible} targetGrade={row.targetGrade} hoursRequired={row.hoursRequired} />
                     </td>
                     <td className="px-3 py-2 text-center">
                       <div className="flex justify-center gap-1.5">

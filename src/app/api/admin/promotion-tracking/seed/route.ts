@@ -13,11 +13,23 @@ import { randomBytes } from "crypto";
 
 const createId = () => randomBytes(14).toString("base64url");
 
-// 有跨店時數門檻的職等（其餘 targetGrade = null）
-const GRADE_HOURS: Record<string, { target: string; hours: number }> = {
-  "三級營業員": { target: "二級營業員", hours: 40 },
-  "二級營業員": { target: "一級營業員", hours: 80 },
-  "初階兼職":   { target: "進階兼職",   hours: 40 },
+// 每個職等的下一個晉升目標（頂端職等不列入）
+const GRADE_NEXT: Record<string, string> = {
+  "新進營業員": "三級營業員",
+  "三級營業員": "二級營業員",
+  "二級營業員": "一級營業員",
+  "兼職新人":   "初階兼職",
+  "初階兼職":   "進階兼職",
+  "副店長":     "三級店長",
+  "三級店長":   "二級店長",
+  "二級店長":   "一級店長",
+};
+
+// 需要跨店時數才能報考的職等門檻（其餘 hoursRequired = null）
+const GRADE_CROSS_HOURS: Record<string, number> = {
+  "三級營業員": 40,
+  "二級營業員": 80,
+  "初階兼職":   40,
 };
 
 // 2026-02-28 累計跨店時數（舊 Excel AS 欄）及當時職等
@@ -205,8 +217,8 @@ export async function POST() {
       note = `升職：${carry.oldGrade}→${currentGrade}；AS=${carry.carryOver}，扣${prevHours}h後carryOver=${hoursCarryOver.toFixed(2)}`;
     }
 
-    const { target: targetGrade = null, hours: hoursRequired = null } =
-      GRADE_HOURS[currentGrade] ?? {};
+    const targetGrade = GRADE_NEXT[currentGrade] ?? null;
+    const hoursRequired = GRADE_CROSS_HOURS[currentGrade] ?? null;
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO "EmployeePromotionTracking"
