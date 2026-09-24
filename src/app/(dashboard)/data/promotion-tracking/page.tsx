@@ -175,6 +175,47 @@ export default function PromotionTrackingPage() {
     setEditSaving(false);
   }
 
+  // Dispatch modal state
+  const [dispTarget, setDispTarget] = useState<TrackingRow | null>(null);
+  const [dispDate, setDispDate] = useState("");
+  const [dispStoreId, setDispStoreId] = useState("");
+  const [dispHours, setDispHours] = useState("");
+  const [dispRemark, setDispRemark] = useState("");
+  const [dispSaving, setDispSaving] = useState(false);
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/stores").then((r) => r.json()).then((d) => {
+      if (Array.isArray(d)) setStores(d.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
+    }).catch(() => {});
+  }, []);
+
+  async function submitDispatch() {
+    if (!dispTarget || !dispDate || !dispStoreId || !dispHours) return;
+    setDispSaving(true);
+    const res = await fetch("/api/promotion-tracking/dispatch-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employeeId: dispTarget.employeeId,
+        workDate: dispDate,
+        toStoreId: dispStoreId,
+        actualHours: Number(dispHours),
+        remark: dispRemark || null,
+      }),
+    });
+    if (res.ok) {
+      setMsg(`已記錄 ${dispTarget.employeeName} 的派遣時數`);
+      setDispTarget(null);
+      setDispDate(""); setDispStoreId(""); setDispHours(""); setDispRemark("");
+      load();
+    } else {
+      const j = await res.json();
+      setMsg(`錯誤：${j.error}`);
+    }
+    setDispSaving(false);
+  }
+
   // Exam modal state
   const [examTarget, setExamTarget] = useState<TrackingRow | null>(null);
   const [examDate, setExamDate] = useState("");
@@ -352,6 +393,12 @@ export default function PromotionTrackingPage() {
                           編輯
                         </button>
                         <button
+                          onClick={() => { setDispTarget(row); setDispDate(""); setDispStoreId(""); setDispHours(""); setDispRemark(""); }}
+                          className="rounded border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs text-violet-700 hover:bg-violet-100"
+                        >
+                          登錄時數
+                        </button>
+                        <button
                           onClick={() => loadHistory(row)}
                           className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50"
                         >
@@ -377,6 +424,78 @@ export default function PromotionTrackingPage() {
 
       {!loading && rows.length === 0 && (
         <p className="text-sm text-slate-400">目前無資料。請確認已執行資料回填腳本。</p>
+      )}
+
+      {/* 登錄派遣時數 Modal */}
+      {dispTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-base font-semibold text-slate-800">
+              登錄派遣時數：{dispTarget.employeeName}
+            </h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="mb-1 block text-slate-600">派遣日期 <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={dispDate}
+                  onChange={(e) => setDispDate(e.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">派往門市 <span className="text-red-500">*</span></label>
+                <select
+                  value={dispStoreId}
+                  onChange={(e) => setDispStoreId(e.target.value)}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                >
+                  <option value="">請選擇門市</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">時數 <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={dispHours}
+                  onChange={(e) => setDispHours(e.target.value)}
+                  placeholder="例：8"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-slate-600">備註</label>
+                <input
+                  type="text"
+                  value={dispRemark}
+                  onChange={(e) => setDispRemark(e.target.value)}
+                  placeholder="選填"
+                  className="w-full rounded border border-slate-300 px-2 py-1.5"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDispTarget(null)}
+                className="rounded border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={submitDispatch}
+                disabled={!dispDate || !dispStoreId || !dispHours || dispSaving}
+                className="rounded bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {dispSaving ? "儲存中…" : "確認儲存"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 編輯 Modal */}
