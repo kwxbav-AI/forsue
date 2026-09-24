@@ -1,12 +1,11 @@
 /**
  * POST /api/admin/promotion-tracking/seed
  *
- * 一次性回填腳本：將 Excel 截至 2026-02-28 的跨店時數匯入 EmployeePromotionTracking。
- * 執行一次即可，重複執行會 upsert（安全）。
+ * 回填腳本：依 2026-08-17 在職名冊匯入 EmployeePromotionTracking。
+ * 重複執行安全（upsert）。
  *
- * 6月升職邏輯：
- *   若員工系統職等 ≠ Excel 記錄職等（代表在 2026-02-28 後已升職），
- *   則 carryOver = max(0, AS欄 − 舊職等門檻)，剩餘時數可繼續累積。
+ * currentGrade = 名冊 D 欄職稱（非系統職等）
+ * carryOver = 舊 Excel 截至 2026-02-28 累計時數；若有升職則扣舊職等門檻。
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -14,120 +13,196 @@ import { randomBytes } from "crypto";
 
 const createId = () => randomBytes(14).toString("base64url");
 
-// Excel 時數標準（鍵 = 目前職等，升職需要的跨店時數）
+// 有跨店時數門檻的職等（其餘 targetGrade = null）
 const GRADE_HOURS: Record<string, { target: string; hours: number }> = {
   "三級營業員": { target: "二級營業員", hours: 40 },
   "二級營業員": { target: "一級營業員", hours: 80 },
   "初階兼職":   { target: "進階兼職",   hours: 40 },
 };
 
-// Excel 截至 2026-02-28 的累計時數（已扣歷史考核扣除）
-// 欄位：{ name, carryOver, excelGrade }
-// excelGrade = Excel AT 欄（2026-03 的職等，即 6月升職前的職等）
-const EXCEL_DATA = [
-  { name: "石元甫",  carryOver: 249.09, excelGrade: "三級營業員" },
-  { name: "林郁映",  carryOver: 97.9,   excelGrade: "二級營業員" },
-  { name: "游雅筑",  carryOver: 2.93,   excelGrade: "進階兼職"   },
-  { name: "陳怡瑄",  carryOver: 8.36,   excelGrade: "進階兼職"   },
-  { name: "巫思樺",  carryOver: 25.63,  excelGrade: "三級營業員" },
-  { name: "俞柔欣",  carryOver: 5.96,   excelGrade: "兼職新人"   },
-  { name: "張郁琳",  carryOver: 21.85,  excelGrade: "兼職新人"   },
-  { name: "王珮慈",  carryOver: 63.3,   excelGrade: "二級營業員" },
-  { name: "游桄燿",  carryOver: 91.85,  excelGrade: "新進營業員" },
-  { name: "曹家瑜",  carryOver: 0,      excelGrade: "新進營業員" },
-  { name: "張郁",    carryOver: 225.43, excelGrade: "兼職新人"   },
-  { name: "李珮茹",  carryOver: 34.95,  excelGrade: "新進營業員" },
-  { name: "戴綺",    carryOver: 26.32,  excelGrade: "進階兼職"   },
-  { name: "陳韻晴",  carryOver: 23.82,  excelGrade: "二級營業員" },
-  { name: "江環宇",  carryOver: 51.15,  excelGrade: "副店長"     },
-  { name: "廖祐君",  carryOver: 376.42, excelGrade: "二級營業員" },
-  { name: "何芯瑩",  carryOver: 34.05,  excelGrade: "兼職新人"   },
-  { name: "謝樂盈",  carryOver: 231.6,  excelGrade: "兼職新人"   },
-  { name: "陳羿蓉",  carryOver: 3.28,   excelGrade: "初階兼職"   },
-  { name: "簡千蕙",  carryOver: 28.94,  excelGrade: "二級營業員" },
-  { name: "鄭鈺潔",  carryOver: 1.1,    excelGrade: "一級營業員" },
-  { name: "景怡鈞",  carryOver: 35.3,   excelGrade: "進階兼職"   },
-  { name: "游宣綺",  carryOver: 16.22,  excelGrade: "二級營業員" },
-  { name: "趙沛淋",  carryOver: 98.05,  excelGrade: "進階兼職"   },
-  { name: "王舒儀",  carryOver: 6.18,   excelGrade: "兼職新人"   },
-  { name: "伍沛婷",  carryOver: 0,      excelGrade: "新進營業員" },
-  { name: "林偉婷",  carryOver: 429.29, excelGrade: "二級營業員" },
-  { name: "吳雅婷",  carryOver: 73.68,  excelGrade: "二級營業員" },
-  { name: "林嘉琪",  carryOver: 300.94, excelGrade: "初階兼職"   },
-  { name: "程佳欣",  carryOver: 158.37, excelGrade: "進階兼職"   },
-  { name: "張彤緁",  carryOver: 71.55,  excelGrade: "三級營業員" },
-  { name: "邱璵",    carryOver: 17.2,   excelGrade: "二級營業員" },
-  { name: "王楚翔",  carryOver: 443.73, excelGrade: "新進營業員" },
-  { name: "王盈嵐",  carryOver: 180.43, excelGrade: "三級營業員" },
-  { name: "簡子琳",  carryOver: 9.25,   excelGrade: "三級營業員" },
-  { name: "胡雅琴",  carryOver: 59.47,  excelGrade: "三級營業員" },
-  { name: "趙家賢",  carryOver: 292.56, excelGrade: "一級營業員" },
-  { name: "蔡育昀",  carryOver: 63.35,  excelGrade: "進階兼職"   },
-  { name: "羅莉薇",  carryOver: 41.39,  excelGrade: "初階兼職"   },
-  { name: "鄭儀琳",  carryOver: 23.21,  excelGrade: "二級營業員" },
-  { name: "范鈺庭",  carryOver: 0,      excelGrade: "兼職新人"   },
-  { name: "孫芷昕",  carryOver: 0,      excelGrade: "兼職新人"   },
-  { name: "張珈寧",  carryOver: 87.97,  excelGrade: "三級營業員" },
-  { name: "石佳蓉",  carryOver: 78.1,   excelGrade: "一級營業員" },
-  { name: "陳子萱",  carryOver: 0,      excelGrade: "兼職新人"   },
-  { name: "陳梓欣",  carryOver: 145.15, excelGrade: "二級營業員" },
-  { name: "徐怡欣",  carryOver: 3.52,   excelGrade: "進階兼職"   },
-  { name: "江惠如",  carryOver: 3.01,   excelGrade: "三級營業員" },
-  { name: "曾燕茹",  carryOver: 73.48,  excelGrade: "初階兼職"   },
-  { name: "黃雅貞",  carryOver: 24.68,  excelGrade: "新進營業員" },
-  { name: "蔡羽婷",  carryOver: 89.75,  excelGrade: "兼職新人"   },
-  { name: "游淑涵",  carryOver: 7.69,   excelGrade: "一級營業員" },
-  { name: "黃暐博",  carryOver: 171.15, excelGrade: "兼職新人"   },
-  { name: "許晴媁",  carryOver: 9.2,    excelGrade: "進階兼職"   },
-  { name: "周士傑",  carryOver: 871.96, excelGrade: "兼職新人"   },
-  { name: "謝羽婷",  carryOver: 0,      excelGrade: "新進營業員" },
-  { name: "王少筠",  carryOver: 34.96,  excelGrade: "新進營業員" },
-  { name: "徐維志",  carryOver: 167.65, excelGrade: "初階兼職"   },
-  { name: "鄧曉郁",  carryOver: 0,      excelGrade: "新進營業員" },
-  { name: "阮宥緁",  carryOver: 93.71,  excelGrade: "新進營業員" },
+// 2026-02-28 累計跨店時數（舊 Excel AS 欄）及當時職等
+const CARRY_OVER_MAP = new Map([
+  ["石元甫",  { carryOver: 249.09, oldGrade: "三級營業員" }],
+  ["林郁映",  { carryOver: 97.9,   oldGrade: "二級營業員" }],
+  ["游雅筑",  { carryOver: 2.93,   oldGrade: "進階兼職"   }],
+  ["陳怡瑄",  { carryOver: 8.36,   oldGrade: "進階兼職"   }],
+  ["巫思樺",  { carryOver: 25.63,  oldGrade: "三級營業員" }],
+  ["俞柔欣",  { carryOver: 5.96,   oldGrade: "兼職新人"   }],
+  ["張郁琳",  { carryOver: 21.85,  oldGrade: "兼職新人"   }],
+  ["王珮慈",  { carryOver: 63.3,   oldGrade: "二級營業員" }],
+  ["游桄燿",  { carryOver: 91.85,  oldGrade: "新進營業員" }],
+  ["曹家瑜",  { carryOver: 0,      oldGrade: "新進營業員" }],
+  ["張郁",    { carryOver: 225.43, oldGrade: "兼職新人"   }],
+  ["李珮茹",  { carryOver: 34.95,  oldGrade: "新進營業員" }],
+  ["戴綺",    { carryOver: 26.32,  oldGrade: "進階兼職"   }],
+  ["陳韻晴",  { carryOver: 23.82,  oldGrade: "二級營業員" }],
+  ["江環宇",  { carryOver: 51.15,  oldGrade: "副店長"     }],
+  ["廖祐君",  { carryOver: 376.42, oldGrade: "二級營業員" }],
+  ["何芯瑩",  { carryOver: 34.05,  oldGrade: "兼職新人"   }],
+  ["謝樂盈",  { carryOver: 231.6,  oldGrade: "兼職新人"   }],
+  ["陳羿蓉",  { carryOver: 3.28,   oldGrade: "初階兼職"   }],
+  ["簡千蕙",  { carryOver: 28.94,  oldGrade: "二級營業員" }],
+  ["鄭鈺潔",  { carryOver: 1.1,    oldGrade: "一級營業員" }],
+  ["景怡鈞",  { carryOver: 35.3,   oldGrade: "進階兼職"   }],
+  ["游宣綺",  { carryOver: 16.22,  oldGrade: "二級營業員" }],
+  ["趙沛淋",  { carryOver: 98.05,  oldGrade: "進階兼職"   }],
+  ["王舒儀",  { carryOver: 6.18,   oldGrade: "兼職新人"   }],
+  ["伍沛婷",  { carryOver: 0,      oldGrade: "新進營業員" }],
+  ["林偉婷",  { carryOver: 429.29, oldGrade: "二級營業員" }],
+  ["吳雅婷",  { carryOver: 73.68,  oldGrade: "二級營業員" }],
+  ["林嘉琪",  { carryOver: 300.94, oldGrade: "初階兼職"   }],
+  ["程佳欣",  { carryOver: 158.37, oldGrade: "進階兼職"   }],
+  ["張彤緁",  { carryOver: 71.55,  oldGrade: "三級營業員" }],
+  ["邱璵",    { carryOver: 17.2,   oldGrade: "二級營業員" }],
+  ["王楚翔",  { carryOver: 443.73, oldGrade: "新進營業員" }],
+  ["王盈嵐",  { carryOver: 180.43, oldGrade: "三級營業員" }],
+  ["簡子琳",  { carryOver: 9.25,   oldGrade: "三級營業員" }],
+  ["胡雅琴",  { carryOver: 59.47,  oldGrade: "三級營業員" }],
+  ["趙家賢",  { carryOver: 292.56, oldGrade: "一級營業員" }],
+  ["蔡育昀",  { carryOver: 63.35,  oldGrade: "進階兼職"   }],
+  ["羅莉薇",  { carryOver: 41.39,  oldGrade: "初階兼職"   }],
+  ["鄭儀琳",  { carryOver: 23.21,  oldGrade: "二級營業員" }],
+  ["范鈺庭",  { carryOver: 0,      oldGrade: "兼職新人"   }],
+  ["孫芷昕",  { carryOver: 0,      oldGrade: "兼職新人"   }],
+  ["張珈寧",  { carryOver: 87.97,  oldGrade: "三級營業員" }],
+  ["石佳蓉",  { carryOver: 78.1,   oldGrade: "一級營業員" }],
+  ["陳子萱",  { carryOver: 0,      oldGrade: "兼職新人"   }],
+  ["陳梓欣",  { carryOver: 145.15, oldGrade: "二級營業員" }],
+  ["徐怡欣",  { carryOver: 3.52,   oldGrade: "進階兼職"   }],
+  ["江惠如",  { carryOver: 3.01,   oldGrade: "三級營業員" }],
+  ["曾燕茹",  { carryOver: 73.48,  oldGrade: "初階兼職"   }],
+  ["黃雅貞",  { carryOver: 24.68,  oldGrade: "新進營業員" }],
+  ["蔡羽婷",  { carryOver: 89.75,  oldGrade: "兼職新人"   }],
+  ["游淑涵",  { carryOver: 7.69,   oldGrade: "一級營業員" }],
+  ["黃暐博",  { carryOver: 171.15, oldGrade: "兼職新人"   }],
+  ["許晴媁",  { carryOver: 9.2,    oldGrade: "進階兼職"   }],
+  ["周士傑",  { carryOver: 871.96, oldGrade: "兼職新人"   }],
+  ["謝羽婷",  { carryOver: 0,      oldGrade: "新進營業員" }],
+  ["王少筠",  { carryOver: 34.96,  oldGrade: "新進營業員" }],
+  ["徐維志",  { carryOver: 167.65, oldGrade: "初階兼職"   }],
+  ["鄧曉郁",  { carryOver: 0,      oldGrade: "新進營業員" }],
+  ["阮宥緁",  { carryOver: 93.71,  oldGrade: "新進營業員" }],
+]);
+
+// 2026-08-17 在職名冊（全部 76 人）
+const ROSTER = [
+  { name: "陳怡瑄",  currentGrade: "進階兼職"   },
+  { name: "游雅筑",  currentGrade: "二級營業員" },
+  { name: "林郁映",  currentGrade: "一級營業員" },
+  { name: "簡千蕙",  currentGrade: "進階兼職"   },
+  { name: "陳葦庭",  currentGrade: "副店長"     },
+  { name: "王珮慈",  currentGrade: "一級營業員" },
+  { name: "林雅雯",  currentGrade: "三級店長"   },
+  { name: "巫思樺",  currentGrade: "三級營業員" },
+  { name: "俞柔欣",  currentGrade: "兼職新人"   },
+  { name: "游婉婷",  currentGrade: "三級店長"   },
+  { name: "張郁",    currentGrade: "兼職新人"   },
+  { name: "曹家瑜",  currentGrade: "新進營業員" },
+  { name: "林芳琪",  currentGrade: "兼職新人"   },
+  { name: "簡婉茹",  currentGrade: "二級店長"   },
+  { name: "陳韻晴",  currentGrade: "二級營業員" },
+  { name: "戴綺",    currentGrade: "進階兼職"   },
+  { name: "李珮茹",  currentGrade: "新進營業員" },
+  { name: "許翔嫃",  currentGrade: "兼職新人"   },
+  { name: "曾梅芳",  currentGrade: "二級店長"   },
+  { name: "廖祐君",  currentGrade: "二級營業員" },
+  { name: "江環宇",  currentGrade: "副店長"     },
+  { name: "謝樂盈",  currentGrade: "初階兼職"   },
+  { name: "陳羿蓉",  currentGrade: "初階兼職"   },
+  { name: "林奕甫",  currentGrade: "副店長"     },
+  { name: "景怡鈞",  currentGrade: "二級營業員" },
+  { name: "鄭鈺潔",  currentGrade: "一級營業員" },
+  { name: "何芯瑩",  currentGrade: "新進營業員" },
+  { name: "陳念妤",  currentGrade: "二級店長"   },
+  { name: "游宣綺",  currentGrade: "二級營業員" },
+  { name: "石育穎",  currentGrade: "兼職新人"   },
+  { name: "關思婕",  currentGrade: "二級店長"   },
+  { name: "王舒儀",  currentGrade: "兼職新人"   },
+  { name: "伍沛婷",  currentGrade: "新進營業員" },
+  { name: "林玟華",  currentGrade: "新進營業員" },
+  { name: "陳憶慈",  currentGrade: "副店長"     },
+  { name: "林偉婷",  currentGrade: "二級營業員" },
+  { name: "後瓊雯",  currentGrade: "三級店長"   },
+  { name: "吳雅婷",  currentGrade: "一級營業員" },
+  { name: "張郁琳",  currentGrade: "兼職新人"   },
+  { name: "游勝淵",  currentGrade: "二級店長"   },
+  { name: "程佳欣",  currentGrade: "進階兼職"   },
+  { name: "林嘉琪",  currentGrade: "進階兼職"   },
+  { name: "蘇曉生",  currentGrade: "二級店長"   },
+  { name: "張彤緁",  currentGrade: "三級營業員" },
+  { name: "邱璵",    currentGrade: "二級營業員" },
+  { name: "王盈嵐",  currentGrade: "三級營業員" },
+  { name: "張博雅",  currentGrade: "副店長"     },
+  { name: "黃雅貞",  currentGrade: "三級營業員" },
+  { name: "王芊云",  currentGrade: "新進營業員" },
+  { name: "游詩家",  currentGrade: "副店長"     },
+  { name: "胡雅琴",  currentGrade: "三級營業員" },
+  { name: "廖怡玲",  currentGrade: "二級店長"   },
+  { name: "許晴媁",  currentGrade: "進階兼職"   },
+  { name: "張珈寧",  currentGrade: "二級營業員" },
+  { name: "范鈺庭",  currentGrade: "兼職新人"   },
+  { name: "廖苡竹",  currentGrade: "二級店長"   },
+  { name: "石佳蓉",  currentGrade: "一級營業員" },
+  { name: "陳子萱",  currentGrade: "兼職新人"   },
+  { name: "邱競瑩",  currentGrade: "新進營業員" },
+  { name: "游佩菁",  currentGrade: "新進營業員" },
+  { name: "江惠如",  currentGrade: "三級營業員" },
+  { name: "李玉如",  currentGrade: "二級店長"   },
+  { name: "徐怡欣",  currentGrade: "進階兼職"   },
+  { name: "游淑涵",  currentGrade: "副店長"     },
+  { name: "何雅芬",  currentGrade: "新進營業員" },
+  { name: "黃暐博",  currentGrade: "兼職新人"   },
+  { name: "趙家賢",  currentGrade: "一級營業員" },
+  { name: "鄭儀琳",  currentGrade: "二級營業員" },
+  { name: "吳怡樺",  currentGrade: "二級店長"   },
+  { name: "李芸溱",  currentGrade: "一級店長"   },
+  { name: "周士傑",  currentGrade: "兼職新人"   },
+  { name: "謝羽婷",  currentGrade: "新進營業員" },
+  { name: "曾寶方",  currentGrade: "副店長"     },
+  { name: "黃靖雅",  currentGrade: "一級店長"   },
+  { name: "徐維志",  currentGrade: "初階兼職"   },
+  { name: "王少筠",  currentGrade: "新進營業員" },
 ];
 
-const EXCEL_MAP = new Map<string, (typeof EXCEL_DATA)[number]>(EXCEL_DATA.map((r) => [r.name, r]));
 const CARRY_OVER_DATE = new Date("2026-02-28");
 
 export async function POST() {
-  // 以 Excel 名單為主查詢員工，不依賴 store JOIN（避免 defaultStoreId 未設的問題）
-  const excelNames = EXCEL_DATA.map((r) => r.name);
-  const placeholders = excelNames.map((_, i) => `$${i + 1}`).join(",");
-  const storeEmployees = await prisma.$queryRawUnsafe<{ id: string; name: string; position: string | null }[]>(
-    `SELECT e.id, e.name, e.position
-     FROM "Employee" e
-     WHERE e."leaveDate" IS NULL
-       AND e.name IN (${placeholders})`,
-    ...excelNames
+  const rosterNames = ROSTER.map((r) => r.name);
+  const placeholders = rosterNames.map((_, i) => `$${i + 1}`).join(",");
+  const employees = await prisma.$queryRawUnsafe<{ id: string; name: string }[]>(
+    `SELECT e.id, e.name FROM "Employee" e
+     WHERE e."leaveDate" IS NULL AND e.name IN (${placeholders})`,
+    ...rosterNames
   );
+
+  const empMap = new Map(employees.map((e) => [e.name, e.id]));
+  const rosterMap = new Map(ROSTER.map((r) => [r.name, r.currentGrade]));
 
   const results: string[] = [];
   let inserted = 0;
-  const unmatched: string[] = [];
+  const notFound: string[] = [];
 
-  for (const emp of storeEmployees) {
-    const excel = EXCEL_MAP.get(emp.name);
-    const currentGrade = emp.position?.trim() || excel?.excelGrade || "";
-    if (!currentGrade) continue;
+  for (const { name, currentGrade } of ROSTER) {
+    const empId = empMap.get(name);
+    if (!empId) {
+      notFound.push(name);
+      continue;
+    }
 
-    // 計算 carryOver
+    const carry = CARRY_OVER_MAP.get(name);
     let hoursCarryOver: number;
     let note: string | null = null;
 
-    if (!excel) {
-      // 不在 Excel（2月後新進），carryOver = 0
+    if (!carry) {
       hoursCarryOver = 0;
-      note = "Excel 無記錄（2026-02 後新進），carryOver 從 0 開始";
-      unmatched.push(emp.name);
-    } else if (currentGrade === excel.excelGrade) {
-      // 職等未變，直接用 Excel AS 欄
-      hoursCarryOver = Math.max(0, excel.carryOver);
+      note = "2026-02 前無跨店記錄，carryOver 從 0 開始";
+    } else if (currentGrade === carry.oldGrade) {
+      hoursCarryOver = Math.max(0, carry.carryOver);
     } else {
-      // 6月升職：扣掉舊職等門檻後剩餘時數繼續累積
-      const prevHours = GRADE_HOURS[excel.excelGrade]?.hours ?? 0;
-      hoursCarryOver = Math.max(0, excel.carryOver - prevHours);
-      note = `6月升職：${excel.excelGrade}→${currentGrade}；AS=${excel.carryOver}，扣${prevHours}h後carryOver=${hoursCarryOver.toFixed(2)}`;
+      // 職等已升遷：扣掉舊職等門檻後的剩餘時數
+      const prevHours = GRADE_HOURS[carry.oldGrade]?.hours ?? 0;
+      hoursCarryOver = Math.max(0, carry.carryOver - prevHours);
+      note = `升職：${carry.oldGrade}→${currentGrade}；AS=${carry.carryOver}，扣${prevHours}h後carryOver=${hoursCarryOver.toFixed(2)}`;
     }
 
     const { target: targetGrade = null, hours: hoursRequired = null } =
@@ -145,17 +220,14 @@ export async function POST() {
          "carryOverDate"  = EXCLUDED."carryOverDate",
          note             = EXCLUDED.note,
          "updatedAt"      = CURRENT_TIMESTAMP`,
-      createId(), emp.id, currentGrade, targetGrade,
+      createId(), empId, currentGrade, targetGrade,
       hoursRequired, hoursCarryOver, CARRY_OVER_DATE, note,
     );
     inserted++;
-    results.push(`${emp.name}：${currentGrade}，carryOver=${hoursCarryOver.toFixed(1)}h${note ? `（${note}）` : ""}`);
+    results.push(
+      `${name}：${currentGrade}${targetGrade ? `→${targetGrade}` : "（無門檻）"}，carryOver=${hoursCarryOver.toFixed(1)}h${note ? ` [${note}]` : ""}`
+    );
   }
 
-  return NextResponse.json({
-    ok: true,
-    inserted,
-    unmatchedInExcel: unmatched,
-    detail: results,
-  });
+  return NextResponse.json({ ok: true, inserted, notFound, detail: results });
 }
