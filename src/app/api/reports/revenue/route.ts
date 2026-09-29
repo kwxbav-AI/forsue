@@ -6,6 +6,7 @@ import {
   toDateRange,
 } from "@/lib/date";
 import { validateApiKey } from "@/lib/api-key-auth";
+import { listNorthRegionPerformanceStores } from "@/modules/operations/services/operations-metrics.service";
 import { isAuthEnabled } from "@/lib/auth-config";
 import { getSessionFromRequest } from "@/lib/auth-request";
 import type { NextRequest } from "next/server";
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
   // 支援兩種認證方式：
   // 1. Cookie session（網頁使用者）
   // 2. X-API-Key header（外部系統，需設 EXTERNAL_API_KEY 環境變數）
+  let isExternalApiCaller = false;
   if (isAuthEnabled()) {
     const apiKeyResult = validateApiKey(request);
     if (apiKeyResult === "unauthorized") {
@@ -29,8 +31,10 @@ export async function GET(request: NextRequest) {
       if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
+    } else {
+      // 外部系統 API Key 驗證通過
+      isExternalApiCaller = true;
     }
-    // apiKeyResult === "ok" → 外部系統 API Key 驗證通過
   }
 
   const { searchParams } = new URL(request.url);
@@ -50,6 +54,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // 台北區門市（嘉興／虎林／萬隆／福德）在資料庫是 hideInReports = true，
+    // 用意是不出現在內部報表與獎金池計算裡，因此預設會被下面的篩選濾掉。
+    // 但外部系統（店務平台）的每日會計核實需要含台北區，所以只在「帶金鑰的外部
+    // 呼叫」時把這幾家補回來；網頁使用者看到的內容維持原樣不變。
+    //
+    // 刻意不改動 Store.hideInReports 欄位本身：那個欄位是全域的，一旦取消勾選，
+    // 台北區會同時被算進營運成果獎金池與所有內部報表，造成獎金金額變動。
+    // 門市清單沿用北區 Dashboard 的定義（OPS_REGION_CATALOG），兩邊保持一致。
+    const northStoreIds = isExternalApiCaller
+      ? (await listNorthRegionPerformanceStores()).map((s) => s.id)
+      : [];
+
     const records = await prisma.revenueRecord.findMany({
       where: {
         revenueDate: {
@@ -57,7 +73,12 @@ export async function GET(request: NextRequest) {
           lte: end,
         },
         store: {
-          hideInReports: false as any,
+          OR: [
+            { hideInReports: false as any },
+            ...(northStoreIds.length
+              ? [{ id: { in: northStoreIds } }]
+              : []),
+          ],
           ...(department
             ? {
                 department: {
