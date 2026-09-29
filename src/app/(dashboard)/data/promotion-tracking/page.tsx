@@ -78,7 +78,7 @@ export default function PromotionTrackingPage() {
   const [sortKey, setSortKey] = useState<SortKey>("storeName");
   const [sortAsc, setSortAsc] = useState(true);
   const [filterStore, setFilterStore] = useState("");
-  const [filterCurrentGrade, setFilterCurrentGrade] = useState("");
+  const [filterCurrentGrades, setFilterCurrentGrades] = useState<string[]>([]);
   const [filterTargetGrade, setFilterTargetGrade] = useState("");
 
   function toggleSort(key: SortKey) {
@@ -311,7 +311,7 @@ export default function PromotionTrackingPage() {
 
   const filteredRows = rows.filter((r) => {
     if (filterStore && r.storeName !== filterStore) return false;
-    if (filterCurrentGrade && r.currentGrade !== filterCurrentGrade) return false;
+    if (filterCurrentGrades.length > 0 && !filterCurrentGrades.includes(r.currentGrade)) return false;
     if (filterTargetGrade) {
       if (filterTargetGrade === "__none__") { if (r.targetGrade !== null) return false; }
       else if (r.targetGrade !== filterTargetGrade) return false;
@@ -361,20 +361,27 @@ export default function PromotionTrackingPage() {
           <option value="">全部門市</option>
           {storeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select
-          value={filterCurrentGrade}
-          onChange={(e) => setFilterCurrentGrade(e.target.value)}
-          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-        >
-          <option value="">全部目前職等</option>
-          {currentGradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-        </select>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-slate-400">目前職等（可複選）</span>
+          <select
+            multiple
+            value={filterCurrentGrades}
+            onChange={(e) => setFilterCurrentGrades(Array.from(e.target.selectedOptions).map((o) => o.value))}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            size={4}
+          >
+            {currentGradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+          {filterCurrentGrades.length > 0 && (
+            <button onClick={() => setFilterCurrentGrades([])} className="text-xs text-slate-400 hover:text-slate-600 text-left">清除</button>
+          )}
+        </div>
         <select
           value={filterTargetGrade}
           onChange={(e) => setFilterTargetGrade(e.target.value)}
           className="rounded border border-slate-300 px-2 py-1.5 text-sm"
         >
-          <option value="">全部目標職等</option>
+          <option value="">全部可報考職等</option>
           {targetGradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
           <option value="__none__">（已達頂）</option>
         </select>
@@ -405,7 +412,7 @@ export default function PromotionTrackingPage() {
                   <SortTh col="storeName" label="門市" />
                   <SortTh col="employeeName" label="姓名" />
                   <SortTh col="currentGrade" label="目前職等" />
-                  <SortTh col="targetGrade" label="目標職等" />
+                  <SortTh col="targetGrade" label="可報考職等" />
                   <SortTh col="totalHours" label="累積時數" className="text-right" />
                   <SortTh col="hoursRequired" label="門檻" className="text-right" />
                   <th className="px-3 py-2.5 text-left">進度</th>
