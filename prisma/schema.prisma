@@ -29,6 +29,8 @@ model Store {
   storeHourDeductions StoreHourDeduction[]
   changeLogs          StoreChangeLog[]
   newStoreSetting     NewStoreSetting?
+  transfersFrom       StoreTransferRecord[] @relation("TransferFrom")
+  transfersTo         StoreTransferRecord[] @relation("TransferTo")
 }
 
 model StoreChangeLog {
@@ -99,6 +101,7 @@ model Employee {
   bonusResults        MonthlyBonusResult[]
   promotionTracking   EmployeePromotionTracking?
   promotionExams      PromotionExamRecord[] @relation("EmployeeExams")
+  storeTransfers      StoreTransferRecord[]
 }
 
 model EmployeePromotionTracking {
@@ -860,4 +863,24 @@ model SupervisorStore {
   @@unique([supervisorId, storeId])
   @@index([supervisorId])
   @@map("supervisor_stores")
+}
+
+model StoreTransferRecord {
+  id                String    @id @default(cuid())
+  employeeId        String
+  fromStoreId       String
+  toStoreId         String
+  transferDate      DateTime  @db.Date
+  endDate           DateTime? @db.Date
+  allowanceType     String    // "management" | "staff" | "parttime"
+  baseMonthlyAmount Int
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  employee          Employee  @relation(fields: [employeeId], references: [id])
+  fromStore         Store     @relation("TransferFrom", fields: [fromStoreId], references: [id])
+  toStore           Store     @relation("TransferTo", fields: [toStoreId], references: [id])
+
+  @@index([employeeId])
+  @@index([transferDate])
 }

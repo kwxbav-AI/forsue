@@ -26,6 +26,12 @@ export default async function DataHubPage() {
       title: "跨店時數追蹤",
       desc: "追蹤人員調度跨店時數累積進度，供晉升考核參考",
     },
+    {
+      key: "store-transfer",
+      href: "/data/store-transfer",
+      title: "調店津貼管理",
+      desc: "登錄公司安排調任紀錄，依出勤率計算每月調店津貼",
+    },
   ] as const;
 
   const visible = !authOn
