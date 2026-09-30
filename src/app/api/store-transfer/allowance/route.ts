@@ -64,7 +64,14 @@ export async function GET(request: NextRequest) {
   const [year, month] = monthStr.split("-").map(Number);
   // 該月首日與末日（UTC Date）
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
-  const monthEnd = new Date(Date.UTC(year, month, 0)); // 末日
+  const fullMonthEnd = new Date(Date.UTC(year, month, 0)); // 月底最後一天
+  // 若查詢當月，以今天（台北 UTC+8 的今日 UTC 日曆日）為上界，避免分母算到未來
+  const todayUtc = new Date(Date.UTC(
+    new Date().getUTCFullYear(),
+    new Date().getUTCMonth(),
+    new Date().getUTCDate()
+  ));
+  const monthEnd = todayUtc < fullMonthEnd ? todayUtc : fullMonthEnd;
 
   // 查出該月的國定假日（isActive = true）
   const holidays = await prisma.holiday.findMany({
