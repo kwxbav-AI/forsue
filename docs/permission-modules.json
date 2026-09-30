@@ -402,6 +402,16 @@
     },
 
     {
+      "key": "store-transfer",
+      "label": "調店津貼管理",
+      "description": "登錄公司安排調任紀錄，依出勤率計算每月調店津貼",
+      "group": "資料區",
+      "sortOrder": 516,
+      "parentKey": "data",
+      "patterns": [{ "kind": "PAGE", "pathPattern": "/data/store-transfer", "method": null }]
+    },
+
+    {
       "key": "settings",
       "label": "設定區（入口）",
       "description": "設定入口頁",
