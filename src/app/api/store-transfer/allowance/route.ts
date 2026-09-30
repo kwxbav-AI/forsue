@@ -11,24 +11,31 @@ function isExemptLeave(shiftType: string | null): boolean {
   return EXEMPT_SHIFT_TYPES.some((t) => shiftType.includes(t));
 }
 
-/** 計算某月的工作天數（週一到週五） */
-function countWeekdays(year: number, month: number): number {
-  const days = new Date(year, month, 0).getDate(); // 該月幾天（month 是 1-based）
+/** 計算某月的工作天數（週一到週五，扣除假日） */
+function countWeekdays(year: number, month: number, holidaySet: Set<string>): number {
+  const days = new Date(year, month, 0).getDate();
   let count = 0;
   for (let d = 1; d <= days; d++) {
-    const dow = new Date(year, month - 1, d).getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    const dt = new Date(year, month - 1, d);
+    const dow = dt.getDay();
+    if (dow !== 0 && dow !== 6) {
+      const ymd = dt.toISOString().slice(0, 10);
+      if (!holidaySet.has(ymd)) count++;
+    }
   }
   return count;
 }
 
-/** 計算某區間內的工作天數（週一到週五） */
-function countWeekdaysInRange(start: Date, end: Date): number {
+/** 計算某區間內的工作天數（週一到週五，扣除假日） */
+function countWeekdaysInRange(start: Date, end: Date, holidaySet: Set<string>): number {
   let count = 0;
   const cur = new Date(start);
   while (cur <= end) {
     const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (dow !== 0 && dow !== 6) {
+      const ymd = cur.toISOString().slice(0, 10);
+      if (!holidaySet.has(ymd)) count++;
+    }
     cur.setDate(cur.getDate() + 1);
   }
   return count;
@@ -58,6 +65,16 @@ export async function GET(request: NextRequest) {
   // 該月首日與末日（UTC Date）
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 0)); // 末日
+
+  // 查出該月的國定假日（isActive = true）
+  const holidays = await prisma.holiday.findMany({
+    where: {
+      isActive: true,
+      date: { gte: monthStart, lte: monthEnd },
+    },
+    select: { date: true },
+  });
+  const holidaySet = new Set(holidays.map((h) => h.date.toISOString().slice(0, 10)));
 
   // 查出該月有效的調任紀錄：
   //   transferDate <= 月末 AND (endDate IS NULL OR endDate >= 月首)
@@ -104,11 +121,11 @@ export async function GET(request: NextRequest) {
         periodStart.getTime() !== monthStart.getTime() ||
         periodEnd.getTime() !== monthEnd.getTime();
 
-      // 本月總工作天數（分母基準）
-      const totalWeekdays = countWeekdays(year, month);
+      // 本月總工作天數（分母基準，扣除國定假日）
+      const totalWeekdays = countWeekdays(year, month, holidaySet);
       // 計算期間內工作天數（比例計算用）
       const periodWeekdays = isPartialMonth
-        ? countWeekdaysInRange(periodStart, periodEnd)
+        ? countWeekdaysInRange(periodStart, periodEnd, holidaySet)
         : totalWeekdays;
 
       // 查出該員工在該月的出勤紀錄
