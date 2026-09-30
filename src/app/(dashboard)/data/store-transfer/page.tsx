@@ -37,6 +37,7 @@ type AllowanceRow = {
   attendanceRate: number;
   isEligible: boolean;
   amount: number;
+  scheduledHours: number | null;
   notes: string | null;
 };
 
@@ -503,6 +504,42 @@ export default function StoreTransferPage() {
                 </table>
               </div>
             </>
+          )}
+
+          {/* 兼職明細 */}
+          {allowanceRows.some((r) => r.allowanceType === "parttime") && (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
+              <h3 className="text-sm font-semibold text-slate-700">兼職津貼計算明細</h3>
+              {allowanceRows
+                .filter((r) => r.allowanceType === "parttime")
+                .map((r) => {
+                  const denominator = 8 * r.periodWeekdays;
+                  const hoursRatio =
+                    r.scheduledHours != null && denominator > 0
+                      ? Math.round((r.scheduledHours / denominator) * 100) / 100
+                      : null;
+                  return (
+                    <div key={r.id} className="text-xs text-slate-600 border-t border-slate-100 pt-2 space-y-0.5">
+                      <p className="font-medium text-slate-800">{r.employee.name}</p>
+                      <p>
+                        出勤率：排班 {r.periodWeekdays} 天
+                        {r.attendedDays}/{r.periodWeekdays} = {(r.attendanceRate / 100).toFixed(2)}
+                        {r.isEligible
+                          ? <span className="text-green-700">（達九成，符合發放標準）</span>
+                          : <span className="text-red-600">（未達九成，不發放）</span>
+                        }
+                      </p>
+                      {r.scheduledHours != null && hoursRatio != null && (
+                        <p>
+                          時數比例：{r.scheduledHours}H / (8H × {r.periodWeekdays} 天) = {hoursRatio.toFixed(2)}
+                          應發 = {r.baseMonthlyAmount} × {hoursRatio.toFixed(2)} = ${r.amount.toLocaleString()}
+                          {!r.isEligible && "（未達標，不發放）"}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
           )}
 
           {allowanceRows.length === 0 && !calcLoading && (

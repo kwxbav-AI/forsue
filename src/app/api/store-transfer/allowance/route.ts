@@ -153,13 +153,13 @@ export async function GET(request: NextRequest) {
       let amount = 0;
       if (isEligible) {
         if (t.allowanceType === "parttime") {
-          // 兼職：2000 × 當月排班時數 / 176
+          // 兼職：2000 × 當月排班時數 / (8H × 期間工作天)
           const scheduledHours = attendances.reduce((sum, a) => {
-            // 只算有上班的（排班假別不計入時數）
             if (Number(a.workHours) > 0) return sum + Number(a.workHours);
             return sum;
           }, 0);
-          const ratio = scheduledHours / 176;
+          const denominator = 8 * periodWeekdays;
+          const ratio = denominator > 0 ? scheduledHours / denominator : 0;
           amount = Math.round(t.baseMonthlyAmount * ratio);
         } else {
           amount = t.baseMonthlyAmount;
@@ -169,6 +169,17 @@ export async function GET(request: NextRequest) {
           amount = Math.round((amount * periodWeekdays) / totalWeekdays);
         }
       }
+
+      // 兼職：計算排班時數供前端顯示明細
+      const scheduledHours =
+        t.allowanceType === "parttime"
+          ? Math.round(
+              attendances.reduce((sum, a) => {
+                if (Number(a.workHours) > 0) return sum + Number(a.workHours);
+                return sum;
+              }, 0) * 100
+            ) / 100
+          : null;
 
       return {
         id: t.id,
@@ -186,9 +197,10 @@ export async function GET(request: NextRequest) {
         totalWeekdays,
         periodWeekdays,
         attendedDays,
-        attendanceRate: Math.round(attendanceRate * 1000) / 10, // e.g. 95.2
+        attendanceRate: Math.round(attendanceRate * 1000) / 10,
         isEligible,
         amount,
+        scheduledHours,
         notes: t.notes,
       };
     })
