@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
       OR: [{ endDate: null }, { endDate: { gte: monthStart } }],
     },
     include: {
-      employee: { select: { id: true, name: true, employeeCode: true } },
+      employee: { select: { id: true, name: true, employeeCode: true, position: true } },
       fromStore: { select: { id: true, name: true } },
       toStore: { select: { id: true, name: true } },
     },

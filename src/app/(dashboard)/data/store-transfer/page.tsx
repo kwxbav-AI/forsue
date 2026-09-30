@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 
 type Store = { id: string; name: string };
-type Employee = { id: string; name: string; employeeCode: string };
+type Employee = { id: string; name: string; employeeCode: string; position?: string | null };
 
 type TransferRecord = {
   id: string;
@@ -177,10 +177,12 @@ export default function StoreTransferPage() {
     }
   }
 
-  function exportCsv() {
-    const header = ["員工", "原屬門市", "調任門市", "調任起日", "第幾月", "計算期間", "工作天", "出勤天", "出勤率", "達標", "應發津貼", "備註"];
-    const rows = allowanceRows.map((r) => [
+  function exportExcel() {
+    const header = ["員工編號", "員工姓名", "職稱", "原屬門市", "調任門市", "調任起日", "第幾月", "計算期間", "工作天", "出勤天", "出勤率", "達標", "應發津貼", "備註"];
+    const dataRows = allowanceRows.map((r) => [
+      r.employee.employeeCode,
       r.employee.name,
+      r.employee.position ?? "",
       r.fromStore.name,
       r.toStore.name,
       formatDate(r.transferDate),
@@ -190,17 +192,16 @@ export default function StoreTransferPage() {
       r.attendedDays,
       `${r.attendanceRate}%`,
       r.isEligible ? "是" : "否",
-      r.amount,
+      r.isEligible ? r.amount : 0,
       r.notes ?? "",
     ]);
-    const csv = [header, ...rows].map((row) => row.map((c) => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `調店津貼_${month}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // 用 xlsx 套件輸出
+    import("xlsx").then((XLSX) => {
+      const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "調店津貼");
+      XLSX.writeFile(wb, `調店津貼_${month}.xlsx`);
+    });
   }
 
   return (
@@ -435,10 +436,10 @@ export default function StoreTransferPage() {
             </button>
             {allowanceRows.length > 0 && (
               <button
-                onClick={exportCsv}
+                onClick={exportExcel}
                 className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
               >
-                匯出 CSV
+                匯出 Excel
               </button>
             )}
           </div>
@@ -460,7 +461,9 @@ export default function StoreTransferPage() {
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-left text-xs text-slate-500 uppercase">
-                      <th className="px-3 py-2 font-medium">員工</th>
+                      <th className="px-3 py-2 font-medium">員工編號</th>
+                      <th className="px-3 py-2 font-medium">員工姓名</th>
+                      <th className="px-3 py-2 font-medium">職稱</th>
                       <th className="px-3 py-2 font-medium">調任</th>
                       <th className="px-3 py-2 font-medium">第幾月</th>
                       <th className="px-3 py-2 font-medium">計算期間</th>
@@ -474,7 +477,9 @@ export default function StoreTransferPage() {
                   <tbody className="divide-y divide-slate-100">
                     {allowanceRows.map((r) => (
                       <tr key={r.id} className={r.isEligible ? "hover:bg-slate-50" : "bg-amber-50 hover:bg-amber-100"}>
+                        <td className="px-3 py-2 tabular-nums text-slate-600">{r.employee.employeeCode}</td>
                         <td className="px-3 py-2 font-medium text-slate-800">{r.employee.name}</td>
+                        <td className="px-3 py-2 text-slate-500 text-xs">{r.employee.position ?? "—"}</td>
                         <td className="px-3 py-2 text-slate-500 text-xs">
                           {r.fromStore.name}→{r.toStore.name}
                         </td>
