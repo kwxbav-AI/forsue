@@ -480,8 +480,7 @@ export default function StoreTransferPage() {
                         </td>
                         <td className="px-3 py-2 text-slate-600">第 {r.nthMonth} 月</td>
                         <td className="px-3 py-2 text-slate-500 text-xs">
-                          {formatDate(r.periodStart)}
-                          {r.isPartialMonth && `～${formatDate(r.periodEnd)}`}
+                          {formatDate(r.periodStart)}～{formatDate(r.periodEnd)}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">{r.periodWeekdays}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{r.attendedDays}</td>
