@@ -128,30 +128,31 @@ export async function GET(request: NextRequest) {
         periodStart.getTime() !== monthStart.getTime() ||
         periodEnd.getTime() !== monthEnd.getTime();
 
-      // 本月總工作天數（分母基準，扣除國定假日）
+      // 本月總工作天數（部分月份比例用，扣除國定假日）
       const totalWeekdays = countWeekdays(year, month, holidaySet);
-      // 計算期間內工作天數（比例計算用）
-      const periodWeekdays = isPartialMonth
-        ? countWeekdaysInRange(periodStart, periodEnd, holidaySet)
-        : totalWeekdays;
 
-      // 查出該員工在該月的出勤紀錄
+      // 查出該員工在計算期間的出勤紀錄
       const attendances = await prisma.attendanceRecord.findMany({
         where: {
           employeeId: t.employeeId,
-          workDate: { gte: monthStart, lte: monthEnd },
+          workDate: { gte: periodStart, lte: periodEnd },
         },
         select: { workDate: true, workHours: true, shiftType: true },
       });
 
-      // 計算出勤天數（分子）
-      // 算出勤 = workHours > 0 OR shiftType 為免扣假別
+      // 出勤率分母 = 有出勤紀錄且落在週一到週五的天數（自動排除空班日）
+      const periodWeekdays = attendances.filter((a) => {
+        const dow = a.workDate.getUTCDay();
+        return dow !== 0 && dow !== 6;
+      }).length;
+
+      // 計算出勤天數（分子）：workHours > 0 OR 免扣假別
       const attendedDays = attendances.filter((a) => {
         const hrs = Number(a.workHours);
         return hrs > 0 || isExemptLeave(a.shiftType);
       }).length;
 
-      // 出勤率（以分母 = 期間內工作天數）
+      // 出勤率（以分母 = 有紀錄的工作天數）
       const attendanceRate =
         periodWeekdays > 0 ? attendedDays / periodWeekdays : 0;
       const isEligible = attendanceRate >= 0.9;
