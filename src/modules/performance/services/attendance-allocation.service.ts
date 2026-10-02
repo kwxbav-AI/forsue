@@ -145,10 +145,9 @@ export function deriveReserveStaffContext(input: {
         const actual = Number(a.workHours);
         const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
         const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");
-        // 只有工時不到表定的 75% 才算請假（避免幾分鐘正常差異誤判為請假影響全店到齊判斷）
         const byScheduled =
           !isPartTimeShift &&
-          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled * 0.75;
+          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
         return byScheduled || isLeaveShiftType(a.shiftType);
       })
       .map((a) => a.employeeId)
