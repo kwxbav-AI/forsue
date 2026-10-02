@@ -6,7 +6,7 @@ import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
 import {
   buildAssignedByStore,
   deriveReserveStaffContext,
-  isTrialEmployeeCode,
+  isExcludedFromStoreRoster,
 } from "@/modules/performance/services/attendance-allocation.service";
 
 export const dynamic = "force-dynamic";
@@ -76,14 +76,14 @@ export async function GET(request: NextRequest) {
   const assignedByStore = buildAssignedByStore(activeEmployees, fallbackHomeStoreByEmployee, dateStr);
 
   const homeStoreId = emp.defaultStoreId ?? fallbackHomeStoreByEmployee.get(emp.id) ?? null;
-  // 所屬門市為本店、但因試作工號或離職日已過而被排除在當日名冊外的人（僅供對照）
+  // 所屬門市為本店、但因工號（a/b/E 開頭）或離職日已過而被排除在當日名冊外的人（僅供對照）
   const excludedFromRoster = activeEmployees
     .filter((e) => (e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id)) === homeStoreId)
     .map((e) => ({
       employeeCode: e.employeeCode,
       name: e.name,
-      reason: isTrialEmployeeCode(e.employeeCode ?? "")
-        ? "試作工號（a/b 開頭）"
+      reason: isExcludedFromStoreRoster(e.employeeCode ?? "")
+        ? "試作（a/b 開頭）或 E 開頭工號"
         : e.leaveDate && formatDateOnly(e.leaveDate) < dateStr
           ? `離職日 ${formatDateOnly(e.leaveDate)} 已過`
           : null,

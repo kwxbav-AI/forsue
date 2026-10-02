@@ -8,7 +8,7 @@ import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import {
   computeStoreOvertimeHoursByStore,
   computeTotalWorkHoursByStore,
-  isTrialEmployeeCode,
+  isExcludedFromStoreRoster,
 } from "@/modules/performance/services/attendance-allocation.service";
 import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
 import { DUAL_OPS_REGIONS, normalizeStoreKey } from "@/lib/operations-dashboard";
@@ -906,9 +906,9 @@ export async function buildWorkHoursCalendar(input: {
       select: { id: true, employeeCode: true, leaveDate: true },
     }),
   ]);
-  // 試作工號（a/b 開頭）不列入名冊，與引擎 buildAssignedByStore 一致
+  // 試作（a/b 開頭）與 E 開頭工號不列入名冊，與引擎 buildAssignedByStore 一致
   const storeRosterIds = new Set(
-    storeRoster.filter((e) => !isTrialEmployeeCode(e.employeeCode ?? "")).map((e) => e.id)
+    storeRoster.filter((e) => !isExcludedFromStoreRoster(e.employeeCode ?? "")).map((e) => e.id)
   );
   // 離職日（UTC 曆日）：離職日已過的人不列入當日名冊，與引擎 buildAssignedByStore 一致
   const leaveYmdByEmployeeId = new Map<string, string>();
@@ -925,7 +925,7 @@ export async function buildWorkHoursCalendar(input: {
     if (
       !a.employee.defaultStoreId &&
       a.originalStoreId === input.storeId &&
-      !isTrialEmployeeCode(a.employee.employeeCode ?? "")
+      !isExcludedFromStoreRoster(a.employee.employeeCode ?? "")
     ) {
       storeRosterIds.add(a.employeeId);
     }
@@ -1180,8 +1180,8 @@ export async function buildWorkHoursCalendar(input: {
     const allPresent = dayRosterIds.length > 0 && dayRosterIds.every((id) => presentIds.has(id));
     // hasLeave 檢查所有本店出勤員工（含 originalStoreId=本店但 defaultStoreId=null 者）
     const hasLeave = dayAtts.some((a) => {
-      // 試作工號不在名冊內，其出勤不影響全店到齊判斷
-      if (isTrialEmployeeCode(a.employee.employeeCode ?? "")) return false;
+      // 試作與 E 開頭工號不在名冊內，其出勤不影響全店到齊判斷
+      if (isExcludedFromStoreRoster(a.employee.employeeCode ?? "")) return false;
       const actual = Number(a.workHours);
       const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
       const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");
