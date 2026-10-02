@@ -140,14 +140,17 @@ export async function GET(request: NextRequest) {
         select: { workDate: true, workHours: true, shiftType: true },
       });
 
-      // 出勤率分母 = 有出勤紀錄且落在週一到週五的天數（自動排除空班日）
-      const periodWeekdays = attendances.filter((a) => {
+      // 只取週一到週五的出勤紀錄（排除周六/周日加班，不計入排班時數與工作天數）
+      const weekdayAtts = attendances.filter((a) => {
         const dow = a.workDate.getUTCDay();
         return dow !== 0 && dow !== 6;
-      }).length;
+      });
 
-      // 計算出勤天數（分子）：workHours > 0 OR 免扣假別
-      const attendedDays = attendances.filter((a) => {
+      // 出勤率分母 = 有出勤紀錄且落在週一到週五的天數（自動排除空班日）
+      const periodWeekdays = weekdayAtts.length;
+
+      // 計算出勤天數（分子）：workHours > 0 OR 免扣假別（僅計平日）
+      const attendedDays = weekdayAtts.filter((a) => {
         const hrs = Number(a.workHours);
         return hrs > 0 || isExemptLeave(a.shiftType);
       }).length;
@@ -161,8 +164,8 @@ export async function GET(request: NextRequest) {
       let amount = 0;
       if (isEligible) {
         if (t.allowanceType === "parttime") {
-          // 兼職：2000 × 當月排班時數 / (8H × 期間工作天)
-          const scheduledHours = attendances.reduce((sum, a) => {
+          // 兼職：2000 × 當月排班時數 / (8H × 期間工作天)；僅計平日（週一到週五）
+          const scheduledHours = weekdayAtts.reduce((sum, a) => {
             if (Number(a.workHours) > 0) return sum + Number(a.workHours);
             return sum;
           }, 0);
@@ -182,7 +185,7 @@ export async function GET(request: NextRequest) {
       const scheduledHours =
         t.allowanceType === "parttime"
           ? Math.round(
-              attendances.reduce((sum, a) => {
+              weekdayAtts.reduce((sum, a) => {
                 if (Number(a.workHours) > 0) return sum + Number(a.workHours);
                 return sum;
               }, 0) * 100
