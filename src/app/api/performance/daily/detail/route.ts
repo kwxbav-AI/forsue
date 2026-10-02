@@ -169,8 +169,9 @@ export async function GET(request: NextRequest) {
         const actual = Number(a.workHours);
         const scheduled =
           (a as any).scheduledWorkHours != null ? Number((a as any).scheduledWorkHours) : null;
+        // 只有工時不到表定的 75% 才算請假（避免幾分鐘正常差異誤判為請假影響全店到齊判斷）
         const byScheduled =
-          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled;
+          scheduled != null && Number.isFinite(scheduled) && scheduled > 0 && actual < scheduled * 0.75;
         return byScheduled || isLeaveShiftType(a.shiftType);
       })
       .map((a) => a.employeeId)
