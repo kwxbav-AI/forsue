@@ -8,7 +8,13 @@ import { parseEmployeeMasterSheet, type EmployeeMasterRow } from "../parsers/emp
 import { parseRevenueSheet, type RevenueRow } from "../parsers/revenue.parser";
 import { parseInventoryReferenceSheet } from "../parsers/inventory-reference.parser";
 import { normalizeStoreKey, storeNameMatchesCatalogKey } from "@/lib/operations-dashboard";
-import { parseDateOnlyUTC, formatDateOnly, formatDateOnlyTaipei, toStartOfDay } from "@/lib/date";
+import {
+  addCalendarDaysUTC,
+  parseDateOnlyUTC,
+  formatDateOnly,
+  formatDateOnlyTaipei,
+  toStartOfDay,
+} from "@/lib/date";
 import Decimal from "decimal.js";
 import type {
   UploadResult,
@@ -506,6 +512,21 @@ export async function uploadAttendance(
             employeeId,
             workDate,
           })),
+        },
+      });
+    }
+
+    // 舊版匯入會把跨日出勤拆成「當天到 24:00」＋「次日 00:00 起」兩筆。
+    // 現在整筆算在上班日，重新上傳時要把舊版留在次日的那段清掉，否則工時會重複計算。
+    for (const row of parsed.data) {
+      if (!row.crossDay || !row.endTime) continue;
+      const workDate = toWorkDateUTC(row.workDate);
+      await tx.attendanceRecord.deleteMany({
+        where: {
+          employeeId: employeeIdByCode.get(row.employeeCode.trim())!,
+          workDate: parseDateOnlyUTC(addCalendarDaysUTC(formatDateOnly(workDate), 1)),
+          startTime: "00:00",
+          endTime: row.endTime,
         },
       });
     }

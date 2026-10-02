@@ -1,4 +1,4 @@
-import { parseISO, isValid, parse, addDays } from "date-fns";
+import { parseISO, isValid, parse } from "date-fns";
 import Decimal from "decimal.js";
 import { parseExcelBuffer, getCell, validateRequiredColumns } from "./base.parser";
 import {
@@ -68,7 +68,7 @@ function computeWorkHoursFromTimes(startTime: string | null, endTime: string | n
   const endMin = parseTimeToMinutes(endTime);
   if (startMin == null || endMin == null) return null;
   const diff = endMin - startMin;
-  // 跨日（例如 16:00-00:30）在這裡先視為「總時數」可計算；是否要拆成兩天在 parseAttendanceSheet 做。
+  // 跨日（例如 16:00-00:30）以「總時數」計算，整筆算在上班那一天。
   const effectiveDiff = diff > 0 ? diff : diff < 0 ? (24 * 60 - startMin) + endMin : 0;
   if (effectiveDiff <= 0) return null;
   // 與 Excel ROUND(..., 2) 一致：算出小時後四捨五入到小數第 2 位
@@ -88,6 +88,8 @@ export interface AttendanceRow {
   clockInInfoRaw: string | null;
   clockOutInfoRaw: string | null;
   shiftType: string | null;
+  /** 下班時間早於上班時間（加班過午夜）；整筆工時已算在 workDate 當天 */
+  crossDay?: boolean;
 }
 
 const DATE_FORMATS = [
@@ -267,53 +269,29 @@ export function parseAttendanceSheet(buffer: Buffer): ParseResult<AttendanceRow>
     const isCrossDay =
       startMin != null && endMin != null && Number.isFinite(startMin) && Number.isFinite(endMin) && endMin < startMin;
 
-    // 若跨天，拆成兩筆：當天到 24:00 + 次日 00:00 到 endTime
-    // 這樣可解決 16:00-24:00、00:00-00:30 這種「二段卡」只算到一段的問題。
+    // 跨日（下班時間早於上班時間，例如 11:40-01:40）：整筆工時算在「上班那一天」，不拆到隔天。
+    // 業務規則：加班過午夜的工時屬於上班日；拆到隔天會讓隔天（常是休假日）多出零星工時，
+    // 且隔天那段會因「實際工時 < 表定工時」被誤判為請假。
+    // 舊版曾拆成「當天到 24:00」＋「次日 00:00 起」兩筆，舊資料的合併見 merge-cross-day-attendance。
     if (isCrossDay) {
-      const firstMinutes = 24 * 60 - startMin!;
-      const secondMinutes = endMin!;
-      const firstHours = new Decimal(firstMinutes).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const secondHours = new Decimal(secondMinutes).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      const common = {
-        employeeCode,
-        employeeName: employeeName || undefined,
-        storeCode: storeCode || null,
-        department: department || null,
-        scheduledWorkHours: resolvedScheduledWorkHours,
-        clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
-        clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
-        shiftType: shiftType || null,
-      };
-      data.push({
-        workDate,
-        ...common,
-        workHours: firstHours,
-        startTime: startTimeStr || null,
-        endTime: "24:00",
-      } as AttendanceRow);
-      data.push({
-        workDate: addDays(workDate, 1),
-        ...common,
-        workHours: secondHours,
-        startTime: "00:00",
-        endTime: endTimeStr || null,
-      } as AttendanceRow);
-    } else {
-      data.push({
-        workDate,
-        employeeCode,
-        employeeName: employeeName || undefined,
-        storeCode: storeCode || null,
-        department: department || null,
-        workHours,
-        scheduledWorkHours: resolvedScheduledWorkHours,
-        startTime: startTimeStr || null,
-        endTime: endTimeStr || null,
-        clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
-        clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
-        shiftType: shiftType || null,
-      } as AttendanceRow);
+      const totalMinutes = 24 * 60 - startMin! + endMin!;
+      workHours = new Decimal(totalMinutes).div(60).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     }
+    data.push({
+      workDate,
+      employeeCode,
+      employeeName: employeeName || undefined,
+      storeCode: storeCode || null,
+      department: department || null,
+      workHours,
+      scheduledWorkHours: resolvedScheduledWorkHours,
+      startTime: startTimeStr || null,
+      endTime: endTimeStr || null,
+      clockInInfoRaw: clockInInfoRaw.trim() ? clockInInfoRaw.trim() : null,
+      clockOutInfoRaw: clockOutInfoRaw.trim() ? clockOutInfoRaw.trim() : null,
+      shiftType: shiftType || null,
+      crossDay: isCrossDay,
+    } as AttendanceRow);
   }
 
   return { data, errors };
