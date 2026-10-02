@@ -47,6 +47,7 @@ export type AllocationPrefetchContext = {
     isReserveStaff: boolean;
     reserveWorkPercent: unknown;
     hireDate: Date | null;
+    leaveDate: Date | null;
     employeeCode: string;
     name: string;
   }>;
@@ -98,6 +99,42 @@ export type ReserveStaffContext = {
   /** 當日有已確認調度（不論方向、不論門市）的員工 id 集合——有的話不套用儲備人力折算 */
   hasConfirmedDispatchByEmployeeId: Set<string>;
 };
+
+/** 建立門市名冊所需的最小員工資料形狀 */
+export type RosterEmployee = {
+  id: string;
+  defaultStoreId: string | null;
+  employeeCode: string | null;
+  leaveDate?: Date | null;
+};
+
+/**
+ * 建立「全店到齊」判斷用的門市名冊（storeId -> employeeIds）的單一事實來源。
+ * - 所屬門市：defaultStoreId，沒有則用 fallbackHomeStoreByEmployee（最近一筆出勤門市）
+ * - 試作工號（a/b 開頭）不列入名冊：試作人員不是門市正式編制，
+ *   其缺勤不應讓該店被判為未到齊。
+ * - 離職日早於 dateStr 的員工不列入名冊（離職日當天仍算在名冊內，
+ *   與儲備人力設定頁「已離職」的判定一致），否則已離職的人會讓該店永遠未到齊。
+ *
+ * 呼叫端傳入的 employees 須已篩選 isActive。
+ */
+export function buildAssignedByStore(
+  employees: RosterEmployee[],
+  fallbackHomeStoreByEmployee: Map<string, string>,
+  dateStr: string
+): Map<string, string[]> {
+  const assignedByStore = new Map<string, string[]>();
+  for (const e of employees) {
+    if (isTrialEmployeeCode(e.employeeCode ?? "")) continue;
+    if (e.leaveDate && formatDateOnly(e.leaveDate) < dateStr) continue;
+    const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
+    if (!homeStoreId) continue;
+    const list = assignedByStore.get(homeStoreId) ?? [];
+    list.push(e.id);
+    assignedByStore.set(homeStoreId, list);
+  }
+  return assignedByStore;
+}
 
 function isLeaveShiftType(shiftType: string | null | undefined): boolean {
   const s = (shiftType ?? "").trim();
@@ -220,7 +257,7 @@ export function deriveReserveStaffContext(input: {
   return { storeFullByStoreId, storeOvertimeByStoreId, hasConfirmedDispatchByEmployeeId };
 }
 
-function isTrialEmployeeCode(employeeCode: string): boolean {
+export function isTrialEmployeeCode(employeeCode: string): boolean {
   const prefix = (employeeCode || "").trim().toLowerCase();
   return prefix.startsWith("a") || prefix.startsWith("b");
 }
@@ -315,7 +352,7 @@ export async function computeStoreHoursByEmployee(
     ? prefetch.activeEmployees
     : await prisma.employee.findMany({
         where: { isActive: true },
-        select: { id: true, defaultStoreId: true },
+        select: { id: true, defaultStoreId: true, employeeCode: true, leaveDate: true },
       });
 
   const fallbackHomeStoreByEmployee = prefetch
@@ -336,14 +373,11 @@ export async function computeStoreHoursByEmployee(
       }
     }
   }
-  const assignedByStore = new Map<string, string[]>();
-  for (const e of activeEmployees) {
-    const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
-    if (!homeStoreId) continue;
-    const list = assignedByStore.get(homeStoreId) ?? [];
-    list.push(e.id);
-    assignedByStore.set(homeStoreId, list);
-  }
+  const assignedByStore = buildAssignedByStore(
+    activeEmployees,
+    fallbackHomeStoreByEmployee,
+    formatDateOnly(d)
+  );
 
   // 「全店到齊 / 加班時數 / 是否有已確認調度」判斷，與出勤報表共用同一份邏輯（deriveReserveStaffContext）
   const { storeFullByStoreId, storeOvertimeByStoreId, hasConfirmedDispatchByEmployeeId } =

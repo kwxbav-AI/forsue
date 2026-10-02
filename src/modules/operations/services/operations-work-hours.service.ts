@@ -8,6 +8,7 @@ import { monthStartEndYmd } from "@/lib/month-working-calendar";
 import {
   computeStoreOvertimeHoursByStore,
   computeTotalWorkHoursByStore,
+  isTrialEmployeeCode,
 } from "@/modules/performance/services/attendance-allocation.service";
 import { listPerformanceStoresForFilter } from "@/modules/operations/services/operations-metrics.service";
 import { DUAL_OPS_REGIONS, normalizeStoreKey } from "@/lib/operations-dashboard";
@@ -882,7 +883,7 @@ export async function buildWorkHoursCalendar(input: {
         department: true,
         employeeId: true,
         originalStoreId: true,
-        employee: { select: { name: true, defaultStoreId: true, employeeCode: true, hireDate: true } },
+        employee: { select: { name: true, defaultStoreId: true, employeeCode: true, hireDate: true, leaveDate: true } },
       },
       orderBy: [{ workDate: "asc" }, { startTime: "asc" }],
     }),
@@ -902,15 +903,30 @@ export async function buildWorkHoursCalendar(input: {
     // 本店名冊（用於 storeFull 判斷）
     prisma.employee.findMany({
       where: { defaultStoreId: input.storeId, isActive: true },
-      select: { id: true },
+      select: { id: true, employeeCode: true, leaveDate: true },
     }),
   ]);
-  const storeRosterIds = new Set(storeRoster.map((e) => e.id));
+  // 試作工號（a/b 開頭）不列入名冊，與引擎 buildAssignedByStore 一致
+  const storeRosterIds = new Set(
+    storeRoster.filter((e) => !isTrialEmployeeCode(e.employeeCode ?? "")).map((e) => e.id)
+  );
+  // 離職日（UTC 曆日）：離職日已過的人不列入當日名冊，與引擎 buildAssignedByStore 一致
+  const leaveYmdByEmployeeId = new Map<string, string>();
+  for (const e of storeRoster) {
+    if (e.leaveDate) leaveYmdByEmployeeId.set(e.id, formatDateOnly(e.leaveDate));
+  }
+  for (const a of homeAtts) {
+    if (a.employee.leaveDate) leaveYmdByEmployeeId.set(a.employeeId, formatDateOnly(a.employee.leaveDate));
+  }
   // 把「本月在本店出勤（originalStoreId=本店）但 defaultStoreId=null」的員工
   // 也納入名冊，與引擎 assignedByStore（含 fallback）邏輯一致，
   // 確保這類「非正式成員」缺勤時也能正確判斷 storeFull=false。
   for (const a of homeAtts) {
-    if (!a.employee.defaultStoreId && a.originalStoreId === input.storeId) {
+    if (
+      !a.employee.defaultStoreId &&
+      a.originalStoreId === input.storeId &&
+      !isTrialEmployeeCode(a.employee.employeeCode ?? "")
+    ) {
       storeRosterIds.add(a.employeeId);
     }
   }
@@ -1157,9 +1173,15 @@ export async function buildWorkHoursCalendar(input: {
   for (const ymd of days) {
     const dayAtts = homeAtts.filter((a) => workDateYmd(a.workDate) === ymd);
     const presentIds = new Set(dayAtts.filter((a) => Number(a.workHours) > 0).map((a) => a.employeeId));
-    const allPresent = storeRosterIds.size > 0 && [...storeRosterIds].every((id) => presentIds.has(id));
+    const dayRosterIds = [...storeRosterIds].filter((id) => {
+      const leaveYmd = leaveYmdByEmployeeId.get(id);
+      return !(leaveYmd && leaveYmd < ymd);
+    });
+    const allPresent = dayRosterIds.length > 0 && dayRosterIds.every((id) => presentIds.has(id));
     // hasLeave 檢查所有本店出勤員工（含 originalStoreId=本店但 defaultStoreId=null 者）
     const hasLeave = dayAtts.some((a) => {
+      // 試作工號不在名冊內，其出勤不影響全店到齊判斷
+      if (isTrialEmployeeCode(a.employee.employeeCode ?? "")) return false;
       const actual = Number(a.workHours);
       const scheduled = a.scheduledWorkHours != null ? Number(a.scheduledWorkHours) : null;
       const isPartTimeShift = (a.shiftType ?? "").toUpperCase().startsWith("PT");

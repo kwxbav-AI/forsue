@@ -125,6 +125,7 @@ async function _buildRangeDailyMetricsPrefetch(
         isReserveStaff: true,
         reserveWorkPercent: true,
         hireDate: true,
+        leaveDate: true,
         employeeCode: true,
         name: true,
       },

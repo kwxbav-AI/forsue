@@ -9,7 +9,10 @@ import {
   isEligibleForNewHireWorkPercent,
   newHirePercentByWorkedDays,
 } from "@/lib/attendance-data";
-import { computeStoreHoursByEmployee } from "@/modules/performance/services/attendance-allocation.service";
+import {
+  buildAssignedByStore,
+  computeStoreHoursByEmployee,
+} from "@/modules/performance/services/attendance-allocation.service";
 import { getReserveStaffSettingsForDate } from "@/lib/reserve-staff-periods";
 
 export const dynamic = "force-dynamic";
@@ -121,7 +124,7 @@ export async function GET(request: NextRequest) {
   // defaultStore fallback：名冊沒填門市時，用最近一筆出勤原門市當 home store
   const activeEmployees = await prisma.employee.findMany({
     where: { isActive: true },
-    select: { id: true, defaultStoreId: true, employeeCode: true, name: true, position: true, isReserveStaff: true, reserveWorkPercent: true, hireDate: true },
+    select: { id: true, defaultStoreId: true, employeeCode: true, name: true, position: true, isReserveStaff: true, reserveWorkPercent: true, hireDate: true, leaveDate: true },
   });
   const employeeById = new Map(activeEmployees.map((e) => [e.id, e]));
   const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
@@ -147,14 +150,11 @@ export async function GET(request: NextRequest) {
   }
 
   // 儲備人力：全店到齊與加班判斷
-  const assignedByStore = new Map<string, string[]>();
-  for (const e of activeEmployees) {
-    const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
-    if (!homeStoreId) continue;
-    const list = assignedByStore.get(homeStoreId) ?? [];
-    list.push(e.id);
-    assignedByStore.set(homeStoreId, list);
-  }
+  const assignedByStore = buildAssignedByStore(
+    activeEmployees,
+    fallbackHomeStoreByEmployee,
+    formatDateOnly(workDate)
+  );
   function isLeaveShiftType(shiftType: string | null | undefined): boolean {
     const s = (shiftType ?? "").trim();
     if (!s) return false;

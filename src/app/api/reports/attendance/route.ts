@@ -23,6 +23,7 @@ import {
 } from "@/lib/reserve-staff-periods";
 import {
   computeStoreHoursByEmployee,
+  buildAssignedByStore,
   deriveReserveStaffContext,
 } from "@/modules/performance/services/attendance-allocation.service";
 import { computeDailyMetricsByStore } from "@/modules/performance/services/daily-store-metrics.service";
@@ -185,7 +186,7 @@ export async function GET(request: Request) {
   try {
     const activeEmployees = await prisma.employee.findMany({
       where: { isActive: true },
-      select: { id: true, defaultStoreId: true },
+      select: { id: true, defaultStoreId: true, employeeCode: true, leaveDate: true },
     });
     const noDefaultIds = activeEmployees.filter((e) => !e.defaultStoreId).map((e) => e.id);
     const fallbackHomeStoreByEmployee = new Map<string, string>();
@@ -201,6 +202,8 @@ export async function GET(request: Request) {
         fallbackHomeStoreByEmployee.set(a.employeeId, a.originalStoreId);
       }
     }
+    // 不分日期的名冊（含區間內已離職者），只用來決定要撈哪些人的出勤；
+    // 實際「全店到齊」判斷改用下方逐日的 buildAssignedByStore（會排除離職日已過者）。
     const assignedByStore = new Map<string, string[]>();
     for (const e of activeEmployees) {
       const homeStoreId = e.defaultStoreId ?? fallbackHomeStoreByEmployee.get(e.id);
@@ -455,7 +458,7 @@ export async function GET(request: Request) {
             employee: { defaultStoreId: a.employee.defaultStoreId },
           })),
           dispatches: dayDispatches,
-          assignedByStore,
+          assignedByStore: buildAssignedByStore(activeEmployees, fallbackHomeStoreByEmployee, ds),
           fallbackHomeStoreByEmployee,
         });
         hasConfirmedDispatchByDateEmployee.set(ds, context.hasConfirmedDispatchByEmployeeId);
