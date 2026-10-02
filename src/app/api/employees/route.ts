@@ -43,6 +43,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // 每位員工最新一筆儲備人力期間的生效日（儲存時會刪除生效日之後的期間，故最大值即為目前設定的生效日）
+  const latestPeriods = await prisma.employeeReserveStaffPeriod.groupBy({
+    by: ["employeeId"],
+    _max: { effectiveFrom: true },
+  });
+  const reserveEffectiveFromByEmployee = new Map<string, string>();
+  for (const p of latestPeriods) {
+    if (p._max.effectiveFrom) {
+      reserveEffectiveFromByEmployee.set(p.employeeId, formatDateOnly(p._max.effectiveFrom));
+    }
+  }
+
   return NextResponse.json(
     employees.map((e) => ({
       id: e.id,
@@ -55,6 +67,7 @@ export async function GET(request: NextRequest) {
       position: e.position,
       isReserveStaff: e.isReserveStaff,
       reserveWorkPercent: e.reserveWorkPercent == null ? null : Number(e.reserveWorkPercent),
+      reserveEffectiveFrom: reserveEffectiveFromByEmployee.get(e.id) ?? null,
     }))
   );
 }

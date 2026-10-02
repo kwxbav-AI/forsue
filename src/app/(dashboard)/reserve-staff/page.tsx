@@ -17,6 +17,7 @@ type EmployeeRow = {
   leaveDate: string | null;
   isReserveStaff: boolean;
   reserveWorkPercent: number | null;
+  reserveEffectiveFrom: string | null;
 };
 
 type DraftRow = {
@@ -34,6 +35,12 @@ function todayInputValue(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+// 生效日期欄位預設值：一般為今天（避免重新儲存時覆蓋歷史期間）；
+// 但若目前設定的生效日在未來，沿用該日期，避免再次儲存時把未來生效日悄悄改成今天。
+function defaultEffectiveFrom(e: { reserveEffectiveFrom: string | null }, today: string): string {
+  return e.reserveEffectiveFrom && e.reserveEffectiveFrom > today ? e.reserveEffectiveFrom : today;
 }
 
 export default function ReserveStaffPage() {
@@ -71,7 +78,7 @@ export default function ReserveStaffPage() {
       next[e.id] = {
         isReserveStaff: !!e.isReserveStaff,
         reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
-        effectiveFrom: today,
+        effectiveFrom: defaultEffectiveFrom(e, today),
         defaultStoreId: e.defaultStoreId ?? "",
         hireDate: e.hireDate ?? "",
         leaveDate: e.leaveDate ?? "",
@@ -214,7 +221,7 @@ export default function ReserveStaffPage() {
                 const d = draft[e.id] ?? {
                   isReserveStaff: e.isReserveStaff,
                   reserveWorkPercent: e.reserveWorkPercent == null ? "" : String(e.reserveWorkPercent),
-                  effectiveFrom: todayInputValue(),
+                  effectiveFrom: defaultEffectiveFrom(e, todayInputValue()),
                   defaultStoreId: e.defaultStoreId ?? "",
                   hireDate: e.hireDate ?? "",
                   leaveDate: e.leaveDate ?? "",
@@ -323,6 +330,11 @@ export default function ReserveStaffPage() {
                         }
                         className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
                       />
+                      {e.reserveEffectiveFrom && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          目前設定自 {e.reserveEffectiveFrom.replace(/-/g, "/")} 起生效
+                        </p>
+                      )}
                       {!d.isReserveStaff && (
                         <p className="mt-1 text-xs text-slate-500">自此日起取消，不影響更早資料</p>
                       )}
