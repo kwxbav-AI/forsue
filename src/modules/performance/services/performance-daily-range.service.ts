@@ -103,9 +103,14 @@ async function addBulkRevenueBeforeAttendanceStart(
 
   // 營收以 UTC 日曆日寫入 @db.Date，須用 UTC 區間（與 /api/reports/revenue 一致）
   const { start, end } = toDateRange(effStart, revenueOnlyEnd);
+  // 若有指定門市 ID 清單，直接加入 WHERE 避免全表掃描並防止資料滲入
+  const storeIdFilter = [...accum.keys()];
   const grouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
-    where: { revenueDate: { gte: start, lte: end } },
+    where: {
+      revenueDate: { gte: start, lte: end },
+      ...(storeIdFilter.length > 0 ? { storeId: { in: storeIdFilter } } : {}),
+    },
     _sum: { revenueAmount: true },
   });
 
@@ -113,16 +118,7 @@ async function addBulkRevenueBeforeAttendanceStart(
     const rev = Number(g._sum.revenueAmount ?? 0);
     if (rev <= 0) continue;
     let row = accum.get(g.storeId);
-    if (!row) {
-      row = {
-        storeId: g.storeId,
-        storeName: "",
-        revenueSum: 0,
-        hoursSum: 0,
-        dayCount: 0,
-      };
-      accum.set(g.storeId, row);
-    }
+    if (!row) continue; // accum 已初始化，不在清單內的門市跳過
     row.revenueSum += rev;
     row.dayCount += 1;
   }
@@ -199,6 +195,8 @@ async function computeEngineRangeRows(
           if (!(m.revenue > 0 || m.laborHours > 0)) continue;
           let row = accum.get(storeId);
           if (!row) {
+            // storeIds 有指定時，不在清單內的門市一律跳過（避免全公司資料滲入）
+            if (opts.storeIds != null) continue;
             row = { storeId, storeName: "", revenueSum: 0, hoursSum: 0, dayCount: 0 };
             accum.set(storeId, row);
           }
