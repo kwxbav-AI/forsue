@@ -689,8 +689,16 @@ export default function DispatchesPage() {
                     </td>
                     <td className="px-1 py-1.5 text-slate-600 whitespace-nowrap">{r.startTime && r.endTime ? `${r.startTime}~${r.endTime}` : "—"}</td>
                     <td className="px-1 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={statusLabel}>{statusLabel}</td>
-                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.clockInStoreText ?? ""}>{r.clockInStoreText ?? "—"}</td>
-                    <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.clockOutStoreText ?? ""}>{r.clockOutStoreText ?? "—"}</td>
+                    <td className="px-1 py-1.5 text-slate-600 text-xs" title={r.clockInStoreText ?? ""}>
+                      {r.clockInStoreText
+                        ? r.clockInStoreText.split(/(?=\[)/).filter(Boolean).map((s, i) => <div key={i}>{s.trim()}</div>)
+                        : "—"}
+                    </td>
+                    <td className="px-1 py-1.5 text-slate-600 text-xs" title={r.clockOutStoreText ?? ""}>
+                      {r.clockOutStoreText
+                        ? r.clockOutStoreText.split(/(?=\[)/).filter(Boolean).map((s, i) => <div key={i}>{s.trim()}</div>)
+                        : "—"}
+                    </td>
                     <td className="px-1 py-1.5 text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap" title={r.remark ?? ""}>{r.remark ?? "—"}</td>
                     <td className="px-1 py-1.5 whitespace-nowrap text-right">
                       {pendingDeleteIds.has(r.id) ? (
