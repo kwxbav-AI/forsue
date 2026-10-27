@@ -23,6 +23,10 @@ import {
   filterChartsBySelection,
   metricsFromChartRows,
 } from "./operations-metrics.service";
+import {
+  priorYearRevenueTargetByStoreMonth,
+  sumTargetPerStore,
+} from "./operations-prior-year-target.service";
 
 export type DashboardFilterStoreRow = {
   storeId: string;
@@ -30,7 +34,7 @@ export type DashboardFilterStoreRow = {
   revenue: number;
   laborHours: number;
   efficiencyRatio: number | null;
-  /** 區間內各月營收目標合計（整月目標，不按比例攤提） */
+  /** 區間營收目標：去年同月營收 × (區間工作天 ÷ 當月工作天)，各月加總 */
   revenueForecast: number | null;
   monthlyLaborHourTarget: number | null;
   revenueAchievement: number;
@@ -83,34 +87,11 @@ type RetailLaborSettings = {
 };
 
 type StoreMetricsContext = {
-  monthlySalesTarget: number;
+  revenueTarget: number;
   monthlyLaborHourTarget: number;
   labor: RetailLaborSettings;
   periodLaborHourTarget: number | null;
 };
-
-function sumFullMonthSalesTargetFromTargets(
-  retailStoreId: string,
-  slices: MonthSlice[],
-  targets: Array<{
-    storeId: string;
-    year: number;
-    month: number;
-    salesTarget: unknown;
-  }>
-): number {
-  const targetByYm = new Map(
-    targets
-      .filter((t) => t.storeId === retailStoreId)
-      .map((t) => [`${t.year}-${t.month}`, t] as const)
-  );
-  let total = 0;
-  for (const slice of slices) {
-    const row = targetByYm.get(`${slice.year}-${slice.month}`);
-    if (row) total += Number(row.salesTarget);
-  }
-  return total;
-}
 
 function sumFullMonthLaborHourTargetFromTargets(
   retailStoreId: string,
@@ -325,42 +306,6 @@ function prorateLaborHourTargetFromTargets(
   return laborHourTarget;
 }
 
-function prorateSalesForecastFromTargets(
-  retailStoreId: string,
-  slices: MonthSlice[],
-  targets: Array<{
-    storeId: string;
-    year: number;
-    month: number;
-    salesTarget: unknown;
-  }>,
-  holidaySet: Set<string>
-): number {
-  const targetByYm = new Map(
-    targets
-      .filter((t) => t.storeId === retailStoreId)
-      .map((t) => [`${t.year}-${t.month}`, t] as const)
-  );
-
-  let salesForecast = 0;
-  for (const slice of slices) {
-    const row = targetByYm.get(`${slice.year}-${slice.month}`);
-    if (!row) continue;
-
-    const { startYmd: ms, endYmd: me } = monthStartEndYmd(slice.year, slice.month);
-    const monthWd = countWorkingDaysInRangeUTC(ms, me, holidaySet);
-    const overlapWd = countWorkingDaysInRangeUTC(
-      slice.overlapStart,
-      slice.overlapEnd,
-      holidaySet
-    );
-    if (monthWd <= 0 || overlapWd <= 0) continue;
-
-    salesForecast += Number(row.salesTarget) * (overlapWd / monthWd);
-  }
-  return salesForecast;
-}
-
 function periodLaborHourTarget(
   retailStoreId: string | undefined,
   slices: MonthSlice[],
@@ -462,13 +407,13 @@ function buildStoreRow(
     efficiencyRatio: chart.efficiencyRatio,
     scheduledHours: null,
     revenueForecast:
-      ctx.monthlySalesTarget > 0 ? ctx.monthlySalesTarget : null,
+      ctx.revenueTarget > 0 ? ctx.revenueTarget : null,
     monthlyLaborHourTarget:
       ctx.monthlyLaborHourTarget > 0 ? ctx.monthlyLaborHourTarget : null,
     revenueAchievement: revenue,
     revenueAchievementRate:
-      ctx.monthlySalesTarget > 0 ?
-        pctRateOneDecimal(revenue, ctx.monthlySalesTarget)
+      ctx.revenueTarget > 0 ?
+        pctRateOneDecimal(revenue, ctx.revenueTarget)
       : null,
     yoyGrowthRate: yoyRate(revenue, priorRevenue),
     priorYearRevenue: priorRevenue,
@@ -733,13 +678,15 @@ export async function buildDashboardFilterResult(input: {
   const priorByStoreId = new Map(priorCharts.map((r) => [r.storeId, r.revenueSum]));
 
   const storeIds = filteredCharts.map((r) => r.storeId);
-  const [holidaySet, perfToRetail, activeRetail] = await Promise.all([
+  const [holidaySet, perfToRetail, activeRetail, revenueTargetByStoreMonth] = await Promise.all([
     loadHolidaySet(input.startYmd, input.endYmd),
     input.perfToRetailPreloaded ?
       Promise.resolve(input.perfToRetailPreloaded)
     : mapPerformanceToRetailStore(storeIds),
     getActiveRetailStores(),
+    priorYearRevenueTargetByStoreMonth(input.startYmd, input.endYmd, storeIds),
   ]);
+  const revenueTargetByStore = sumTargetPerStore(revenueTargetByStoreMonth);
 
   const workingDaysInRange = countWorkingDaysInRangeUTC(
     input.startYmd,
@@ -774,7 +721,6 @@ export async function buildDashboardFilterResult(input: {
           storeId: true,
           year: true,
           month: true,
-          salesTarget: true,
           laborHourTarget: true,
         },
       })
@@ -799,10 +745,6 @@ export async function buildDashboardFilterResult(input: {
       labor,
       workingDaysInRange
     );
-    const monthlySalesTarget =
-      retailId ?
-        sumFullMonthSalesTargetFromTargets(retailId, slices, targetRows)
-      : 0;
     const monthlyLaborHourTarget =
       retailId ?
         sumFullMonthLaborHourTargetFromTargets(retailId, slices, targetRows)
@@ -811,7 +753,7 @@ export async function buildDashboardFilterResult(input: {
     return buildStoreRow(
       chart,
       {
-        monthlySalesTarget,
+        revenueTarget: revenueTargetByStore.get(chart.storeId) ?? 0,
         monthlyLaborHourTarget,
         labor,
         periodLaborHourTarget: periodDefault,

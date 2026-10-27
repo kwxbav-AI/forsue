@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       : Promise.resolve(null),
     ]);
 
-    // 北區模式：替每間門市附加整月目標（不攤提）
+    // 北區模式：替每間門市附加營收目標（去年同月營收按工作天攤提）
     let stores = rawStores;
     if (isNorthRegion && rawStores.length > 0) {
       const perfStoreIds = rawStores.map((s) => s.storeId);

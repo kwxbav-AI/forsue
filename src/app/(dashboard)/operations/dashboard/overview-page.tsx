@@ -242,7 +242,7 @@ function StoreStatusTooltip({
       </p>
       <p className="text-slate-600">
         達成率 {formatPctOne(p.revenueAchievementRate)}
-        {p.revenueTarget != null ? ` · 月目標 ${formatMoney(p.revenueTarget)}` : ""}
+        {p.revenueTarget != null ? ` · 目標(去年同月) ${formatMoney(p.revenueTarget)}` : ""}
       </p>
       <p className="text-slate-600">達標 {p.targetMetDays} 次 · {p.statusLabel}</p>
       <p className="text-slate-500">
@@ -566,7 +566,7 @@ export default function OperationsOverviewPage({ fixedRegion }: { fixedRegion?: 
                   <KpiCard
                     title="營收目標值"
                     value={storeTarget != null ? formatMoney(storeTarget) : "—"}
-                    sub={selectedStore ? `${overview.startDate} ~ ${overview.endDate} · ${storeLabel} · 整月目標` : "請選擇門市"}
+                    sub={selectedStore ? `${overview.startDate} ~ ${overview.endDate} · ${storeLabel} · 去年同月營收按工作天攤提`: "請選擇門市"}
                     icon={<Target className="h-5 w-5" />}
                     theme={OPS_COLORS.achievement}
                   />
