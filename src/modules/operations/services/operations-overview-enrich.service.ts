@@ -28,6 +28,7 @@ import {
 } from "@/modules/operations/services/operations-metrics.service";
 import { sumTargetByMonthForPerformanceStores } from "@/modules/operations/services/operations-revenue-bulk.service";
 import { formatDateOnlyTaipei } from "@/lib/date";
+import { resolvePredecessorStores } from "@/modules/operations/services/operations-prior-year-target.service";
 
 export type RevenueAchievementBucket = "green" | "yellow" | "red" | "none";
 
@@ -85,9 +86,12 @@ async function fetchPriorYearRevenuePerStore(
 ) {
   if (storeIds.length === 0) return [];
   const { start, end } = toDateRange(startYmd, endYmd);
+  // 改名門市的舊門市一併查詢（buildDashboardFilterResult 會併入新門市）
+  const predecessors = await resolvePredecessorStores(storeIds);
+  const queryStoreIds = [...new Set([...storeIds, ...predecessors.keys()])];
   const grouped = await prisma.revenueRecord.groupBy({
     by: ["storeId"],
-    where: { storeId: { in: storeIds }, revenueDate: { gte: start, lte: end } },
+    where: { storeId: { in: queryStoreIds }, revenueDate: { gte: start, lte: end } },
     _sum: { revenueAmount: true },
   });
   return grouped.map((g) => ({

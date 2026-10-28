@@ -124,6 +124,16 @@ export const OPS_FILTER_REGIONS = OPS_REGION_CATALOG.map((g) => g.region);
 
 
 
+/**
+ * 改名／換編號門市：今年門市 → 去年營收記在哪些舊門市名下（名稱不含「店」）。
+ * 營收目標（去年同月營收）與去年同期／YoY 會把舊門市的營收轉算到新門市。
+ */
+export const STORE_PREDECESSORS: Readonly<Record<string, readonly string[]>> = {
+  大有: ["大業"],
+};
+
+
+
 const STORE_TO_REGION = new Map<string, string>();
 
 for (const { region, storeNames } of OPS_REGION_CATALOG) {

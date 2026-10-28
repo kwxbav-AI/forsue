@@ -25,6 +25,8 @@ import {
 } from "./operations-metrics.service";
 import {
   priorYearRevenueTargetByStoreMonth,
+  remapPriorRowsToSuccessors,
+  resolvePredecessorStores,
   sumTargetPerStore,
 } from "./operations-prior-year-target.service";
 
@@ -666,8 +668,10 @@ export async function buildDashboardFilterResult(input: {
     filteredCharts = filterChartsByOpsCatalog(filteredCharts);
   }
 
+  // 改名門市：舊門市去年營收先併入新門市，再依選取條件篩選
+  const predecessors = await resolvePredecessorStores(input.perStore.map((r) => r.storeId));
   let priorCharts = filterChartsBySelection(
-    input.priorPerStore,
+    remapPriorRowsToSuccessors(input.priorPerStore, predecessors),
     new Map(),
     input.selection
   );

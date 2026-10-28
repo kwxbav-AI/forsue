@@ -1,6 +1,69 @@
 import { prisma } from "@/lib/prisma";
 import { formatDateOnly, parseDateOnlyUTC, toDateRange } from "@/lib/date";
 import { countWorkingDaysInRangeUTC, monthStartEndYmd } from "@/lib/month-working-calendar";
+import { STORE_PREDECESSORS, normalizeStoreKey } from "@/lib/operations-dashboard";
+
+export type PredecessorStoreMap = Map<string, { successorId: string; successorName: string }>;
+
+/**
+ * 依 STORE_PREDECESSORS 找出 storeIds 中各門市的舊門市。
+ * 回傳 Map<舊門市 storeId, 新門市>；新門市不在 storeIds 內的不處理。
+ */
+export async function resolvePredecessorStores(storeIds: string[]): Promise<PredecessorStoreMap> {
+  const out: PredecessorStoreMap = new Map();
+  if (storeIds.length === 0 || Object.keys(STORE_PREDECESSORS).length === 0) return out;
+
+  const predecessorKeysBySuccessorKey = new Map(
+    Object.entries(STORE_PREDECESSORS).map(([k, v]) => [
+      normalizeStoreKey(k),
+      v.map(normalizeStoreKey),
+    ])
+  );
+  const successors = (
+    await prisma.store.findMany({
+      where: { id: { in: storeIds } },
+      select: { id: true, name: true },
+    })
+  ).filter((s) => predecessorKeysBySuccessorKey.has(normalizeStoreKey(s.name)));
+  if (successors.length === 0) return out;
+
+  const allStores = await prisma.store.findMany({ select: { id: true, name: true } });
+  for (const successor of successors) {
+    const keys = predecessorKeysBySuccessorKey.get(normalizeStoreKey(successor.name)) ?? [];
+    for (const s of allStores) {
+      if (s.id !== successor.id && keys.includes(normalizeStoreKey(s.name))) {
+        out.set(s.id, { successorId: successor.id, successorName: successor.name });
+      }
+    }
+  }
+  return out;
+}
+
+/** 把舊門市的去年營收列併入新門市（storeId／storeName 改為新門市，同店多列相加） */
+export function remapPriorRowsToSuccessors<
+  T extends { storeId: string; storeName: string; revenueSum: number; hoursSum: number; efficiencyRatio: number | null },
+>(rows: T[], predecessors: PredecessorStoreMap): T[] {
+  if (predecessors.size === 0) return rows;
+  const merged = new Map<string, T>();
+  for (const row of rows) {
+    const successor = predecessors.get(row.storeId);
+    const target =
+      successor ?
+        { ...row, storeId: successor.successorId, storeName: successor.successorName }
+      : row;
+    const existing = merged.get(target.storeId);
+    if (!existing) {
+      merged.set(target.storeId, { ...target });
+      continue;
+    }
+    existing.revenueSum += target.revenueSum;
+    existing.hoursSum += target.hoursSum;
+    if (!existing.storeName) existing.storeName = target.storeName;
+    existing.efficiencyRatio =
+      existing.hoursSum > 0 ? existing.revenueSum / existing.hoursSum : null;
+  }
+  return [...merged.values()];
+}
 
 type MonthSlice = { year: number; month: number; overlapStart: string; overlapEnd: string };
 
@@ -47,6 +110,7 @@ async function loadHolidaySet(startYmd: string, endYmd: string): Promise<Set<str
 /**
  * 營收目標 = 去年同月整月營收 × (區間內工作天 ÷ 當月工作天)。
  * 不再使用 StoreTarget.salesTarget；去年同月無營收的門市不給目標。
+ * 改名門市（STORE_PREDECESSORS）的舊門市營收會算到新門市。
  * 回傳 Map<perfStoreId, Map<"YYYY-MM"（今年月份）, target>>。
  */
 export async function priorYearRevenueTargetByStoreMonth(
@@ -65,9 +129,13 @@ export async function priorYearRevenueTargetByStoreMonth(
   // 營收以 UTC 日曆日寫入 @db.Date，須用 UTC 區間（見 CLAUDE.md）
   const { start, end } = toDateRange(priorStartYmd, priorEndYmd);
 
+  // 改名門市：舊門市去年營收算到新門市
+  const predecessors = await resolvePredecessorStores(perfStoreIds);
+  const queryStoreIds = [...new Set([...perfStoreIds, ...predecessors.keys()])];
+
   const [rows, holidaySet] = await Promise.all([
     prisma.revenueRecord.findMany({
-      where: { storeId: { in: perfStoreIds }, revenueDate: { gte: start, lte: end } },
+      where: { storeId: { in: queryStoreIds }, revenueDate: { gte: start, lte: end } },
       select: { storeId: true, revenueDate: true, revenueAmount: true },
     }),
     // 需涵蓋整月假日，才能算出當月工作天
@@ -82,10 +150,11 @@ export async function priorYearRevenueTargetByStoreMonth(
     const rev = Number(r.revenueAmount ?? 0);
     if (rev <= 0) continue;
     const ym = formatDateOnly(r.revenueDate).slice(0, 7);
-    let monthMap = priorByStoreMonth.get(r.storeId);
+    const storeId = predecessors.get(r.storeId)?.successorId ?? r.storeId;
+    let monthMap = priorByStoreMonth.get(storeId);
     if (!monthMap) {
       monthMap = new Map();
-      priorByStoreMonth.set(r.storeId, monthMap);
+      priorByStoreMonth.set(storeId, monthMap);
     }
     monthMap.set(ym, (monthMap.get(ym) ?? 0) + rev);
   }
