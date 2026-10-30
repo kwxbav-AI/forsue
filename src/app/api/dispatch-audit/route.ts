@@ -5,7 +5,10 @@ import { parseDateOnlyUTC } from "@/lib/date";
 export const dynamic = "force-dynamic";
 
 // 額外排除的部門關鍵字（後勤/客服/司機等非門市人員）
-const EXTRA_EXCLUDED_KEYWORDS = ["後勤", "客服", "司機", "採購", "長興倉", "台北司機", "會計"];
+const EXTRA_EXCLUDED_KEYWORDS = ["後勤", "客服", "司機", "採購", "長興倉", "台北司機", "會計", "營運品管"];
+
+// 個別排除的非門市人員（出勤部門無法辨識，依姓名排除）
+const EXCLUDED_EMPLOYEE_NAMES = new Set(["簡睿紋", "黃湘洳"]);
 
 // 打卡文字別名 → 正式門市名（與 upload.service.ts 的 STORE_TEXT_ALIASES 一致）
 const CLOCK_IN_TEXT_ALIASES: Record<string, string> = {
@@ -124,8 +127,9 @@ export async function GET(request: NextRequest) {
     const emp = empMap.get(att.employeeId);
     if (!emp) continue;
     if (Number(att.workHours) <= 0) continue;
+    if (EXCLUDED_EMPLOYEE_NAMES.has(emp.name.trim())) continue;
 
-    // 排除後勤/客服/司機等非門市人員（依 C欄文字）
+    // 排除後勤/客服/司機/營運品管等非門市人員（依 C欄文字）
     if (isDeptExcluded(att.department, excludedDepts)) continue;
 
     const clockInStoreId = att.clockInStoreId;
