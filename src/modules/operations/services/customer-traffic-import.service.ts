@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { parseDateOnlyUTC } from "@/lib/date";
-import { normalizeStoreKey } from "@/lib/operations-dashboard";
+import { normalizeStoreKey, OPS_REGION_CATALOG } from "@/lib/operations-dashboard";
 import { ensureRetailStoresFromPerformance } from "@/modules/operations/services/retail-store-sync.service";
 import { resolveRetailStore } from "@/modules/operations/services/retail-store-match.service";
 
@@ -27,7 +27,38 @@ const DEPT_CODE_TO_STORE: Record<string, string> = {
   "022": "東勇店",
   "023": "校舍店",
   "024": "大有店",
+  // 台北區（北區Dashboard）：依 2026/10 銷售總額與系統營收逐日比對確認
+  "080": "嘉興店",
+  "082": "虎林店",
+  "083": "福德店",
+  "085": "萬隆店",
 };
+
+/** 台北區門市在績效主檔是 hideInReports，ensureRetailStoresFromPerformance 不會建，這裡補上 */
+async function ensureTaipeiRetailStores(): Promise<void> {
+  const names = OPS_REGION_CATALOG.find((g) => g.region === "台北區")?.storeNames ?? [];
+  const retailStores = await prisma.retailStore.findMany({
+    select: { id: true, storeName: true, region: true, isActive: true },
+  });
+  for (const name of names) {
+    const existing = resolveRetailStore(normalizeStoreKey(name), name, retailStores);
+    if (existing) {
+      const row = retailStores.find((r) => r.id === existing.id);
+      if (row && (row.region !== "台北區" || !row.isActive)) {
+        await prisma.retailStore.update({
+          where: { id: existing.id },
+          data: { region: "台北區", isActive: true },
+        });
+      }
+      continue;
+    }
+    const created = await prisma.retailStore.create({
+      data: { storeName: name, region: "台北區", isActive: true },
+      select: { id: true, storeName: true, region: true, isActive: true },
+    });
+    retailStores.push(created);
+  }
+}
 
 export type CustomerTrafficImportResult = {
   upserted: number;
@@ -114,6 +145,7 @@ export async function importCustomerTrafficFromExcel(
   buffer: Buffer
 ): Promise<CustomerTrafficImportResult> {
   await ensureRetailStoresFromPerformance();
+  await ensureTaipeiRetailStores();
 
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -148,7 +180,6 @@ export async function importCustomerTrafficFromExcel(
 
   let upserted = 0;
   let skipped = 0;
-  let skippedTaipei = 0;
   const unmatched = new Set<string>();
   const warnings: string[] = [];
 
@@ -160,12 +191,6 @@ export async function importCustomerTrafficFromExcel(
     const row = rows[r] ?? [];
     const rawDept = String(row[deptCol] ?? "").trim();
     if (!rawDept || /合計|小計|總計/.test(rawDept)) continue;
-
-    // 台北區資料不分析：整段略過
-    if (rawDept.includes("台北區") || rawDept.startsWith("台北")) {
-      skippedTaipei += 1;
-      continue;
-    }
 
     // TMS 部門代碼對照（001 → 中正店）；若不在清單則保留原文字
     const deptLabel = DEPT_CODE_TO_STORE[rawDept] ?? rawDept;
@@ -231,9 +256,6 @@ export async function importCustomerTrafficFromExcel(
   const unmatchedDepartments = [...unmatched].sort();
   if (unmatchedDepartments.length > 0) {
     warnings.push(`未對應門市 ${unmatchedDepartments.length} 種：${unmatchedDepartments.slice(0, 8).join("、")}${unmatchedDepartments.length > 8 ? "…" : ""}`);
-  }
-  if (skippedTaipei > 0) {
-    warnings.push(`已略過台北區資料 ${skippedTaipei} 筆`);
   }
 
   return {
