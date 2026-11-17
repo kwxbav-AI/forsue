@@ -17,10 +17,25 @@
  * unauthorized，一旦設定了 EXTERNAL_API_KEY，瀏覽器（不會送此 header）的請求
  * 就會被判定失敗，導致網頁版報表對所有已登入使用者壞掉。
  */
-export function validateApiKey(
-  request: Request
-): "ok" | "unauthorized" | "absent" | "disabled" {
-  const configured = process.env.EXTERNAL_API_KEY;
+type ApiKeyResult = "ok" | "unauthorized" | "absent" | "disabled";
+
+export function validateApiKey(request: Request): ApiKeyResult {
+  return checkApiKey(request, process.env.EXTERNAL_API_KEY);
+}
+
+/**
+ * 會計系統推送每日營收（寫入）專用金鑰，環境變數 REVENUE_IMPORT_API_KEY。
+ *
+ * 刻意跟唯讀的 EXTERNAL_API_KEY 分成兩支函式、而不是 validateApiKey 加一個「金鑰名稱」
+ * 參數：若用預設參數，漏設 REVENUE_IMPORT_API_KEY 時傳進 undefined 會退回預設值，
+ * 變成唯讀金鑰也能寫入營收。分開寫，沒設定就是 "disabled"，不會互相借用。
+ * （process.env 也要寫死名稱，middleware 跑在 Edge runtime，動態 process.env[name] 不保證讀得到）
+ */
+export function validateRevenueImportKey(request: Request): ApiKeyResult {
+  return checkApiKey(request, process.env.REVENUE_IMPORT_API_KEY);
+}
+
+function checkApiKey(request: Request, configured: string | undefined): ApiKeyResult {
   if (!configured) return "disabled"; // 未設定 → 此驗證停用
 
   const incoming = (request.headers as Headers).get("x-api-key");

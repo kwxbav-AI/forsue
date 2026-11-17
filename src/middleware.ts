@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { isAuthEnabled, SESSION_COOKIE_NAME } from "@/lib/auth-config";
 import { decodeSessionToken } from "@/lib/auth-session";
 import { canAccessApi, canAccessPage } from "@/lib/permissions";
-import { isExternalApiPath, validateApiKey } from "@/lib/api-key-auth";
+import { isExternalApiPath, validateApiKey, validateRevenueImportKey } from "@/lib/api-key-auth";
 
 const PERMISSIONS_CACHE_TTL_MS = 5000;
 const effectivePermsCache = new Map<
@@ -83,6 +83,19 @@ export async function middleware(request: NextRequest) {
   // （預設拒絕），避免再次因為漏設環境變數而整個開放。
   if (pathname.startsWith("/api/admin/")) {
     if (validateApiKey(request) !== "ok") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  // 會計系統推送每日營收（寫入）：用專用金鑰 REVENUE_IMPORT_API_KEY，跟上面唯讀的
+  // EXTERNAL_API_KEY 分開。沒設定金鑰時 validateRevenueImportKey 回 "disabled"，同樣拒絕
+  // （預設拒絕）。route handler 會再驗一次，不靠任何一層單獨擋（見上面 /api/admin 的事故）。
+  if (pathname.replace(/\/+$/, "") === "/api/integrations/daily-revenue") {
+    if (request.method !== "POST") {
+      return NextResponse.json({ error: "只接受 POST" }, { status: 405 });
+    }
+    if (validateRevenueImportKey(request) !== "ok") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return NextResponse.next();
